@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import type { Cell } from '../../../shared/datasets';
 import { useApi } from '../api';
 import { useIpcQuery } from '../useIpcQuery';
+import { datasetKey, nameFromKey } from './DatasetSidebar';
 import { ComingSoon, Panel } from './Panel';
 
 const PREVIEW_ROWS = 20;
@@ -11,13 +12,13 @@ function renderCell(value: Cell): string {
   return typeof value === 'string' ? value : JSON.stringify(value);
 }
 
-export function ResultsPanel({ dataset }: { dataset: string | null }) {
+export function ResultsPanel({ dataset, revision }: { dataset: string | null; revision: number }) {
   const api = useApi();
   const loadPreview = useCallback(
-    (name: string) => api.datasets.preview(name, PREVIEW_ROWS),
+    (key: string) => api.datasets.preview(nameFromKey(key), PREVIEW_ROWS),
     [api],
   );
-  const { data: preview, error } = useIpcQuery(dataset, loadPreview);
+  const { data: preview, error } = useIpcQuery(datasetKey(dataset, revision), loadPreview);
 
   return (
     <Panel title="Charts & report" className="w-[480px] shrink-0 border-l border-slate-800">

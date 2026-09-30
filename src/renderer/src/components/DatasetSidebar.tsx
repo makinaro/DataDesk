@@ -6,7 +6,15 @@ import { Panel } from './Panel';
 interface Props {
   selected: string | null;
   onSelect: (name: string | null) => void;
+  /** Bumped by the parent whenever datasets change; part of every query key. */
+  revision: number;
+  onChanged: () => void;
 }
+
+/** Query key for "this dataset at this revision", so re-registering refreshes its views. */
+export const datasetKey = (name: string | null, revision: number) =>
+  name === null ? null : `${name}@${String(revision)}`;
+export const nameFromKey = (key: string) => key.slice(0, key.lastIndexOf('@'));
 
 function formatBytes(n: number): string {
   if (n < 1024) return `${String(n)} B`;
@@ -15,18 +23,16 @@ function formatBytes(n: number): string {
   return `${(n / 1024 ** 3).toFixed(2)} GB`;
 }
 
-export function DatasetSidebar({ selected, onSelect }: Props) {
+export function DatasetSidebar({ selected, onSelect, revision, onChanged }: Props) {
   const api = useApi();
-  // Bumping the version re-runs the list query (after a registration).
-  const [listVersion, setListVersion] = useState(0);
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
 
   const loadList = useCallback(() => api.datasets.list(), [api]);
-  const loadSchema = useCallback((name: string) => api.datasets.schema(name), [api]);
-  const list = useIpcQuery(`v${String(listVersion)}`, loadList);
-  const schemaQuery = useIpcQuery(selected, loadSchema);
+  const loadSchema = useCallback((key: string) => api.datasets.schema(nameFromKey(key)), [api]);
+  const list = useIpcQuery(`list@${String(revision)}`, loadList);
+  const schemaQuery = useIpcQuery(datasetKey(selected, revision), loadSchema);
 
   const datasets = list.data ?? list.stale ?? [];
   const schema = schemaQuery.data;
@@ -35,17 +41,21 @@ export function DatasetSidebar({ selected, onSelect }: Props) {
   async function addFiles(files: File[]) {
     setBusy(true);
     setActionError(null);
+    const errors: string[] = [];
     let last: string | null = null;
     try {
       for (const file of files) {
         const result = await api.datasets.registerFile(file);
         if (result.ok) last = result.data.name;
-        else setActionError(`${file.name}: ${result.error.message}`);
+        else errors.push(`${file.name}: ${result.error.message}`);
       }
-      setListVersion((v) => v + 1);
-      if (last) onSelect(last);
+    } catch {
+      errors.push('Could not reach the app backend.');
     } finally {
       setBusy(false);
+      if (errors.length > 0) setActionError(errors.join('\n'));
+      onChanged();
+      if (last) onSelect(last);
     }
   }
 
@@ -56,9 +66,11 @@ export function DatasetSidebar({ selected, onSelect }: Props) {
       const result = await api.datasets.pick();
       if (!result.ok) setActionError(result.error.message);
       else if (result.data) {
-        setListVersion((v) => v + 1);
+        onChanged();
         onSelect(result.data.name);
       }
+    } catch {
+      setActionError('Could not reach the app backend.');
     } finally {
       setBusy(false);
     }

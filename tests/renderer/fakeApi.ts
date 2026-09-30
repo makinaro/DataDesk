@@ -34,6 +34,9 @@ export function createFakeApi(
   const snapshot = () => ({ ...status });
   const registered = [...datasets];
   const register = (name: string): RegisteredDataset => {
+    // Like the real catalog: re-registering a name replaces it.
+    const existing = registered.findIndex((d) => d.name === name);
+    if (existing >= 0) registered.splice(existing, 1);
     registered.push(summary(name));
     return {
       name,
@@ -82,6 +85,7 @@ export function createFakeApi(
           ],
           rowCount: 2,
           truncated: false,
+          clippedCells: 0,
         }),
       ),
     },

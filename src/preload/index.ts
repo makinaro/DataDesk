@@ -28,7 +28,12 @@ const api: DatadeskApi = {
     registerFile: (file, name) => {
       // Only a File that came from the user's file system (drag-drop / <input type=file>) has a
       // path. A File constructed by page script resolves to '', so the page can't name paths.
-      const path = webUtils.getPathForFile(file);
+      let path = '';
+      try {
+        path = webUtils.getPathForFile(file);
+      } catch {
+        // Not a File object at all.
+      }
       if (!path) {
         return Promise.resolve({
           ok: false,

@@ -23,7 +23,9 @@ function wire(overrides: Partial<DatasetHandlerDeps['client']> = {}, picked: str
     listDatasets: vi.fn(() => Promise.resolve([])),
     register: vi.fn(() => Promise.resolve(REGISTERED)),
     schema: vi.fn(() => Promise.resolve(REGISTERED.columns)),
-    preview: vi.fn(() => Promise.resolve({ columns: [], rows: [], rowCount: 0, truncated: false })),
+    preview: vi.fn(() =>
+      Promise.resolve({ columns: [], rows: [], rowCount: 0, truncated: false, clippedCells: 0 }),
+    ),
     ...overrides,
   };
   const pickFile = vi.fn(() => Promise.resolve(picked));

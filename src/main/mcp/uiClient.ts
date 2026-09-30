@@ -97,21 +97,28 @@ export class UiMcpClient {
   }
 
   private connect(): Promise<Client> {
-    this.connection ??= (async () => {
+    if (this.connection) return this.connection;
+    const pending: Promise<Client> = (async () => {
       const transport = this.options.createTransport();
       const client = new Client({ name: 'datadesk-ui', version: '0.1.0' });
+      // Only forget *this* connection: a late close event from an old client must not orphan
+      // a newer one.
+      const forget = () => {
+        if (this.connection === pending) this.connection = undefined;
+      };
       client.onclose = () => {
         this.options.log?.('datadesk-mcp connection closed; will reconnect on next call');
-        this.connection = undefined;
+        forget();
       };
       try {
         await client.connect(transport);
       } catch (error) {
-        this.connection = undefined;
+        forget();
         throw error;
       }
       return client;
     })();
-    return this.connection;
+    this.connection = pending;
+    return pending;
   }
 }

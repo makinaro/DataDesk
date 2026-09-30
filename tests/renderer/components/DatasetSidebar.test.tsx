@@ -8,7 +8,17 @@ import { createFakeApi, summary } from '../fakeApi';
 
 function Harness() {
   const [selected, setSelected] = useState<string | null>(null);
-  return <DatasetSidebar selected={selected} onSelect={setSelected} />;
+  const [revision, setRevision] = useState(0);
+  return (
+    <DatasetSidebar
+      selected={selected}
+      onSelect={setSelected}
+      revision={revision}
+      onChanged={() => {
+        setRevision((r) => r + 1);
+      }}
+    />
+  );
 }
 
 function renderSidebar(api = createFakeApi({}, [summary('sales')])) {
@@ -72,6 +82,41 @@ describe('DatasetSidebar', () => {
     const file = new File(['x'], 'notes.txt');
     fireEvent.drop(zone, { dataTransfer: { types: ['Files'], files: [file] } });
     expect(await screen.findByRole('alert')).toHaveTextContent('notes.txt: Unsupported file type.');
+  });
+
+  it('re-registering the selected dataset refreshes its schema', async () => {
+    const { api } = renderSidebar();
+    const zone = screen.getByTestId('dataset-dropzone');
+    const drop = () => {
+      fireEvent.drop(zone, {
+        dataTransfer: { types: ['Files'], files: [new File(['a'], 'sales.csv')] },
+      });
+    };
+    drop();
+    await screen.findByRole('list', { name: 'Columns of sales' });
+    const before = api.datasets.schema.mock.calls.length;
+    drop();
+    await waitFor(() => {
+      expect(api.datasets.schema.mock.calls.length).toBeGreaterThan(before);
+    });
+  });
+
+  it('reports every failed file from a multi-file drop', async () => {
+    const api = createFakeApi({}, []);
+    api.datasets.registerFile
+      .mockResolvedValueOnce({ ok: false, error: { code: 'REJECTED', message: 'Bad A.' } } as never)
+      .mockResolvedValueOnce({
+        ok: false,
+        error: { code: 'REJECTED', message: 'Bad B.' },
+      } as never);
+    renderSidebar(api);
+    const files = [new File(['x'], 'a.txt'), new File(['y'], 'b.txt')];
+    fireEvent.drop(screen.getByTestId('dataset-dropzone'), {
+      dataTransfer: { types: ['Files'], files },
+    });
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('a.txt: Bad A.');
+    expect(alert).toHaveTextContent('b.txt: Bad B.');
   });
 
   it('shows datasets whose file went missing with their error', async () => {

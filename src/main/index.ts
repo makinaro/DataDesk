@@ -111,7 +111,9 @@ function start(): void {
         },
       });
       app.on('will-quit', () => {
-        void uiClient.close();
+        uiClient.close().catch((error: unknown) => {
+          console.error('[ui-mcp] close failed', error);
+        });
       });
 
       createMainWindow(rendererUrl);
