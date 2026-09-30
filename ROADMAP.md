@@ -56,7 +56,7 @@ transport, being both an MCP server _and_ client.
 - [x] Chat UI with streaming partial messages
 - [x] Agent timeline drawer (tool calls, results, timing, cost)
 - [x] Settings: model + budget
-- [ ] Packaging spike: `electron-builder --dir`; DuckDB loads, Claude binary resolves from `app.asar.unpacked`, datadesk-mcp starts
+- [x] Packaging spike: `electron-builder --dir`; DuckDB loads, Claude binary resolves from `app.asar.unpacked`, datadesk-mcp starts
 
 **Done when:** fake-`query()` tests cover the options builder (no forbidden tools, correct
 `cwd`/`env`), the guard and the mapper. A manual run with a real key answers a question with

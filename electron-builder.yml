@@ -1,0 +1,28 @@
+# Packaging spike (Phase 2). Phase 8 finalizes installer, icons, compression and signing.
+appId: dev.datadesk.app
+productName: DataDesk
+directories:
+  output: release
+  buildResources: build
+files:
+  - out/**/*
+  - package.json
+  - '!**/*.map'
+asar: true
+# Native code can't run from inside app.asar:
+# - DuckDB's Node-API binding (loaded by datadesk-mcp)
+# - the Claude Code binary the Agent SDK spawns (DECISIONS D-013)
+asarUnpack:
+  - '**/node_modules/@duckdb/**'
+  - '**/node_modules/@anthropic-ai/claude-agent-sdk-*/**'
+# Pre-fetched DuckDB extensions (Excel); read from process.resourcesPath at runtime.
+extraResources:
+  - from: resources/duckdb-extensions
+    to: duckdb-extensions
+# DuckDB ships Node-API prebuilt binaries (ABI-stable), so no rebuild against Electron is needed.
+npmRebuild: false
+compression: store
+win:
+  target:
+    - target: nsis
+      arch: [x64]
