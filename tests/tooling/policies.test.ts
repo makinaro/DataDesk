@@ -20,6 +20,9 @@ describe('private-paths policy', () => {
     ['Glob', { pattern: 'test-data/private/**' }],
     ['Read', { file_path: 'C:\\repo\\test-data\\private\\people.csv' }],
     ['Bash', { command: 'ls test-data/private' }],
+    // Review regressions: input redirect and PowerShell comma lists are direct reads.
+    ['Bash', { command: 'cat <.env' }],
+    ['PowerShell', { command: 'Get-Content x.txt,.env' }],
   ])('blocks %s %j', (tool, input) => {
     expect(privatePathsP(tool, input)).toMatch(/Blocked/);
   });
@@ -29,6 +32,8 @@ describe('private-paths policy', () => {
     ['Read', { file_path: '.env.example' }],
     ['Read', { file_path: 'src/main/environment.ts' }],
     ['Grep', { pattern: 'process.env', path: 'src' }],
+    // Grep's pattern is a content regex, not a path.
+    ['Grep', { pattern: 'process\\.env', path: 'src' }],
     ['Read', { file_path: 'test-data/public/penguins.csv' }],
   ])('allows %s %j', (tool, input) => {
     expect(privatePathsP(tool, input)).toBeNull();
@@ -51,6 +56,13 @@ describe('git-readonly policy (code-reviewer)', () => {
     'git status && npm install evil',
     'npm run check',
     'git diff $(cat .env)',
+    // Review regressions: newline chaining, and read-only subcommands that write or execute.
+    'git status\nrm -rf src',
+    'git status\r\nnpm install evil',
+    'git diff --output=src/main/index.ts',
+    'git log -p --ext-diff',
+    'git show --textconv HEAD',
+    'git statusx',
   ])('blocks %s', (command) => {
     expect(gitReadonlyP('Bash', { command })).toMatch(/Blocked/);
   });
@@ -80,6 +92,19 @@ describe('tests-only policy (test-writer)', () => {
     expect(testsOnlyP('Bash', { command: 'npm run typecheck' }, ROOT)).toBeNull();
     expect(testsOnlyP('Bash', { command: 'echo x > src/main/index.ts' }, ROOT)).toMatch(/Blocked/);
     expect(testsOnlyP('Bash', { command: 'npm install left-pad' }, ROOT)).toMatch(/Blocked/);
+  });
+
+  // Review regressions: commands that look like test/lint but rewrite files or chain.
+  it.each([
+    'npm run lint:fix',
+    'npm run lint -- --fix',
+    'npm run format',
+    'npx vitest run -u',
+    'npx vitest --update',
+    'npm run test:e2e',
+    'npm test\nnode -e "require(`fs`).writeFileSync(`src/x.ts`, ``)"',
+  ])('blocks file-modifying or chained command: %s', (command) => {
+    expect(testsOnlyP('Bash', { command }, ROOT)).toMatch(/Blocked/);
   });
 });
 

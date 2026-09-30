@@ -5,50 +5,68 @@
 import path from 'node:path';
 
 const PRIVATE_PATTERNS = [
-  // .env, .env.local, config/.env.production … but not .env.example
-  /(^|[\\/\s'"`=:(])\.env(?!\.example\b)(\.[\w.-]+)?(?=$|[\\/\s'"`;|&)*?])/i,
+  // .env, .env.local, config/.env.production, <.env … but not .env.example
+  /(^|[\\/\s'"`=:(<,])\.env(?!\.example\b)(\.[\w.-]+)?(?=$|[\\/\s'"`;|&)*?,>])/i,
   /test-data[\\/]+private/i,
 ];
 
-/** Collects every string field a tool call could use to reach a file. */
-function reachableStrings(toolInput) {
-  if (!toolInput || typeof toolInput !== 'object') return [];
-  return ['command', 'file_path', 'path', 'glob', 'pattern', 'notebook_path']
-    .map((key) => toolInput[key])
-    .filter((value) => typeof value === 'string');
-}
+/**
+ * The fields each tool can use to reach a file. Grep's `pattern` is a content regex, not a
+ * path, so it isn't checked (otherwise searching for `process\.env` would be blocked).
+ */
+const PATH_FIELDS = {
+  Bash: ['command'],
+  PowerShell: ['command'],
+  Read: ['file_path'],
+  Edit: ['file_path'],
+  Write: ['file_path'],
+  Grep: ['path', 'glob'],
+  Glob: ['path', 'pattern'],
+};
 
 /** Project-wide: block .env* and test-data/private from shell, search and file tools. */
 export function privatePaths(toolName, toolInput) {
-  if (!['Bash', 'PowerShell', 'Read', 'Grep', 'Glob', 'Edit', 'Write'].includes(toolName)) {
-    return null;
-  }
-  for (const value of reachableStrings(toolInput)) {
-    if (PRIVATE_PATTERNS.some((re) => re.test(value))) {
+  const fields = PATH_FIELDS[toolName];
+  if (!fields || !toolInput || typeof toolInput !== 'object') return null;
+  for (const field of fields) {
+    const value = toolInput[field];
+    if (typeof value === 'string' && PRIVATE_PATTERNS.some((re) => re.test(value))) {
       return `Blocked by .claude/hooks: ${toolName} may not touch .env files or test-data/private/ (CLAUDE.md, Security rule 6).`;
     }
   }
   return null;
 }
 
+// Newlines count as chaining: Bash and PowerShell both run each line as a separate command.
+const SHELL_CHAINING = /[;&|`<>\r\n]|\$\(/;
+
 const GIT_READONLY =
-  /^\s*git\s+(diff|log|show|status|rev-parse|merge-base|branch\s+--show-current|ls-files)\b/;
-const SHELL_CHAINING = /[;&|`<>]|\$\(/;
+  /^\s*git\s+(diff|log|show|status|rev-parse|merge-base|branch\s+--show-current|ls-files)(\s|$)/;
+// Read-only git subcommands that can still write files or run external programs.
+const GIT_UNSAFE_FLAGS = /(^|\s)--(output|ext-diff|textconv)\b/;
 
 /** code-reviewer: shell access is limited to read-only git commands, no chaining or redirects. */
 export function gitReadonly(toolName, toolInput) {
   if (toolName !== 'Bash' && toolName !== 'PowerShell') return null;
   const command = typeof toolInput?.command === 'string' ? toolInput.command : '';
-  if (GIT_READONLY.test(command) && !SHELL_CHAINING.test(command)) return null;
-  return 'Blocked by .claude/hooks: code-reviewer may only run read-only git commands (diff, log, show, status, rev-parse, merge-base, ls-files) without chaining or redirects.';
+  if (
+    GIT_READONLY.test(command) &&
+    !SHELL_CHAINING.test(command) &&
+    !GIT_UNSAFE_FLAGS.test(command)
+  ) {
+    return null;
+  }
+  return 'Blocked by .claude/hooks: code-reviewer may only run read-only git commands (diff, log, show, status, rev-parse, merge-base, ls-files) without chaining, redirects, --output or --ext-diff.';
 }
 
+// Each alternative must end at whitespace or end-of-string, so `lint:fix`, `test:e2e` and
+// `test:watch` don't slip through on a word boundary.
 const TEST_COMMANDS =
-  /^\s*(npx\s+vitest\b|npm\s+(run\s+)?test\b|npm\s+run\s+(typecheck|lint|format:check)\b|git\s+(status|diff)\b)/;
+  /^\s*(npx\s+vitest(\s+run)?|npm\s+(run\s+)?test|npm\s+run\s+(typecheck|lint|format:check)|git\s+(status|diff))(\s|$)/;
 
 /**
  * test-writer: may only write under tests/ or test-data/public/, and may only run test,
- * typecheck and lint commands.
+ * typecheck and lint commands (none of which modify files).
  */
 export function testsOnly(toolName, toolInput, projectDir) {
   if (['Edit', 'Write', 'NotebookEdit'].includes(toolName)) {
@@ -63,8 +81,9 @@ export function testsOnly(toolName, toolInput, projectDir) {
   }
   if (toolName === 'Bash' || toolName === 'PowerShell') {
     const command = typeof toolInput?.command === 'string' ? toolInput.command : '';
-    if (TEST_COMMANDS.test(command) && !SHELL_CHAINING.test(command)) return null;
-    return 'Blocked by .claude/hooks: test-writer may only run vitest, npm test, typecheck, lint, format:check, git status/diff.';
+    const fixes = /\s--(fix|write|update|u)\b|\s-u(\s|$)/.test(command);
+    if (TEST_COMMANDS.test(command) && !SHELL_CHAINING.test(command) && !fixes) return null;
+    return 'Blocked by .claude/hooks: test-writer may only run vitest, npm test, typecheck, lint, format:check, git status/diff (no --fix/--write/-u, no chaining).';
   }
   return null;
 }
