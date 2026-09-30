@@ -2,6 +2,8 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 import type { DatadeskApi } from '../../src/shared/ipc/api';
 
 const exposeInMainWorld = vi.fn();
+const on = vi.fn();
+const removeListener = vi.fn();
 const invoke = vi.fn(() => Promise.resolve({ ok: true, data: null }));
 // Real files resolve to a path; files constructed by page script resolve to ''.
 const getPathForFile = vi.fn((file: File) =>
@@ -10,7 +12,7 @@ const getPathForFile = vi.fn((file: File) =>
 
 vi.mock('electron', () => ({
   contextBridge: { exposeInMainWorld },
-  ipcRenderer: { invoke },
+  ipcRenderer: { invoke, on, removeListener },
   webUtils: { getPathForFile },
 }));
 
@@ -26,7 +28,9 @@ beforeAll(async () => {
 
 describe('preload bridge', () => {
   it('exposes exactly the whitelisted namespaces and methods', () => {
-    expect(Object.keys(api).sort()).toEqual(['app', 'datasets', 'secrets']);
+    expect(Object.keys(api).sort()).toEqual(['agent', 'app', 'datasets', 'secrets', 'settings']);
+    expect(Object.keys(api.agent).sort()).toEqual(['approve', 'onEvent', 'reset', 'send', 'stop']);
+    expect(Object.keys(api.settings).sort()).toEqual(['getAgent', 'setAgent']);
     expect(Object.keys(api.app).sort()).toEqual(['info']);
     expect(Object.keys(api.secrets).sort()).toEqual(['clear', 'set', 'status']);
     expect(Object.keys(api.datasets).sort()).toEqual([
@@ -38,10 +42,35 @@ describe('preload bridge', () => {
     ]);
   });
 
-  it('does not expose ipcRenderer, a generic invoke/send, or a path-string register', () => {
-    const flat =
-      JSON.stringify(Object.keys(api)) + JSON.stringify(Object.values(api).map(Object.keys));
-    expect(flat).not.toMatch(/invoke|send|ipcRenderer|on\b|registerPath/);
+  it('does not expose ipcRenderer, a generic invoke/send/on, or a path-string register', () => {
+    const names = [
+      ...Object.keys(api),
+      ...Object.values(api).flatMap((ns) => Object.keys(ns as object)),
+    ];
+    for (const forbidden of [
+      'ipcRenderer',
+      'invoke',
+      'on',
+      'once',
+      'sendSync',
+      'postMessage',
+      'registerPath',
+    ]) {
+      expect(names).not.toContain(forbidden);
+    }
+  });
+
+  it('agent.onEvent passes only the payload (never the IPC event/sender) and can unsubscribe', () => {
+    const listener = vi.fn();
+    const unsubscribe = api.agent.onEvent(listener);
+    const [channel, handler] = on.mock.calls[0] as [string, (e: unknown, p: unknown) => void];
+    expect(channel).toBe('agent:event');
+    const payload = { kind: 'status', status: 'idle', seq: 0, at: 1 };
+    handler({ sender: 'SHOULD-NOT-LEAK' }, payload);
+    expect(listener).toHaveBeenCalledWith(payload);
+    expect(JSON.stringify(listener.mock.calls)).not.toContain('SHOULD-NOT-LEAK');
+    unsubscribe();
+    expect(removeListener).toHaveBeenCalledWith('agent:event', handler);
   });
 
   it('maps methods to the right channels and payloads', async () => {

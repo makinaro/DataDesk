@@ -6,6 +6,7 @@ import {
   DatasetSummarySchema,
   RegisteredDatasetSchema,
 } from '../datasets';
+import { AgentSettingsSchema } from '../agent';
 import { IpcChannels, type IpcChannel } from './channels';
 
 export const ProviderSchema = z.enum(['anthropic', 'openai', 'huggingface']);
@@ -72,6 +73,25 @@ export const ipcContract = {
     }),
     response: DatasetPreviewSchema,
   },
+  [IpcChannels.agentSend]: {
+    request: z.strictObject({ text: z.string().trim().min(1).max(20_000) }),
+    response: z.strictObject({ accepted: z.literal(true) }),
+  },
+  [IpcChannels.agentStop]: {
+    request: NoPayload,
+    response: z.strictObject({ ok: z.literal(true) }),
+  },
+  [IpcChannels.agentReset]: {
+    request: NoPayload,
+    response: z.strictObject({ ok: z.literal(true) }),
+  },
+  [IpcChannels.agentApprove]: {
+    request: z.strictObject({ requestId: z.uuid(), approved: z.boolean() }),
+    /** false if the request already timed out or was resolved. */
+    response: z.strictObject({ found: z.boolean() }),
+  },
+  [IpcChannels.settingsGetAgent]: { request: NoPayload, response: AgentSettingsSchema },
+  [IpcChannels.settingsSetAgent]: { request: AgentSettingsSchema, response: AgentSettingsSchema },
 } as const satisfies Record<IpcChannel, { request: z.ZodType; response: z.ZodType }>;
 
 export type IpcContract = typeof ipcContract;

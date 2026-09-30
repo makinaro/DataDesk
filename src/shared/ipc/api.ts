@@ -1,3 +1,4 @@
+import type { AgentEvent, AgentSettings } from '../agent';
 import type { ColumnInfo, DatasetPreview, DatasetSummary, RegisteredDataset } from '../datasets';
 import type { AppInfo, Provider, SecretsStatus } from './contract';
 import type { IpcResult } from './result';
@@ -26,5 +27,17 @@ export interface DatadeskApi {
     pick(): Promise<IpcResult<RegisteredDataset | null>>;
     schema(name: string): Promise<IpcResult<ColumnInfo[]>>;
     preview(name: string, limit: number): Promise<IpcResult<DatasetPreview>>;
+  };
+  agent: {
+    send(text: string): Promise<IpcResult<{ accepted: true }>>;
+    stop(): Promise<IpcResult<{ ok: true }>>;
+    reset(): Promise<IpcResult<{ ok: true }>>;
+    approve(requestId: string, approved: boolean): Promise<IpcResult<{ found: boolean }>>;
+    /** Subscribes to agent events; returns an unsubscribe function. */
+    onEvent(listener: (event: AgentEvent) => void): () => void;
+  };
+  settings: {
+    getAgent(): Promise<IpcResult<AgentSettings>>;
+    setAgent(settings: AgentSettings): Promise<IpcResult<AgentSettings>>;
   };
 }
