@@ -1,4 +1,5 @@
-import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { mkdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ImportPathError, validateImportPath } from '../../src/mcp-server/fileAccess';
@@ -93,6 +94,36 @@ describe('validateImportPath', () => {
       /links or junctions/,
     );
   });
+
+  // Regression: realpath() expands 8.3 short names, which once made every short path look like
+  // a link. GitHub's Windows runners use one for the temp dir (C:\Users\RUNNER~1\…).
+  it('accepts Windows 8.3 short paths and stores the long real path', async (ctx) => {
+    if (process.platform !== 'win32') ctx.skip();
+    const longDir = join(ws.root, 'A Long Folder Name For Short Paths');
+    mkdirSync(longDir);
+    const file = join(longDir, 'sales.csv');
+    writeFileSync(file, 'a\n1\n');
+    // cmd's %~sI prints the 8.3 form; verbatim args stop Node from escaping the inner quotes.
+    const short = spawnSync(
+      'cmd.exe',
+      ['/d', '/s', '/c', `"for %I in ("${longDir}") do @echo %~sI"`],
+      { encoding: 'utf8', windowsVerbatimArguments: true },
+    ).stdout.trim();
+    if (!short || short.toLowerCase() === longDir.toLowerCase()) {
+      ctx.skip(); // 8.3 name generation is disabled on this volume.
+    }
+    const result = await validateImportPath(join(short, 'sales.csv'), policy());
+    expect(result.path.toLowerCase()).toBe(realpathSync(file).toLowerCase());
+  });
+
+  it.each(['sales [v1].csv', 'sales*.csv', 'sales?.csv'])(
+    'rejects glob characters DuckDB would expand: %s',
+    async (name) => {
+      await expect(validateImportPath(join(ws.dataDir, name), policy())).rejects.toThrow(
+        /\*, \? or \[ \]/,
+      );
+    },
+  );
 
   it('rejects paths through a directory junction (no admin rights needed)', async () => {
     const junction = join(ws.dataDir, 'jn');

@@ -1,5 +1,5 @@
 import { lstat, realpath, stat } from 'node:fs/promises';
-import { extname, isAbsolute, normalize, relative, sep } from 'node:path';
+import { basename, extname, isAbsolute, join, normalize, parse, relative, sep } from 'node:path';
 import type { DatasetFormat } from '../shared/datasets';
 
 export class ImportPathError extends Error {
@@ -72,18 +72,24 @@ export async function validateImportPath(
     );
   }
 
-  let link;
+  // DuckDB's read_* functions treat these as glob patterns, which could match other files.
+  if (/[*?[\]]/.test(basename(requested))) {
+    throw new ImportPathError('File names containing *, ? or [ ] are not supported. Rename it.');
+  }
+
   try {
-    link = await lstat(requested);
+    await lstat(requested);
   } catch {
     throw new ImportPathError('File not found.');
   }
-  if (link.isSymbolicLink()) throw new ImportPathError('Symbolic links are not supported.');
+  // Walk every component rather than comparing against realpath(): realpath also expands
+  // Windows 8.3 short names (C:\PROGRA~1 → C:\Program Files), which are not links.
+  await assertNoLinks(requested);
 
   const real = await realpath(requested);
-  if (fold(real) !== fold(requested)) {
-    // A junction or symlinked parent directory redirects somewhere else.
-    throw new ImportPathError('Paths through links or junctions are not supported.');
+  if (/^[\\/]{2}/.test(real)) {
+    // A mapped drive letter that points at a network share.
+    throw new ImportPathError('Network drives are not supported. Copy the file locally first.');
   }
 
   const info = await stat(real);
@@ -107,4 +113,25 @@ export async function validateImportPath(
   }
 
   return { path: real, format, sizeBytes: info.size };
+}
+
+/** Rejects the path if the file or any parent directory is a symlink or junction. */
+async function assertNoLinks(filePath: string): Promise<void> {
+  const { root } = parse(filePath);
+  const parts = filePath
+    .slice(root.length)
+    .split(/[\\/]+/)
+    .filter(Boolean);
+  let current = root;
+  for (const part of parts) {
+    current = join(current, part);
+    // On Windows, Node reports directory junctions as symbolic links too.
+    if ((await lstat(current)).isSymbolicLink()) {
+      throw new ImportPathError(
+        current === filePath
+          ? 'Symbolic links are not supported.'
+          : 'Paths through links or junctions are not supported.',
+      );
+    }
+  }
 }

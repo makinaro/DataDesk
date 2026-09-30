@@ -1,4 +1,4 @@
-import { copyFileSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { expect, test } from './fixtures';
@@ -56,7 +56,10 @@ test('registered datasets are written to the catalog in userData', async ({
   const catalog = JSON.parse(readFileSync(join(userData, 'catalog.json'), 'utf8')) as {
     datasets: { name: string; path: string }[];
   };
-  expect(catalog.datasets).toEqual([expect.objectContaining({ name: 'sales', path: csv })]);
+  // The catalog stores the real path (e.g. 8.3 short names expanded).
+  expect(catalog.datasets).toEqual([
+    expect.objectContaining({ name: 'sales', path: realpathSync(csv) }),
+  ]);
 });
 
 test('files constructed by page script cannot be registered (no filesystem path)', async ({
