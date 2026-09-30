@@ -81,6 +81,28 @@ describe('KeyStore', () => {
     expect(onCorrupt).toHaveBeenCalledOnce();
   });
 
+  it('retries a transiently locked rename (Windows AV/indexer) and then succeeds', async () => {
+    const { rename } = await import('node:fs/promises');
+    let failures = 1;
+    const flakyRename = vi.fn(async (from: string, to: string) => {
+      if (failures-- > 0) throw Object.assign(new Error('locked'), { code: 'EPERM' });
+      await rename(from, to);
+    });
+    const store = new KeyStore(file, fakeSafeStorage(), undefined, flakyRename);
+    await expect(store.set('openai', KEY)).resolves.toMatchObject({ openai: true });
+    expect(flakyRename).toHaveBeenCalledTimes(2);
+  });
+
+  it('gives up on non-transient rename errors, keeps the old state, and cleans the temp file', async () => {
+    const store = new KeyStore(file, fakeSafeStorage(), undefined, () =>
+      Promise.reject(Object.assign(new Error('nope'), { code: 'ENOSPC' })),
+    );
+    await expect(store.set('openai', KEY)).rejects.toThrow('nope');
+    await expect(store.status()).resolves.toMatchObject({ openai: false });
+    const { readdirSync } = await import('node:fs');
+    expect(readdirSync(join(dir, 'nested')).filter((f) => f.endsWith('.tmp'))).toEqual([]);
+  });
+
   it('serializes concurrent writes without losing updates', async () => {
     const store = new KeyStore(file, fakeSafeStorage());
     await Promise.all([

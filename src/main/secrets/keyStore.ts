@@ -25,6 +25,26 @@ type SecretsFile = z.infer<typeof SecretsFileSchema>;
 
 const EMPTY: SecretsFile = { version: 1, keys: {} };
 
+type RenameFn = (from: string, to: string) => Promise<void>;
+
+// On Windows, antivirus, the search indexer or sync clients can briefly hold the target open,
+// making rename-over-existing fail with one of these codes. They usually clear within ms.
+const TRANSIENT_RENAME_CODES = new Set(['EPERM', 'EACCES', 'EBUSY']);
+const RENAME_ATTEMPTS = 5;
+
+async function renameWithRetry(renameFile: RenameFn, from: string, to: string): Promise<void> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await renameFile(from, to);
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code ?? '';
+      if (attempt >= RENAME_ATTEMPTS || !TRANSIENT_RENAME_CODES.has(code)) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 50 * attempt));
+    }
+  }
+}
+
 /**
  * Encrypted API key storage. Lives only in the main process.
  * - `status`, `set` and `clear` are safe to expose over IPC (they return booleans).
@@ -38,6 +58,7 @@ export class KeyStore {
     private readonly filePath: string,
     private readonly safeStorage: SafeStorageLike,
     private readonly onCorruptFile: (error: unknown) => void = () => undefined,
+    private readonly renameFile: RenameFn = rename,
   ) {}
 
   async status(): Promise<SecretsStatus> {
@@ -103,7 +124,7 @@ export class KeyStore {
       const tmp = `${this.filePath}.${String(process.pid)}.tmp`;
       try {
         await writeFile(tmp, JSON.stringify(next, null, 2), { encoding: 'utf8', mode: 0o600 });
-        await rename(tmp, this.filePath);
+        await renameWithRetry(this.renameFile, tmp, this.filePath);
       } catch (error) {
         await rm(tmp, { force: true });
         throw error;
