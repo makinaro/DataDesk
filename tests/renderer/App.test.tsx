@@ -1,17 +1,10 @@
-import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { ApiProvider } from '../../src/renderer/src/api';
 import { App } from '../../src/renderer/src/App';
-import { createFakeApi } from './fakeApi';
+import { renderWithProviders } from './renderApp';
 
 function renderApp() {
-  render(
-    <ApiProvider api={createFakeApi()}>
-      <App />
-    </ApiProvider>,
-  );
-  return userEvent.setup();
+  return renderWithProviders(<App />).user;
 }
 
 describe('App shell', () => {
@@ -35,7 +28,7 @@ describe('App shell', () => {
   it('opens and closes settings', async () => {
     const user = renderApp();
     await user.click(screen.getByRole('button', { name: 'Settings' }));
-    expect(screen.getByRole('dialog', { name: 'API keys' })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Settings' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Close' }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });

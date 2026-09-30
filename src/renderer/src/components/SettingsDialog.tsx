@@ -2,6 +2,7 @@ import { useEffect, useId, useState, type SyntheticEvent } from 'react';
 import type { Provider, SecretsStatus } from '../../../shared/ipc/contract';
 import type { IpcResult } from '../../../shared/ipc/result';
 import { useApi } from '../api';
+import { AnalystSettingsForm } from './AnalystSettingsForm';
 
 const PROVIDERS: { id: Provider; label: string; hint: string }[] = [
   { id: 'anthropic', label: 'Anthropic', hint: 'Runs the analyst agent.' },
@@ -36,11 +37,11 @@ export function SettingsDialog({ onClose }: Props) {
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="w-full max-w-lg rounded-xl border border-slate-700 bg-slate-900 p-6 shadow-xl"
+        className="max-h-[90vh] w-full max-w-lg overflow-auto rounded-xl border border-slate-700 bg-slate-900 p-6 shadow-xl"
       >
         <div className="mb-4 flex items-center justify-between">
           <h2 id={titleId} className="text-lg font-semibold">
-            API keys
+            Settings
           </h2>
           <button
             type="button"
@@ -50,6 +51,7 @@ export function SettingsDialog({ onClose }: Props) {
             Close
           </button>
         </div>
+        <h3 className="mb-1 font-medium">API keys</h3>
         <p className="mb-4 text-sm text-slate-400">
           Keys are encrypted by your operating system and stay in the app&apos;s main process. They
           can be replaced or removed, but never displayed.
@@ -72,6 +74,8 @@ export function SettingsDialog({ onClose }: Props) {
             />
           ))}
         </ul>
+        <h3 className="mt-6 mb-3 font-medium">Analyst</h3>
+        <AnalystSettingsForm />
       </div>
     </div>
   );

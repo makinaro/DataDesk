@@ -1,4 +1,10 @@
 import { vi } from 'vitest';
+import {
+  DEFAULT_AGENT_SETTINGS,
+  type AgentEvent,
+  type AgentEventInput,
+  type AgentSettings,
+} from '../../src/shared/agent';
 import type { DatasetSummary, RegisteredDataset } from '../../src/shared/datasets';
 import type { DatadeskApi } from '../../src/shared/ipc/api';
 import type { Provider, SecretsStatus } from '../../src/shared/ipc/contract';
@@ -33,6 +39,8 @@ export function createFakeApi(
   const status: SecretsStatus = { anthropic: false, openai: false, huggingface: false, ...initial };
   const snapshot = () => ({ ...status });
   const registered = [...datasets];
+  const listeners = new Set<(event: AgentEvent) => void>();
+  let agentSettings: AgentSettings = { ...DEFAULT_AGENT_SETTINGS };
   const register = (name: string): RegisteredDataset => {
     // Like the real catalog: re-registering a name replaces it.
     const existing = registered.findIndex((d) => d.name === name);
@@ -89,6 +97,32 @@ export function createFakeApi(
         }),
       ),
     },
+    agent: {
+      send: vi.fn((_text: string) => ok({ accepted: true as const })),
+      stop: vi.fn(() => ok({ ok: true as const })),
+      reset: vi.fn(() => ok({ ok: true as const })),
+      approve: vi.fn((_requestId: string, _approved: boolean) => ok({ found: true })),
+      onEvent: vi.fn((listener: (event: AgentEvent) => void) => {
+        listeners.add(listener);
+        return () => {
+          listeners.delete(listener);
+        };
+      }),
+    },
+    settings: {
+      getAgent: vi.fn(() => ok({ ...agentSettings })),
+      setAgent: vi.fn((next: AgentSettings) => {
+        agentSettings = next;
+        return ok({ ...next });
+      }),
+    },
   } satisfies DatadeskApi;
-  return api;
+
+  /** Pushes an agent event to subscribers, the way main does over IPC. */
+  let seq = 0;
+  const emit = (event: AgentEventInput) => {
+    const full = { ...event, seq: seq++, at: Date.now() };
+    for (const l of [...listeners]) l(full);
+  };
+  return Object.assign(api, { emit });
 }
