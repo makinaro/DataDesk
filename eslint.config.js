@@ -46,6 +46,26 @@ export default defineConfig(
     languageOptions: { globals: globals.node },
   },
 
+  // The sandboxed preload bundles its dependencies (externalizeDeps: false), so a value import
+  // of zod or the contract would silently ship a validator into it. Types are fine.
+  {
+    files: ['src/preload/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['zod', '**/shared/ipc/contract'],
+              allowTypeImports: true,
+              message: 'Preload may only import types from the contract; validation lives in main.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+
   // src/shared is imported by every process, so it must stay free of Electron, Node, and React.
   {
     files: ['src/shared/**/*.ts'],

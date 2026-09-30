@@ -26,7 +26,8 @@ function describeTarget(args: unknown[]): { local: boolean; target: string } {
     const host = typeof opts.host === 'string' ? opts.host : 'localhost';
     return { local: LOCAL_HOSTS.has(host), target: `${host}:${String(opts.port)}` };
   }
-  if (typeof first === 'string') return { local: true, target: first };
+  // A numeric string is a port (socket.connect('443', 'example.com')); any other string is a pipe path.
+  if (typeof first === 'string' && !/^\d+$/.test(first)) return { local: true, target: first };
   const host = typeof second === 'string' ? second : 'localhost';
   return { local: LOCAL_HOSTS.has(host), target: `${host}:${String(first)}` };
 }

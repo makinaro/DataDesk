@@ -13,6 +13,12 @@ describe('network guard', () => {
     expect(() => net.connect({ host: 'example.com', port: 443 })).toThrow(NetworkAccessError);
   });
 
+  it('rejects direct socket.connect with a numeric-string port', () => {
+    expect(() => new net.Socket().connect('443' as unknown as number, 'example.com')).toThrow(
+      NetworkAccessError,
+    );
+  });
+
   it('allows localhost sockets (used by local test servers)', () => {
     const server = net.createServer();
     return new Promise<void>((resolve, reject) => {
