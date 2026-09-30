@@ -16,7 +16,7 @@ Legend: `[ ]` todo · `[x]` done
 - [x] Hardened window: isolation, sandbox, CSP header, navigation/permission guards
 - [x] Typed zod IPC contract + validated `handle()` + explicit preload bridge
 - [x] safeStorage KeyStore + Settings dialog (set / clear / status only)
-- [ ] App shell placeholders: dataset sidebar, chat, charts/report panel, timeline drawer
+- [x] App shell placeholders: dataset sidebar, chat, charts/report panel, timeline drawer
 - [ ] CI: GitHub Actions on windows-latest (check + e2e)
 - [ ] `.claude/`: settings permissions + hooks, 3 agents, 3 skills
 
