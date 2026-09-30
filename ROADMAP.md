@@ -37,7 +37,7 @@ hooks and permissions from the developer side.
       file access locked to exactly the registered files (`allowed_paths` + `enable_external_access=false` + `lock_configuration`; D-009)
 - [x] stdio entry point + `mcp:inspect` (web UI) / `mcp:tools` (CLI) scripts
 - [x] InMemoryTransport tests incl. escape attempts (COPY, ATTACH, INSTALL, multi-statement, `read_text` outside allowed dirs)
-- [ ] Main-process `UiMcpClient` + IPC channels for datasets
+- [x] Main-process `UiMcpClient` + IPC channels for datasets
 - [ ] Sidebar: drag-drop registration and schema preview
 
 **Done when:** tests prove every write/escape attempt is rejected, MCP Inspector lists 6 tools,

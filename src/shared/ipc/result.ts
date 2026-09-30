@@ -3,7 +3,13 @@
  * bridge lose their type and get wrapped in "Error invoking remote method…" strings.
  */
 export type IpcErrorCode =
-  'INVALID_REQUEST' | 'FORBIDDEN_SENDER' | 'INVALID_RESPONSE' | 'UNAVAILABLE' | 'INTERNAL';
+  | 'INVALID_REQUEST'
+  | 'FORBIDDEN_SENDER'
+  | 'INVALID_RESPONSE'
+  | 'UNAVAILABLE'
+  /** The operation was understood but refused (e.g. unsupported file, SQL rejected). */
+  | 'REJECTED'
+  | 'INTERNAL';
 
 export interface IpcError {
   code: IpcErrorCode;

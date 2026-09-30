@@ -45,9 +45,26 @@ export const DatasetSummarySchema = z.strictObject({
 });
 export type DatasetSummary = z.infer<typeof DatasetSummarySchema>;
 
-/** Scalar cell values after conversion to JSON-safe types. */
-export const CellSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
+/** A result cell: any JSON value (nested DuckDB types arrive as arrays/objects). */
+export const CellSchema = z.json();
 export type Cell = z.infer<typeof CellSchema>;
+
+export const RegisteredDatasetSchema = z.object({
+  name: DatasetNameSchema,
+  format: DatasetFormatSchema,
+  path: z.string(),
+  rowCount: z.number().int().nonnegative(),
+  columns: z.array(ColumnInfoSchema),
+});
+export type RegisteredDataset = z.infer<typeof RegisteredDatasetSchema>;
+
+export const DatasetPreviewSchema = z.object({
+  columns: z.array(z.object({ name: z.string(), type: z.string() })),
+  rows: z.array(z.array(CellSchema)).max(1000),
+  rowCount: z.number().int().nonnegative(),
+  truncated: z.boolean(),
+});
+export type DatasetPreview = z.infer<typeof DatasetPreviewSchema>;
 
 /** Lowercase, replace unsafe characters with `_`, and make sure it starts with a letter. */
 export function suggestDatasetName(fileName: string): string {

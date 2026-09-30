@@ -7,7 +7,11 @@ test('bridge exposes only whitelisted methods', async ({ page }) => {
       Object.entries(api).map(([ns, methods]) => [ns, Object.keys(methods).sort()]),
     );
   });
-  expect(shape).toEqual({ app: ['info'], secrets: ['clear', 'set', 'status'] });
+  expect(shape).toEqual({
+    app: ['info'],
+    datasets: ['list', 'pick', 'preview', 'registerFile', 'schema'],
+    secrets: ['clear', 'set', 'status'],
+  });
 });
 
 test('app:info round-trips through the validated IPC router', async ({ page }) => {
