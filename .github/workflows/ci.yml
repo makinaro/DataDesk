@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    # Windows is the only packaging target, so CI runs where native modules and paths behave like prod.
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      # Optional deps must stay installed: they carry per-platform native binaries
+      # (DuckDB bindings, the Claude Code executable) in later phases.
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck, lint, format, unit tests
+        run: npm run check
+
+      # No API keys exist in CI; the e2e suite only uses fake keys and never calls real services.
+      - name: E2E (Electron)
+        run: npm run test:e2e
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7

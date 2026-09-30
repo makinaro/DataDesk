@@ -17,7 +17,7 @@ Legend: `[ ]` todo · `[x]` done
 - [x] Typed zod IPC contract + validated `handle()` + explicit preload bridge
 - [x] safeStorage KeyStore + Settings dialog (set / clear / status only)
 - [x] App shell placeholders: dataset sidebar, chat, charts/report panel, timeline drawer
-- [ ] CI: GitHub Actions on windows-latest (check + e2e)
+- [x] CI: GitHub Actions on windows-latest (check + e2e)
 - [ ] `.claude/`: settings permissions + hooks, 3 agents, 3 skills
 
 **Done when:** `npm run check` and `npm run test:e2e` pass locally and in CI. The e2e test proves
