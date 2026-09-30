@@ -56,6 +56,20 @@ describe('SettingsDialog', () => {
     });
   });
 
+  it('recovers if the bridge itself rejects (buttons re-enable, error shown)', async () => {
+    const user = userEvent.setup();
+    const api = createFakeApi({ openai: true });
+    api.secrets.clear.mockRejectedValueOnce(new Error('No handler registered'));
+    renderDialog(api);
+    const clearButton = screen.getByRole('button', { name: 'Clear OpenAI key' });
+    await waitFor(() => {
+      expect(clearButton).toBeEnabled();
+    });
+    await user.click(clearButton);
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not reach');
+    expect(clearButton).toBeEnabled();
+  });
+
   it('shows errors from main (e.g. encryption unavailable)', async () => {
     const user = userEvent.setup();
     const api = createFakeApi();

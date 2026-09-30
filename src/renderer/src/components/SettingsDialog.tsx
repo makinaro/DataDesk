@@ -1,5 +1,6 @@
 import { useEffect, useId, useState, type SyntheticEvent } from 'react';
 import type { Provider, SecretsStatus } from '../../../shared/ipc/contract';
+import type { IpcResult } from '../../../shared/ipc/result';
 import { useApi } from '../api';
 
 const PROVIDERS: { id: Provider; label: string; hint: string }[] = [
@@ -91,27 +92,33 @@ function ProviderRow({ provider, label, hint, isSet, onStatus, onError }: RowPro
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
 
+  /** Runs an IPC call, always clearing `busy`, even if the bridge itself rejects. */
+  async function run(call: () => Promise<IpcResult<SecretsStatus>>) {
+    setBusy(true);
+    try {
+      const result = await call();
+      if (result.ok) {
+        onStatus(result.data);
+        onError(null);
+      } else {
+        onError(result.error.message);
+      }
+    } catch {
+      onError('Could not reach the app backend. Try restarting DataDesk.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function save(event: SyntheticEvent) {
     event.preventDefault();
     const key = draft;
     setDraft('');
-    setBusy(true);
-    const result = await api.secrets.set(provider, key);
-    setBusy(false);
-    if (result.ok) {
-      onStatus(result.data);
-      onError(null);
-    } else {
-      onError(result.error.message);
-    }
+    await run(() => api.secrets.set(provider, key));
   }
 
   async function clear() {
-    setBusy(true);
-    const result = await api.secrets.clear(provider);
-    setBusy(false);
-    if (result.ok) onStatus(result.data);
-    else onError(result.error.message);
+    await run(() => api.secrets.clear(provider));
   }
 
   return (
