@@ -28,8 +28,8 @@ hooks and permissions from the developer side.
 
 ## Phase 1: Our MCP server (DuckDB)
 
-- [ ] DuckDB wrapper: in-memory instance, `memory_limit`, `threads`, query timeout via `interrupt()`
-- [ ] Catalog (`userData/catalog.json`, atomic writes) and view re-creation on startup
+- [x] DuckDB wrapper: in-memory instance, `memory_limit`, `threads`, query timeout via `interrupt()`
+- [x] Catalog (`userData/catalog.json`, atomic writes) and view re-creation on startup
 - [ ] `register_dataset` (CSV, Parquet, JSON, XLSX)
 - [ ] `list_datasets`, `get_schema`, `sample_rows`, `profile_column`
 - [ ] `run_sql`: single statement, `statementType === SELECT` (by statement type, not regex),

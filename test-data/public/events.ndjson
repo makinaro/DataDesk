@@ -1,0 +1,15 @@
+{"event_id":1,"kind":"view","value":1.5}
+{"event_id":2,"kind":"buy","value":3.0}
+{"event_id":3,"kind":"click","value":4.5}
+{"event_id":4,"kind":"view","value":6.0}
+{"event_id":5,"kind":"buy","value":7.5}
+{"event_id":6,"kind":"click","value":9.0}
+{"event_id":7,"kind":"view","value":10.5}
+{"event_id":8,"kind":"buy","value":12.0}
+{"event_id":9,"kind":"click","value":13.5}
+{"event_id":10,"kind":"view","value":15.0}
+{"event_id":11,"kind":"buy","value":16.5}
+{"event_id":12,"kind":"click","value":18.0}
+{"event_id":13,"kind":"view","value":19.5}
+{"event_id":14,"kind":"buy","value":21.0}
+{"event_id":15,"kind":"click","value":22.5}
