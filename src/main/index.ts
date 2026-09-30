@@ -1,41 +1,37 @@
 import { join } from 'node:path';
 import { app, BrowserWindow } from 'electron';
+import {
+  APP_ENTRY_URL,
+  APP_ORIGIN,
+  handleAppProtocol,
+  registerAppScheme,
+} from './security/appProtocol';
+import { buildCsp } from './security/csp';
+import { applyDevCspHeader, hardenApp } from './security/hardenApp';
+import { createMainWindow } from './window';
 
 // Lets e2e tests run against a throwaway profile. Must run before 'ready'.
 const userDataOverride = process.env.DATADESK_USER_DATA;
 if (userDataOverride) app.setPath('userData', userDataOverride);
 
-function createMainWindow(): BrowserWindow {
-  const win = new BrowserWindow({
-    width: 1400,
-    height: 900,
-    show: false,
-    title: 'DataDesk',
-    webPreferences: {
-      preload: join(import.meta.dirname, '../preload/index.cjs'),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true,
-    },
-  });
+const devServerUrl = !app.isPackaged ? process.env.ELECTRON_RENDERER_URL : undefined;
+const rendererUrl = devServerUrl ?? APP_ENTRY_URL;
+const rendererOrigin = devServerUrl ? new URL(devServerUrl).origin : APP_ORIGIN;
 
-  win.once('ready-to-show', () => {
-    win.show();
-  });
-
-  const devUrl = process.env.ELECTRON_RENDERER_URL;
-  if (!app.isPackaged && devUrl) {
-    void win.loadURL(devUrl);
-  } else {
-    void win.loadFile(join(import.meta.dirname, '../renderer/index.html'));
-  }
-  return win;
-}
+registerAppScheme();
 
 void app.whenReady().then(() => {
-  createMainWindow();
+  hardenApp(rendererOrigin);
+
+  if (devServerUrl) {
+    applyDevCspHeader(buildCsp({ kind: 'development', devServerUrl }));
+  } else {
+    handleAppProtocol(join(import.meta.dirname, '../renderer'), buildCsp({ kind: 'production' }));
+  }
+
+  createMainWindow(rendererUrl);
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
+    if (BrowserWindow.getAllWindows().length === 0) createMainWindow(rendererUrl);
   });
 });
 

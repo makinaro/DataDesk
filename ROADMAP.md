@@ -13,7 +13,7 @@ Legend: `[ ]` todo · `[x]` done
 - [x] Scaffold electron-vite + React + strict TypeScript + Tailwind v4
 - [x] ESLint (flat, type-checked) + Prettier + EditorConfig
 - [x] Vitest (network guard) + Playwright Electron smoke test
-- [ ] Hardened window: isolation, sandbox, CSP header, navigation/permission guards
+- [x] Hardened window: isolation, sandbox, CSP header, navigation/permission guards
 - [ ] Typed zod IPC contract + validated `handle()` + explicit preload bridge
 - [ ] safeStorage KeyStore + Settings dialog (set / clear / status only)
 - [ ] App shell placeholders: dataset sidebar, chat, charts/report panel, timeline drawer

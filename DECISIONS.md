@@ -71,3 +71,18 @@ simple path rule.
 `tests/e2e/*.spec.ts`; fixtures go in `test-data/public/`.
 **Alternatives:** colocated `*.test.ts` next to sources (harder to scope, and it clutters `src/`).
 **Consequences:** The test-writer hook allows writes only under `tests/` and `test-data/public/`.
+
+## D-007: Serve the production renderer from `app://datadesk/`, not `file://` (2026-10-01)
+
+**Context:** The plan delivered the production CSP as a response header, but Electron's
+`webRequest` hooks don't run for `file://` pages, so the header would silently never apply.
+`file://` pages also get extra privileges (e.g. reading other local files).
+**Decision:** Register a privileged `app` scheme (`standard`, `secure`, `supportFetchAPI`) and serve
+`out/renderer` through `protocol.handle` with a path-traversal-checked resolver. Every response
+carries the CSP and `X-Content-Type-Options: nosniff`. In dev the Vite server's responses get the dev
+CSP through `onHeadersReceived`.
+**Alternatives:** a `<meta http-equiv>` CSP (no `frame-ancestors`, and it's a second source of
+truth); keeping `file://`.
+**Consequences:** Navigation checks must compare scheme and host explicitly: Node's `URL` reports
+origin `"null"` for non-special schemes, so a naive `.origin` comparison matched _every_ custom
+scheme. A regression test guards this.
