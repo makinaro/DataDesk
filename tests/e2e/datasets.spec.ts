@@ -58,7 +58,8 @@ test('registered datasets are written to the catalog in userData', async ({
   };
   // The catalog stores the real path (e.g. 8.3 short names expanded).
   expect(catalog.datasets).toEqual([
-    expect.objectContaining({ name: 'sales', path: realpathSync(csv) }),
+    // .native expands 8.3 short names (CI temp dirs), matching the server's realpath.
+    expect.objectContaining({ name: 'sales', path: realpathSync.native(csv) }),
   ]);
 });
 

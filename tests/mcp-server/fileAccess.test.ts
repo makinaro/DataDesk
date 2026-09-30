@@ -113,7 +113,8 @@ describe('validateImportPath', () => {
       ctx.skip(); // 8.3 name generation is disabled on this volume.
     }
     const result = await validateImportPath(join(short, 'sales.csv'), policy());
-    expect(result.path.toLowerCase()).toBe(realpathSync(file).toLowerCase());
+    // realpathSync.native (like the code under test) expands 8.3 names; plain realpathSync does not.
+    expect(result.path.toLowerCase()).toBe(realpathSync.native(file).toLowerCase());
   });
 
   it.each(['sales [v1].csv', 'sales*.csv', 'sales?.csv'])(
