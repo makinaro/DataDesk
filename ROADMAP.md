@@ -38,7 +38,7 @@ hooks and permissions from the developer side.
 - [x] stdio entry point + `mcp:inspect` (web UI) / `mcp:tools` (CLI) scripts
 - [x] InMemoryTransport tests incl. escape attempts (COPY, ATTACH, INSTALL, multi-statement, `read_text` outside allowed dirs)
 - [x] Main-process `UiMcpClient` + IPC channels for datasets
-- [ ] Sidebar: drag-drop registration and schema preview
+- [x] Sidebar: drag-drop registration and schema preview
 
 **Done when:** tests prove every write/escape attempt is rejected, MCP Inspector lists 6 tools,
 and a dropped CSV appears in the sidebar with its schema.
