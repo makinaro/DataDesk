@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { copyFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -56,4 +57,34 @@ test('datadesk-mcp runs under Electron-as-Node and serves tools over stdio', asy
   }
   // Logs go to stderr (stdout is reserved for the protocol).
   expect(stderr.join('')).toContain('datadesk 0.1.0 ready');
+});
+
+test('datadesk-mcp scrubs inherited secrets at startup and logs names only', () => {
+  const root = mkdtempSync(join(tmpdir(), 'datadesk-scrub-'));
+  try {
+    // With stdin closed immediately the server logs its startup and exits.
+    const result = spawnSync(
+      electronPath as unknown as string,
+      [resolve('out/main/mcp-server.js')],
+      {
+        env: {
+          ...process.env,
+          ELECTRON_RUN_AS_NODE: '1',
+          ANTHROPIC_API_KEY: 'sk-ant-VALUE-MUST-NOT-APPEAR',
+          CLAUDE_CODE_MESSAGING_TOKEN: 'messaging-token-value',
+          DATADESK_CATALOG_PATH: join(root, 'catalog.json'),
+          DATADESK_TEMP_DIR: join(root, 'tmp'),
+        },
+        input: '',
+        encoding: 'utf8',
+        timeout: 20_000,
+      },
+    );
+    expect(result.stderr).toMatch(/removed inherited secrets from env: .*ANTHROPIC_API_KEY/);
+    expect(result.stderr).toMatch(/CLAUDE_CODE_MESSAGING_TOKEN/);
+    expect(result.stderr).not.toContain('sk-ant-VALUE-MUST-NOT-APPEAR');
+    expect(result.stderr).not.toContain('messaging-token-value');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

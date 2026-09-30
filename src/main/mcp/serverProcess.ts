@@ -11,9 +11,23 @@ export interface ServerPaths {
 }
 
 /**
+ * Inherited variables the agent's datadesk-mcp must not receive. When the Claude Code CLI
+ * spawns a stdio MCP server it passes down its *own* environment (ANTHROPIC_API_KEY included;
+ * verified by probe, D-014) and then applies the server's `env`, so blanking them here wins.
+ * The server also scrubs secret-looking variables at startup (src/mcp-server/scrubEnv.ts).
+ */
+export const BLANKED_FOR_AGENT_SERVER = [
+  'ANTHROPIC_API_KEY',
+  'ANTHROPIC_AUTH_TOKEN',
+  'CLAUDE_CODE_OAUTH_TOKEN',
+  'CLAUDE_CODE_MESSAGING_TOKEN',
+  'CLAUDE_CODE_MESSAGING_SOCKET',
+] as const;
+
+/**
  * The environment datadesk-mcp gets, built explicitly (CLAUDE.md, Security rule 5).
- * StdioClientTransport adds only a short OS allowlist (PATH, SYSTEMROOT, TEMP, …) on top, so
- * nothing else from our environment (and no API key) reaches the child.
+ * - UI server: spawned by us via StdioClientTransport, which adds only a short OS allowlist.
+ * - Agent server: spawned by the Claude Code CLI, which merges in its own env; see above.
  */
 export function buildServerEnv(
   paths: ServerPaths,
@@ -27,6 +41,9 @@ export function buildServerEnv(
     DATADESK_TEMP_DIR: join(paths.userData, 'duckdb-tmp', purpose),
   };
   if (paths.extensionDir) env.DATADESK_EXTENSION_DIR = paths.extensionDir;
+  if (purpose === 'agent') {
+    for (const name of BLANKED_FOR_AGENT_SERVER) env[name] = '';
+  }
   return env;
 }
 

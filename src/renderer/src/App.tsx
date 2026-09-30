@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ApprovalDialog } from './components/ApprovalDialog';
 import { ChatPanel } from './components/ChatPanel';
 import { DatasetSidebar } from './components/DatasetSidebar';
 import { ResultsPanel } from './components/ResultsPanel';
@@ -52,6 +53,8 @@ export function App() {
       </main>
 
       {timelineOpen && <TimelineDrawer />}
+
+      <ApprovalDialog />
 
       {settingsOpen && (
         <SettingsDialog

@@ -36,6 +36,18 @@ describe('buildServerEnv', () => {
     expect(env.ELECTRON_RUN_AS_NODE).toBe('1');
   });
 
+  it('blanks secrets the Claude Code CLI would pass down to the agent server (D-014)', () => {
+    const agent = buildServerEnv(paths, 'agent');
+    for (const name of [
+      'ANTHROPIC_API_KEY',
+      'CLAUDE_CODE_MESSAGING_TOKEN',
+      'CLAUDE_CODE_OAUTH_TOKEN',
+    ]) {
+      expect(agent[name]).toBe('');
+    }
+    expect(buildServerEnv(paths, 'ui')).not.toHaveProperty('ANTHROPIC_API_KEY');
+  });
+
   it('uses separate temp dirs for the UI and agent servers and omits a missing extension dir', () => {
     const ui = buildServerEnv(paths, 'ui');
     const agent = buildServerEnv({ ...paths, extensionDir: undefined }, 'agent');

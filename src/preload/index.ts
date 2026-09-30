@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type { DatadeskApi } from '../shared/ipc/api';
-import { IpcChannels, type IpcChannel } from '../shared/ipc/channels';
+import type { AgentEvent } from '../shared/agent';
+import { IpcChannels, IpcEvents, type IpcChannel } from '../shared/ipc/channels';
 import type { IpcRequest, IpcResponse } from '../shared/ipc/contract';
 import type { IpcResult } from '../shared/ipc/result';
 
@@ -48,6 +49,26 @@ const api: DatadeskApi = {
     pick: () => invoke(IpcChannels.datasetsPick),
     schema: (name) => invoke(IpcChannels.datasetsSchema, { name }),
     preview: (name, limit) => invoke(IpcChannels.datasetsPreview, { name, limit }),
+  },
+  agent: {
+    send: (text) => invoke(IpcChannels.agentSend, { text }),
+    stop: () => invoke(IpcChannels.agentStop),
+    reset: () => invoke(IpcChannels.agentReset),
+    approve: (requestId, approved) => invoke(IpcChannels.agentApprove, { requestId, approved }),
+    onEvent: (listener) => {
+      // Pass only the payload: the IpcRendererEvent (with its sender) never reaches the page.
+      const handler = (_event: Electron.IpcRendererEvent, payload: AgentEvent) => {
+        listener(payload);
+      };
+      ipcRenderer.on(IpcEvents.agentEvent, handler);
+      return () => {
+        ipcRenderer.removeListener(IpcEvents.agentEvent, handler);
+      };
+    },
+  },
+  settings: {
+    getAgent: () => invoke(IpcChannels.settingsGetAgent),
+    setAgent: (settings) => invoke(IpcChannels.settingsSetAgent, settings),
   },
 };
 

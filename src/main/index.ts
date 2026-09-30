@@ -1,5 +1,8 @@
 import { join } from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain, safeStorage } from 'electron';
+import { IpcEvents } from '../shared/ipc/channels';
+import { createAgentRuntime } from './agent/agentRuntime';
+import { registerAgentHandlers } from './ipc/handlers/agent';
 import { registerAppHandlers } from './ipc/handlers/app';
 import { registerDatasetHandlers } from './ipc/handlers/datasets';
 import { registerSecretsHandlers } from './ipc/handlers/secrets';
@@ -9,6 +12,7 @@ import { createStdioTransport } from './mcp/serverProcess';
 import { UiMcpClient } from './mcp/uiClient';
 import { serverPaths } from './paths';
 import { KeyStore } from './secrets/keyStore';
+import { SettingsStore } from './settings/settingsStore';
 import {
   APP_ENTRY_URL,
   APP_ORIGIN,
@@ -78,9 +82,36 @@ function start(): void {
           console.error('[secrets] secrets.json was unreadable; treating it as empty.');
         },
       );
-      registerSecretsHandlers(handle, keyStore);
-
       const paths = serverPaths();
+      const settings = new SettingsStore(join(app.getPath('userData'), 'settings.json'));
+      const agent = createAgentRuntime({
+        keyStore,
+        settings,
+        paths,
+        app: {
+          isPackaged: app.isPackaged,
+          version: app.getVersion(),
+          resourcesPath: process.resourcesPath,
+        },
+        // Only our own windows receive agent events.
+        deliver: (event) => {
+          for (const win of BrowserWindow.getAllWindows()) {
+            win.webContents.send(IpcEvents.agentEvent, event);
+          }
+        },
+        log: (message, detail) => {
+          console.error(`[agent] ${message}`, detail ?? '');
+        },
+      });
+      registerSecretsHandlers(handle, keyStore, async (provider) => {
+        if (provider === 'anthropic') await agent.onKeyChanged();
+      });
+      registerAgentHandlers(handle, {
+        getOrchestrator: () => agent.get(),
+        currentOrchestrator: () => agent.current(),
+        approvals: agent.approvals,
+        settings,
+      });
       const uiClient = new UiMcpClient({
         createTransport: () =>
           createStdioTransport(paths, (line) => {
@@ -113,6 +144,9 @@ function start(): void {
       app.on('will-quit', () => {
         uiClient.close().catch((error: unknown) => {
           console.error('[ui-mcp] close failed', error);
+        });
+        agent.dispose().catch((error: unknown) => {
+          console.error('[agent] dispose failed', error);
         });
       });
 

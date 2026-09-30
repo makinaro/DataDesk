@@ -47,16 +47,16 @@ transport, being both an MCP server _and_ client.
 
 ## Phase 2: Agent runtime, chat and timeline
 
-- [ ] `Orchestrator` interface (provider seam for Phase 7)
-- [ ] `ClaudeOrchestrator`: streaming-input `query()`, isolated options builder, abort
-- [ ] `system:init` guard: abort if any tool/skill/server outside the allowlist appears
-- [ ] Agent-initiated `register_dataset` requires human approval (`canUseTool`; D-010)
-- [ ] Cost/loop limits: `maxBudgetUsd`, `maxTurns`
-- [ ] SDK message → `TimelineEvent` mapper + `agent:event` channel
-- [ ] Chat UI with streaming partial messages
-- [ ] Agent timeline drawer (tool calls, results, timing, cost)
-- [ ] Settings: model + budget
-- [ ] Packaging spike: `electron-builder --dir`; DuckDB loads, Claude binary resolves from `app.asar.unpacked`, datadesk-mcp starts
+- [x] `Orchestrator` interface (provider seam for Phase 7)
+- [x] `ClaudeOrchestrator`: streaming-input `query()`, isolated options builder, abort
+- [x] `system:init` guard: abort if any tool/skill/server outside the allowlist appears
+- [x] Agent-initiated `register_dataset` requires human approval (`canUseTool`; D-010)
+- [x] Cost/loop limits: `maxBudgetUsd`, `maxTurns`
+- [x] SDK message → `TimelineEvent` mapper + `agent:event` channel
+- [x] Chat UI with streaming partial messages
+- [x] Agent timeline drawer (tool calls, results, timing, cost)
+- [x] Settings: model + budget
+- [x] Packaging spike: `electron-builder --dir`; DuckDB loads, Claude binary resolves from `app.asar.unpacked`, datadesk-mcp starts
 
 **Done when:** fake-`query()` tests cover the options builder (no forbidden tools, correct
 `cwd`/`env`), the guard and the mapper. A manual run with a real key answers a question with

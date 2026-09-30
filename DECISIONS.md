@@ -183,3 +183,63 @@ no byte limit on results.
 **Consequences:** One chunk (up to 2048 rows) is the granularity of the byte budget, so
 DuckDB's `memory_limit` remains the backstop for pathological rows. Row counts can be stale if a
 file changes after registration.
+
+## D-013: Embedding the Claude Agent SDK (0.3.286) (2026-10-01)
+
+**Context:** The `docs-researcher` agent checked the installed SDK types, and dummy-key probes
+verified behavior. Findings:
+
+- When `permissionMode` is omitted, the CLI may pick `auto`.
+- The `env` option _replaces_ the child environment.
+- On Windows the CLI refuses to start without PowerShell or Git Bash on `PATH`.
+- A packaged app resolves the binary inside `app.asar`, which `spawn` can't execute.
+- With `tools: []` the model saw exactly our 6 MCP tools (probe).
+- `init.skills` still _lists_ 16 bundled skills.
+- Typed slash commands are dispatched even with `skills: []`. `/cost` ran locally (probe).
+- A bad key caused about 10 API retries before failing.
+
+**Decision:** One long-lived **streaming-input** session per conversation (`InputQueue`), so the
+agent's datadesk-mcp process lives across turns. All capability options sit in one tested builder
+(`buildAgentOptions`):
+
+- **Nothing from disk:** `settingSources: []`, `strictMcpConfig`, and `tools: []` / `skills: []`
+  plus a `disallowedTools` backstop.
+- **Permissions:** `permissionMode: 'default'` set explicitly. `allowedTools` holds only the 5
+  read-only datadesk tools. `canUseTool` denies by default and routes `register_dataset` to the
+  ApprovalBroker (D-010).
+- **No slash commands:** `extraArgs: { 'disable-slash-commands': null }`. A probe confirmed
+  `/cost` → "isn't available in this environment".
+- **Explicit env:** the OS allowlist, the key, `CLAUDE_CONFIG_DIR` in userData, no auto memory, no
+  claude.ai connectors, no built-in agents, no nonessential traffic, no auto-update, and
+  `CLAUDE_CODE_MAX_RETRIES=2`.
+- **Packaged builds** pass `pathToClaudeCodeExecutable` into `app.asar.unpacked`.
+- **An init guard** aborts the session on unexpected tools, servers, agents, permission mode,
+  credential source or cwd. It ignores `init.skills`, which lists skills regardless of the
+  allowlist; without the Skill tool they can't run.
+
+**Alternatives:** single-shot `query()` per message (re-spawns the CLI and MCP server each time,
+and loses context); the `auto` permission mode (a classifier decides, not the user).
+**Consequences:** The guard must be updated when phases add tools (Skill in Phase 3, Agent in
+Phase 4). The CLI re-sends `init` every turn, so the mapper reports each session once. Turns
+answered without an assistant message fall back to the result text.
+
+## D-014: Secrets must not reach the agent's MCP server (second-hop env) (2026-10-01)
+
+**Context:** The Phase 2 review read the minified CLI and suspected a leak, and a probe confirmed
+it. When Claude Code spawns a stdio MCP server, it passes down **its own environment** and then
+applies the server's `env`. So `ANTHROPIC_API_KEY`, which we gave only to the CLI, plus the CLI's
+`CLAUDE_CODE_MESSAGING_TOKEN`/`SOCKET`, reached datadesk-mcp: a process that parses untrusted
+files and runs model-written SQL. Our unit test only checked the env _we_ built, not what the
+child _received_.
+**Decision:** Two layers:
+
+1. The agent's server config sets those variables to `''`. Server `env` is applied last, and the
+   probe showed this blanks them.
+2. datadesk-mcp calls `scrubSecrets` first thing at startup. It deletes any secret-looking
+   variable not prefixed `DATADESK_` and logs the names only. Secrets the server legitimately
+   needs (Phase 5+) will arrive as `DATADESK_*`.
+
+**Alternatives:** `CLAUDE_CODE_MCP_ALLOWLIST_ENV` (undocumented, unverified semantics).
+**Consequences:** Anything that must reach the server needs a `DATADESK_` name. The lesson for
+future phases: verify what a child process _actually_ receives with a probe, not only what we
+pass.
