@@ -14,7 +14,7 @@ Legend: `[ ]` todo · `[x]` done
 - [x] ESLint (flat, type-checked) + Prettier + EditorConfig
 - [x] Vitest (network guard) + Playwright Electron smoke test
 - [x] Hardened window: isolation, sandbox, CSP header, navigation/permission guards
-- [ ] Typed zod IPC contract + validated `handle()` + explicit preload bridge
+- [x] Typed zod IPC contract + validated `handle()` + explicit preload bridge
 - [ ] safeStorage KeyStore + Settings dialog (set / clear / status only)
 - [ ] App shell placeholders: dataset sidebar, chat, charts/report panel, timeline drawer
 - [ ] CI: GitHub Actions on windows-latest (check + e2e)

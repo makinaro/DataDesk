@@ -1,5 +1,8 @@
 import { join } from 'node:path';
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, ipcMain } from 'electron';
+import { registerAppHandlers } from './ipc/handlers/app';
+import { createIpcRouter } from './ipc/router';
+import { createSenderCheck } from './ipc/trustedSender';
 import {
   APP_ENTRY_URL,
   APP_ORIGIN,
@@ -28,6 +31,15 @@ void app.whenReady().then(() => {
   } else {
     handleAppProtocol(join(import.meta.dirname, '../renderer'), buildCsp({ kind: 'production' }));
   }
+
+  const handle = createIpcRouter({
+    ipcMain,
+    isTrustedSender: createSenderCheck(rendererOrigin),
+    logError: (message, detail) => {
+      console.error(`[ipc] ${message}`, detail ?? '');
+    },
+  });
+  registerAppHandlers(handle);
 
   createMainWindow(rendererUrl);
   app.on('activate', () => {

@@ -10,7 +10,7 @@ import {
 
 interface AppFixtures {
   electronApp: ElectronApplication;
-  window: Page;
+  page: Page;
 }
 
 /** Launches the built app (out/) with a throwaway userData dir, so tests never touch real keys. */
@@ -27,10 +27,10 @@ export const test = base.extend<AppFixtures>({
     await app.close();
     rmSync(userData, { recursive: true, force: true });
   },
-  window: async ({ electronApp }, use) => {
-    const page = await electronApp.firstWindow();
-    await page.waitForLoadState('domcontentloaded');
-    await use(page);
+  page: async ({ electronApp }, use) => {
+    const firstWindow = await electronApp.firstWindow();
+    await firstWindow.waitForLoadState('domcontentloaded');
+    await use(firstWindow);
   },
 });
 

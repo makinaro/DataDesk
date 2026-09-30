@@ -7,8 +7,8 @@ interface EffectivePrefs {
   webSecurity?: boolean;
 }
 
-test('window runs with hardened webPreferences', async ({ electronApp, window }) => {
-  await window.waitForLoadState('domcontentloaded');
+test('window runs with hardened webPreferences', async ({ electronApp, page }) => {
+  await page.waitForLoadState('domcontentloaded');
   const prefs = await electronApp.evaluate(({ BrowserWindow }) => {
     // getLastWebPreferences() is untyped but is the only way to read the *effective* prefs.
     // If Electron removes it, this test fails loudly instead of passing vacuously.
@@ -31,17 +31,17 @@ test('window runs with hardened webPreferences', async ({ electronApp, window })
   });
 });
 
-test('renderer has no Node.js globals', async ({ window }) => {
-  const globals = await window.evaluate(() => {
+test('renderer has no Node.js globals', async ({ page }) => {
+  const globals = await page.evaluate(() => {
     const g = globalThis as Record<string, unknown>;
     return { require: typeof g.require, process: typeof g.process, module: typeof g.module };
   });
   expect(globals).toEqual({ require: 'undefined', process: 'undefined', module: 'undefined' });
 });
 
-test('renderer is served from app:// with the production CSP header', async ({ window }) => {
-  expect(new URL(window.url()).protocol).toBe('app:');
-  const csp = await window.evaluate(async () => {
+test('renderer is served from app:// with the production CSP header', async ({ page }) => {
+  expect(new URL(page.url()).protocol).toBe('app:');
+  const csp = await page.evaluate(async () => {
     const res = await fetch('app://datadesk/index.html');
     return res.headers.get('content-security-policy');
   });
@@ -51,10 +51,10 @@ test('renderer is served from app:// with the production CSP header', async ({ w
   expect(csp).not.toContain('unsafe-eval');
 });
 
-test('CSP blocks inline scripts injected into the DOM', async ({ window }) => {
+test('CSP blocks inline scripts injected into the DOM', async ({ page }) => {
   // Playwright's evaluate runs via DevTools (which bypasses CSP), so instead we inject a real
   // <script> element and check that the page refused to run it.
-  const result = await window.evaluate(async () => {
+  const result = await page.evaluate(async () => {
     const g = globalThis as unknown as { __inlineRan?: boolean };
     const violation = new Promise<string>((resolve) => {
       document.addEventListener(
@@ -74,16 +74,14 @@ test('CSP blocks inline scripts injected into the DOM', async ({ window }) => {
   expect(result.directive).toMatch(/^script-src/);
 });
 
-test('window.open and navigation away from the app are denied', async ({ electronApp, window }) => {
-  const openedNothing = await window.evaluate(
-    () => globalThis.open('https://example.com') === null,
-  );
+test('window.open and navigation away from the app are denied', async ({ electronApp, page }) => {
+  const openedNothing = await page.evaluate(() => window.open('https://example.com') === null);
   expect(openedNothing).toBe(true);
 
-  await window.evaluate(() => {
-    globalThis.location.href = 'https://example.com';
+  await page.evaluate(() => {
+    window.location.href = 'https://example.com';
   });
-  await window.waitForTimeout(500);
-  expect(new URL(window.url()).protocol).toBe('app:');
+  await page.waitForTimeout(500);
+  expect(new URL(page.url()).protocol).toBe('app:');
   expect(electronApp.windows()).toHaveLength(1);
 });
