@@ -51,6 +51,15 @@ test('renderer is served from app:// with the production CSP header', async ({ p
   expect(csp).not.toContain('unsafe-eval');
 });
 
+test('missing app:// files return a 404 that still carries the CSP', async ({ page }) => {
+  const res = await page.evaluate(async () => {
+    const r = await fetch('app://datadesk/does-not-exist.js');
+    return { status: r.status, csp: r.headers.get('content-security-policy') };
+  });
+  expect(res.status).toBe(404);
+  expect(res.csp).toContain("default-src 'none'");
+});
+
 test('CSP blocks inline scripts injected into the DOM', async ({ page }) => {
   // Playwright's evaluate runs via DevTools (which bypasses CSP), so instead we inject a real
   // <script> element and check that the page refused to run it.

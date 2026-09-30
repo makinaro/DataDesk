@@ -30,6 +30,7 @@ describe('resolveAppPath', () => {
 
   it.each([
     'app://datadesk/assets/%2e%2e%2f%2e%2e%2fsecrets.json',
+    // Windows-specific: %5c decodes to `\`, a path separator only on Windows (CI is Windows-only).
     'app://datadesk/..%5c..%5cWindows%5cwin.ini',
     'app://datadesk/%00',
     'app://datadesk/%E0%A4%A',

@@ -53,14 +53,28 @@ export function resolveAppPath(rootDir: string, requestUrl: string): string | nu
 
 /** Serves files from `rootDir` on app:// and attaches the CSP header to every response. */
 export function handleAppProtocol(rootDir: string, csp: string): void {
-  protocol.handle(APP_SCHEME, async (request) => {
-    const filePath = resolveAppPath(rootDir, request.url);
-    if (!filePath) return new Response('Not found', { status: 404 });
-
-    const fileResponse = await net.fetch(pathToFileURL(filePath).toString());
-    const headers = new Headers(fileResponse.headers);
+  const secureHeaders = (base?: Headers): Headers => {
+    const headers = new Headers(base);
     headers.set('Content-Security-Policy', csp);
     headers.set('X-Content-Type-Options', 'nosniff');
-    return new Response(fileResponse.body, { status: fileResponse.status, headers });
+    return headers;
+  };
+  const notFound = () => new Response('Not found', { status: 404, headers: secureHeaders() });
+
+  protocol.handle(APP_SCHEME, async (request) => {
+    const filePath = resolveAppPath(rootDir, request.url);
+    if (!filePath) return notFound();
+
+    let fileResponse: Response;
+    try {
+      fileResponse = await net.fetch(pathToFileURL(filePath).toString());
+    } catch {
+      // net.fetch rejects (rather than returning 404) for missing files.
+      return notFound();
+    }
+    return new Response(fileResponse.body, {
+      status: fileResponse.status,
+      headers: secureHeaders(fileResponse.headers),
+    });
   });
 }
