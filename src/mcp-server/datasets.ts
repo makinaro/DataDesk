@@ -1,4 +1,11 @@
-import { suggestDatasetName, type CatalogEntry, type DatasetSummary } from '../shared/datasets';
+import {
+  suggestDatasetName,
+  type Cell,
+  type CatalogEntry,
+  type ColumnInfo,
+  type ColumnProfile,
+  type DatasetSummary,
+} from '../shared/datasets';
 import type { DatasetDb, QueryResult } from './db/datasetDb';
 import { quoteIdent } from './db/sql';
 import { validateImportPath, type ImportPolicy } from './fileAccess';
@@ -8,39 +15,33 @@ import { validateImportPath, type ImportPolicy } from './fileAccess';
  * Every function takes a validated dataset name and only builds SQL from quoted identifiers.
  */
 
-export interface ColumnSchema {
-  name: string;
-  type: string;
-  nullable: boolean;
-}
-
 export async function registerDataset(
   db: DatasetDb,
   policy: ImportPolicy,
   input: { path: string; name?: string | undefined; sheet?: string | undefined },
-): Promise<{ entry: CatalogEntry; columns: ColumnSchema[]; rowCount: number }> {
+): Promise<{ entry: CatalogEntry; columns: ColumnInfo[]; rowCount: number | null }> {
   const file = await validateImportPath(input.path, policy);
   const fileName = file.path.split(/[\\/]/).pop() ?? 'dataset';
-  const entry: CatalogEntry = {
+  const stored = await db.register({
     name: input.name ?? suggestDatasetName(fileName),
     path: file.path,
     format: file.format,
     sizeBytes: file.sizeBytes,
     registeredAt: new Date().toISOString(),
     ...(input.sheet && file.format === 'xlsx' ? { sheet: input.sheet } : {}),
-  };
-  await db.register(entry);
-  const [columns, rowCount] = await Promise.all([
-    getSchema(db, entry.name),
-    countRows(db, entry.name),
-  ]);
-  return { entry, columns, rowCount };
+  });
+  // Registered and persisted at this point; a slow DESCRIBE shouldn't turn that into an error.
+  const columns = await getSchema(db, stored.name).catch(() => []);
+  return { entry: stored, columns, rowCount: stored.rowCount ?? null };
 }
 
+/**
+ * One summary per dataset. Row counts come from the catalog (counted at registration), so
+ * listing never scans files, and one broken dataset never fails the whole listing.
+ */
 export async function listDatasets(db: DatasetDb): Promise<DatasetSummary[]> {
-  const datasets = await db.datasets();
   const summaries: DatasetSummary[] = [];
-  for (const { entry, error } of datasets) {
+  for (const { entry, error } of await db.datasets()) {
     const base = {
       name: entry.name,
       format: entry.format,
@@ -52,16 +53,19 @@ export async function listDatasets(db: DatasetDb): Promise<DatasetSummary[]> {
       summaries.push({ ...base, rowCount: null, columnCount: null, error });
       continue;
     }
-    const [columns, rowCount] = await Promise.all([
-      getSchema(db, entry.name),
-      countRows(db, entry.name),
-    ]);
-    summaries.push({ ...base, rowCount, columnCount: columns.length });
+    try {
+      const columns = await getSchema(db, entry.name);
+      summaries.push({ ...base, rowCount: entry.rowCount ?? null, columnCount: columns.length });
+    } catch (e) {
+      // E.g. the file was deleted after the session was built.
+      const message = e instanceof Error ? (e.message.split('\n')[0] ?? e.message) : String(e);
+      summaries.push({ ...base, rowCount: null, columnCount: null, error: message });
+    }
   }
   return summaries;
 }
 
-export async function getSchema(db: DatasetDb, name: string): Promise<ColumnSchema[]> {
+export async function getSchema(db: DatasetDb, name: string): Promise<ColumnInfo[]> {
   await db.assertAvailable(name);
   const result = await db.internalQuery(`DESCRIBE ${quoteIdent(name)}`, 10_000);
   const col = (field: string) => result.columns.findIndex((c) => c.name === field);
@@ -71,11 +75,6 @@ export async function getSchema(db: DatasetDb, name: string): Promise<ColumnSche
     type: asText(row[iType]),
     nullable: row[iNull] !== 'NO',
   }));
-}
-
-async function countRows(db: DatasetDb, name: string): Promise<number> {
-  const result = await db.internalQuery(`SELECT count(*) FROM ${quoteIdent(name)}`, 1);
-  return Number(result.rows[0]?.[0] ?? 0);
 }
 
 export async function sampleRows(
@@ -91,22 +90,6 @@ export async function sampleRows(
       ? `SELECT * FROM ${quoteIdent(name)} USING SAMPLE reservoir(${String(n)} ROWS) REPEATABLE (42)`
       : `SELECT * FROM ${quoteIdent(name)} LIMIT ${String(n)}`;
   return db.internalQuery(sql, n);
-}
-
-export interface ColumnProfile {
-  dataset: string;
-  column: string;
-  type: string;
-  rowCount: number;
-  nullCount: number;
-  nullFraction: number;
-  distinctCount: number;
-  min: unknown;
-  max: unknown;
-  mean: number | null;
-  stddev: number | null;
-  quantiles: { p25: unknown; p50: unknown; p75: unknown } | null;
-  topValues: { value: unknown; count: number }[];
 }
 
 const NUMERIC =
@@ -148,7 +131,9 @@ export async function profileColumn(
 
   const rowCount = Number(n ?? 0);
   const nullCount = Number(nulls ?? 0);
-  const quantiles = Array.isArray(q) ? { p25: q[0], p50: q[1], p75: q[2] } : null;
+  const quantiles: ColumnProfile['quantiles'] = Array.isArray(q)
+    ? { p25: q[0] ?? null, p50: q[1] ?? null, p75: q[2] ?? null }
+    : null;
   return {
     dataset: name,
     column,
@@ -162,10 +147,10 @@ export async function profileColumn(
     mean: typeof mean === 'number' ? mean : null,
     stddev: typeof sd === 'number' ? sd : null,
     quantiles,
-    topValues: top.rows.map(([value, count]) => ({ value, count: Number(count) })),
+    topValues: top.rows.map(([value, count]) => ({ value: value ?? null, count: Number(count) })),
   };
 }
 
-function asText(value: unknown): string {
+function asText(value: Cell | undefined): string {
   return typeof value === 'string' ? value : JSON.stringify(value);
 }

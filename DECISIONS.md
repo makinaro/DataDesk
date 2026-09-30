@@ -155,3 +155,31 @@ unavailable dataset) return their message. Unexpected errors return only the fir
 stacks or paths). Logs go to stderr, because stdout is the protocol.
 **Consequences:** The model sees every mistake and can retry. Tests assert on `isError` and
 message text rather than thrown errors.
+
+## D-012: Phase 1 review hardening (2026-10-01)
+
+**Context:** The Phase 1 `code-reviewer` run found no lockdown escape, but it did find robustness
+gaps: an 8.3 short-path false positive (it would break on CI runners), a whole-list failure from
+one broken dataset, cross-process catalog lost updates, bind-time work outside the timeout, and
+no byte limit on results.
+**Decision:**
+
+- **Link detection** walks each path component with `lstat` instead of comparing against
+  `realpath` (which also expands `C:\PROGRA~1`).
+- **File names with `* ? [ ]` are rejected**, because DuckDB would treat them as globs.
+- **Catalog read-modify-write holds a cross-process lockfile** (`catalog.json.lock`, created
+  exclusively, taken over after 15 s if stale).
+- **Row counts are taken once at registration** (under the timeout) and stored in the catalog.
+  Listings never scan files, and a failed entry is reported per dataset.
+- **Failed datasets are retried on each listing**, so a reconnected drive recovers.
+- **Sessions are stamped with the signature they were built from**, so a concurrent change in
+  another process always triggers a rebuild.
+- **Timeout and cancellation now cover `prepare` (binding) as well as streaming.** Verified by a
+  test: `interrupt()` aborts a full-file CSV sniff.
+- **Results stream chunk by chunk under a row cap _and_ a byte budget** (2 MB), with cells over
+  10 000 characters clipped (`clippedCells`).
+
+**Alternatives:** last-write-wins catalog (silently loses registrations once agent servers exist).
+**Consequences:** One chunk (up to 2048 rows) is the granularity of the byte budget, so
+DuckDB's `memory_limit` remains the backstop for pathological rows. Row counts can be stale if a
+file changes after registration.

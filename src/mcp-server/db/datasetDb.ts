@@ -6,9 +6,9 @@ import {
 } from '@duckdb/node-api';
 import type { CatalogEntry } from '../../shared/datasets';
 import type { Catalog } from '../catalog';
-import { readTable, type Table } from './convert';
+import { readStream, type Table } from './convert';
 import { prepareReadOnly } from './readOnlyGuard';
-import { createViewSql, quoteLiteral, toDuckDbPath } from './sql';
+import { createViewSql, quoteIdent, quoteLiteral, toDuckDbPath } from './sql';
 
 export interface DbOptions {
   maxRows: number;
@@ -19,6 +19,10 @@ export interface DbOptions {
   tempDir: string;
   /** Pre-fetched DuckDB extensions (Excel). Nothing is ever downloaded at query time. */
   extensionDir?: string | undefined;
+  /** Budget for one result's serialized rows (default 2 MB). */
+  maxResultBytes?: number;
+  /** String cells longer than this are clipped (default 10 000 characters). */
+  maxCellChars?: number;
 }
 
 export class QueryTimeoutError extends Error {
@@ -37,17 +41,21 @@ export class DatasetUnavailableError extends Error {
 
 export interface QueryResult extends Table {
   rowCount: number;
-  truncated: boolean;
 }
 
 interface Session {
   instance: DuckDBInstance;
   connection: DuckDBConnection;
+  /** The catalog contents this session was built from; any difference triggers a rebuild. */
   signature: string;
   entries: CatalogEntry[];
   /** Datasets whose view couldn't be created (missing file, parse error, no Excel support). */
   failures: Map<string, string>;
 }
+
+const sortByName = (entries: CatalogEntry[]) =>
+  [...entries].sort((a, b) => a.name.localeCompare(b.name));
+const signatureOf = (entries: CatalogEntry[]) => JSON.stringify(entries);
 
 function closeSession(session: Session): void {
   try {
@@ -85,19 +93,44 @@ export class DatasetDb {
     return { maxRows: this.options.maxRows, queryTimeoutMs: this.options.queryTimeoutMs };
   }
 
-  /** Validates a new entry by building a session that includes it, and only then persists it. */
-  register(entry: CatalogEntry): Promise<void> {
+  /**
+   * Validates a new entry by building a session that includes it, counts its rows (under the
+   * query timeout) so listings never have to scan files, and only then persists it.
+   * Returns the stored entry (with `rowCount` when counting finished in time).
+   */
+  register(entry: CatalogEntry): Promise<CatalogEntry> {
     return this.exclusive(async () => {
       const others = (await this.catalog.list()).filter((e) => e.name !== entry.name);
-      const next = await this.build([...others, entry]);
-      const failure = next.failures.get(entry.name);
-      if (failure !== undefined) {
-        closeSession(next);
-        throw new DatasetUnavailableError(entry.name, failure);
+      const next = await this.build(sortByName([...others, entry]));
+      try {
+        const failure = next.failures.get(entry.name);
+        if (failure !== undefined) throw new DatasetUnavailableError(entry.name, failure);
+
+        let stored: CatalogEntry = { ...entry };
+        delete stored.rowCount;
+        try {
+          const count = await this.execute(
+            next.connection,
+            () => next.connection.prepare(`SELECT count(*) FROM ${quoteIdent(entry.name)}`),
+            1,
+          );
+          const n = count.rows[0]?.[0];
+          if (typeof n === 'number') stored = { ...stored, rowCount: n };
+        } catch {
+          // Too slow or unreadable to count now: registered without a row count.
+        }
+
+        await this.catalog.upsert(stored);
+        // Stamp the session with what the catalog holds *if nobody else wrote meanwhile*.
+        // If another process did, the signatures differ and the next call rebuilds.
+        next.entries = sortByName([...others, stored]);
+        next.signature = signatureOf(next.entries);
+        this.replace(next);
+        return stored;
+      } catch (error) {
+        if (this.session !== next) closeSession(next);
+        throw error;
       }
-      await this.catalog.upsert(entry);
-      next.signature = JSON.stringify(await this.catalog.list());
-      this.replace(next);
     });
   }
 
@@ -109,34 +142,35 @@ export class DatasetDb {
     });
   }
 
-  /** Current catalog entries plus, for each, the error if its view couldn't be created. */
+  /**
+   * Current catalog entries plus, for each, the error if its view couldn't be created.
+   * Failed datasets are retried on every listing, so a reconnected drive recovers.
+   */
   datasets(): Promise<{ entry: CatalogEntry; error: string | undefined }[]> {
     return this.exclusive(async () => {
-      const session = await this.fresh();
+      const session = await this.fresh({ retryFailures: true });
       return session.entries.map((entry) => ({ entry, error: session.failures.get(entry.name) }));
     });
   }
 
-  /** Runs model-supplied SQL: read-only guard, row cap, timeout, optional cancellation. */
+  /** Runs model-supplied SQL: read-only guard, row/byte caps, timeout, optional cancellation. */
   query(sql: string, maxRows = this.options.maxRows, signal?: AbortSignal): Promise<QueryResult> {
     const cap = Math.min(maxRows, this.options.maxRows);
     return this.exclusive(async () => {
       signal?.throwIfAborted();
       const { connection } = await this.fresh();
-      const prepared = await prepareReadOnly(connection, sql);
-      return this.execute(connection, prepared, cap, signal);
+      return this.execute(connection, () => prepareReadOnly(connection, sql), cap, signal);
     });
   }
 
   /**
    * Runs SQL that *our code* built from validated identifiers (schema/profile helpers).
-   * Still row-capped, time-limited and executed on the locked-down instance.
+   * Still capped, time-limited and executed on the locked-down instance.
    */
   internalQuery(sql: string, maxRows = this.options.maxRows): Promise<QueryResult> {
     return this.exclusive(async () => {
       const { connection } = await this.fresh();
-      const prepared = await connection.prepare(sql);
-      return this.execute(connection, prepared, maxRows);
+      return this.execute(connection, () => connection.prepare(sql), maxRows);
     });
   }
 
@@ -154,9 +188,13 @@ export class DatasetDb {
     this.session = undefined;
   }
 
+  /**
+   * Prepares (binds) and streams one statement. The timeout and cancellation cover binding too:
+   * binding can be expensive (e.g. read_csv sniffing a large file).
+   */
   private async execute(
     connection: DuckDBConnection,
-    prepared: DuckDBPreparedStatement,
+    prepare: () => Promise<DuckDBPreparedStatement>,
     maxRows: number,
     signal?: AbortSignal,
   ): Promise<QueryResult> {
@@ -172,14 +210,21 @@ export class DatasetDb {
       connection.interrupt();
     };
     signal?.addEventListener('abort', onAbort, { once: true });
+    // Read through a function: TS narrows `state.timedOut` after the first check and can't see
+    // the timer flipping it across an await.
+    const timedOut = () => state.timedOut;
     try {
-      // Stream, and stop after cap+1 rows, so a huge result is never materialized.
-      const reader = await prepared.streamAndReadUntil(maxRows + 1);
-      const table = readTable(reader, maxRows);
-      const truncated = reader.currentRowCount > maxRows || !reader.done;
-      return { ...table, rowCount: table.rows.length, truncated };
+      const prepared = await prepare();
+      if (timedOut()) throw new QueryTimeoutError(this.options.queryTimeoutMs);
+      const table = await readStream(await prepared.stream(), {
+        maxRows,
+        maxBytes: this.options.maxResultBytes ?? 2_000_000,
+        maxCellChars: this.options.maxCellChars ?? 10_000,
+      });
+      if (timedOut()) throw new QueryTimeoutError(this.options.queryTimeoutMs);
+      return { ...table, rowCount: table.rows.length };
     } catch (error) {
-      if (state.timedOut) throw new QueryTimeoutError(this.options.queryTimeoutMs);
+      if (timedOut()) throw new QueryTimeoutError(this.options.queryTimeoutMs);
       if (state.cancelled) throw new Error('Query cancelled.', { cause: error });
       throw error;
     } finally {
@@ -188,11 +233,14 @@ export class DatasetDb {
     }
   }
 
-  /** Rebuilds the session if another process (or we) changed the catalog. */
-  private async fresh(): Promise<Session> {
+  /** Rebuilds the session if the catalog changed (possibly in another process). */
+  private async fresh(options: { retryFailures?: boolean } = {}): Promise<Session> {
     const entries = await this.catalog.list();
-    const signature = JSON.stringify(entries);
-    if (this.session?.signature === signature) return this.session;
+    const current = this.session;
+    const upToDate = current?.signature === signatureOf(entries);
+    if (current && upToDate && !(options.retryFailures && current.failures.size > 0)) {
+      return current;
+    }
     const next = await this.build(entries);
     this.replace(next);
     return next;
@@ -201,7 +249,7 @@ export class DatasetDb {
   private replace(next: Session): void {
     const previous = this.session;
     this.session = next;
-    if (previous) closeSession(previous);
+    if (previous && previous !== next) closeSession(previous);
   }
 
   private async build(entries: CatalogEntry[]): Promise<Session> {
@@ -246,7 +294,7 @@ export class DatasetDb {
       instance.closeSync();
       throw error;
     }
-    return { instance, connection, signature: JSON.stringify(entries), entries, failures };
+    return { instance, connection, signature: signatureOf(entries), entries, failures };
   }
 
   private async loadExcel(connection: DuckDBConnection): Promise<string | undefined> {

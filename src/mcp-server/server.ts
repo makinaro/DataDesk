@@ -1,7 +1,14 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
-import { DatasetFormatSchema, DatasetNameSchema } from '../shared/datasets';
+import {
+  ColumnInfoSchema,
+  ColumnProfileSchema,
+  DatasetNameSchema,
+  DatasetSummarySchema,
+  QueryTableSchema,
+  RegisteredDatasetSchema,
+} from '../shared/datasets';
 import { DatasetUnavailableError, QueryTimeoutError, type DatasetDb } from './db/datasetDb';
 import { MAX_SQL_LENGTH, ReadOnlyViolation } from './db/readOnlyGuard';
 import { getSchema, listDatasets, profileColumn, registerDataset, sampleRows } from './datasets';
@@ -24,27 +31,8 @@ export interface ServerDeps {
   importPolicy: ImportPolicy;
 }
 
-// ---- Output shapes (also sent to clients as JSON Schema via tools/list) ----
-
-const Column = z.object({ name: z.string(), type: z.string() });
-const SchemaColumn = Column.extend({ nullable: z.boolean() });
-const Rows = z.array(z.array(z.unknown()));
-const TableShape = {
-  columns: z.array(Column),
-  rows: Rows,
-  rowCount: z.number().int(),
-  truncated: z.boolean(),
-};
-const DatasetSummary = z.object({
-  name: z.string(),
-  format: DatasetFormatSchema,
-  path: z.string(),
-  sizeBytes: z.number(),
-  registeredAt: z.string(),
-  rowCount: z.number().int().nullable(),
-  columnCount: z.number().int().nullable(),
-  error: z.string().optional(),
-});
+// Output schemas come from src/shared/datasets.ts, the single source of truth for these shapes
+// (they are also sent to clients as JSON Schema via tools/list).
 
 // ---- Result helpers ----
 
@@ -120,13 +108,7 @@ export function buildServer({ db, importPolicy }: ServerDeps): McpServer {
         ),
         sheet: z.string().max(100).optional().describe('Excel only: the sheet to read.'),
       },
-      outputSchema: {
-        name: z.string(),
-        format: DatasetFormatSchema,
-        path: z.string(),
-        rowCount: z.number().int(),
-        columns: z.array(SchemaColumn),
-      },
+      outputSchema: RegisteredDatasetSchema.shape,
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -143,7 +125,7 @@ export function buildServer({ db, importPolicy }: ServerDeps): McpServer {
         });
         return ok(
           { name: entry.name, format: entry.format, path: entry.path, rowCount, columns },
-          `Registered "${entry.name}" (${String(rowCount)} rows, ${String(columns.length)} columns).`,
+          `Registered "${entry.name}" (${rowCount === null ? 'row count unknown' : `${String(rowCount)} rows`}, ${String(columns.length)} columns).`,
         );
       }),
   );
@@ -155,7 +137,7 @@ export function buildServer({ db, importPolicy }: ServerDeps): McpServer {
       description:
         'List every registered dataset with its format, size, row and column counts. Datasets whose ' +
         'file is missing or unreadable are listed with an `error`.',
-      outputSchema: { datasets: z.array(DatasetSummary) },
+      outputSchema: { datasets: z.array(DatasetSummarySchema) },
       annotations: READ_ONLY,
     },
     () =>
@@ -171,7 +153,7 @@ export function buildServer({ db, importPolicy }: ServerDeps): McpServer {
       title: 'Get schema',
       description: 'Column names, DuckDB types and nullability for one dataset.',
       inputSchema: { dataset: DatasetNameSchema },
-      outputSchema: { dataset: z.string(), columns: z.array(SchemaColumn) },
+      outputSchema: { dataset: z.string(), columns: z.array(ColumnInfoSchema) },
       annotations: READ_ONLY,
     },
     ({ dataset }) =>
@@ -192,7 +174,7 @@ export function buildServer({ db, importPolicy }: ServerDeps): McpServer {
         limit: z.number().int().min(1).max(100).default(10),
         mode: z.enum(['head', 'random']).default('head'),
       },
-      outputSchema: { dataset: z.string(), ...TableShape },
+      outputSchema: { dataset: z.string(), ...QueryTableSchema.shape },
       annotations: READ_ONLY,
     },
     ({ dataset, limit, mode }) =>
@@ -214,21 +196,7 @@ export function buildServer({ db, importPolicy }: ServerDeps): McpServer {
         column: z.string().min(1).max(256),
         top_n: z.number().int().min(1).max(50).default(10),
       },
-      outputSchema: {
-        dataset: z.string(),
-        column: z.string(),
-        type: z.string(),
-        rowCount: z.number().int(),
-        nullCount: z.number().int(),
-        nullFraction: z.number(),
-        distinctCount: z.number().int(),
-        min: z.unknown(),
-        max: z.unknown(),
-        mean: z.number().nullable(),
-        stddev: z.number().nullable(),
-        quantiles: z.object({ p25: z.unknown(), p50: z.unknown(), p75: z.unknown() }).nullable(),
-        topValues: z.array(z.object({ value: z.unknown(), count: z.number().int() })),
-      },
+      outputSchema: ColumnProfileSchema.shape,
       annotations: READ_ONLY,
     },
     ({ dataset, column, top_n }) =>
@@ -249,12 +217,13 @@ export function buildServer({ db, importPolicy }: ServerDeps): McpServer {
         'Run ONE read-only DuckDB SELECT query over the registered datasets (each is a view named after ' +
         `the dataset). Writes, DDL, COPY, ATTACH, SET, PRAGMA and multiple statements are rejected. ` +
         `At most ${String(maxRows)} rows are returned (\`truncated\` tells you if there were more): aggregate ` +
-        `or filter instead of fetching raw rows. Queries are cancelled after ${String(queryTimeoutMs / 1000)} s.`,
+        `or filter instead of fetching raw rows. Very long text cells are clipped (\`clippedCells\`) and ` +
+        `very large results are cut off by size. Queries are cancelled after ${String(queryTimeoutMs / 1000)} s.`,
       inputSchema: {
         sql: z.string().min(1).max(MAX_SQL_LENGTH),
         max_rows: z.number().int().min(1).max(maxRows).optional(),
       },
-      outputSchema: { ...TableShape, elapsedMs: z.number() },
+      outputSchema: { ...QueryTableSchema.shape, elapsedMs: z.number() },
       annotations: READ_ONLY,
     },
     ({ sql, max_rows }, extra) =>

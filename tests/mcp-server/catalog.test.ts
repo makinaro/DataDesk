@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -41,6 +41,23 @@ describe('Catalog', () => {
   it('sees writes from another instance (shared by several server processes)', async () => {
     await new Catalog(file).upsert(entry('sales'));
     await expect(new Catalog(file).get('sales')).resolves.toMatchObject({ name: 'sales' });
+  });
+
+  it('does not lose concurrent writes from different processes (lockfile)', async () => {
+    // Separate Catalog instances stand in for separate datadesk-mcp processes.
+    const writers = Array.from({ length: 8 }, () => new Catalog(file));
+    await Promise.all(writers.map((c, i) => c.upsert(entry(`ds_${String(i)}`))));
+    const names = (await new Catalog(file).list()).map((d) => d.name);
+    expect(names).toEqual(Array.from({ length: 8 }, (_, i) => `ds_${String(i)}`));
+    expect(existsSync(`${file}.lock`)).toBe(false);
+  });
+
+  it('takes over a stale lock left by a crashed process', async () => {
+    writeFileSync(`${file}.lock`, '99999');
+    const old = new Date(Date.now() - 60_000);
+    utimesSync(`${file}.lock`, old, old);
+    await new Catalog(file).upsert(entry('sales'));
+    await expect(new Catalog(file).get('sales')).resolves.toBeDefined();
   });
 
   it('removes entries', async () => {

@@ -22,6 +22,8 @@ export const CatalogEntrySchema = z.strictObject({
   registeredAt: z.iso.datetime(),
   /** Excel only: which sheet to read. */
   sheet: z.string().max(100).optional(),
+  /** Counted at registration so listings never scan files. Absent if counting timed out. */
+  rowCount: z.number().int().nonnegative().optional(),
 });
 export type CatalogEntry = z.infer<typeof CatalogEntrySchema>;
 
@@ -53,18 +55,43 @@ export const RegisteredDatasetSchema = z.object({
   name: DatasetNameSchema,
   format: DatasetFormatSchema,
   path: z.string(),
-  rowCount: z.number().int().nonnegative(),
+  /** Null if counting didn't finish within the query timeout. */
+  rowCount: z.number().int().nonnegative().nullable(),
   columns: z.array(ColumnInfoSchema),
 });
 export type RegisteredDataset = z.infer<typeof RegisteredDatasetSchema>;
 
-export const DatasetPreviewSchema = z.object({
+/** A query result as returned by run_sql and sample_rows (and shown as previews). */
+export const QueryTableSchema = z.object({
   columns: z.array(z.object({ name: z.string(), type: z.string() })),
-  rows: z.array(z.array(CellSchema)).max(1000),
+  rows: z.array(z.array(CellSchema)),
   rowCount: z.number().int().nonnegative(),
+  /** More rows existed than were returned (row cap or byte budget). */
   truncated: z.boolean(),
+  /** String cells shortened to the cell size limit. */
+  clippedCells: z.number().int().nonnegative(),
 });
-export type DatasetPreview = z.infer<typeof DatasetPreviewSchema>;
+export type QueryTable = z.infer<typeof QueryTableSchema>;
+
+export const DatasetPreviewSchema = QueryTableSchema;
+export type DatasetPreview = QueryTable;
+
+export const ColumnProfileSchema = z.object({
+  dataset: z.string(),
+  column: z.string(),
+  type: z.string(),
+  rowCount: z.number().int().nonnegative(),
+  nullCount: z.number().int().nonnegative(),
+  nullFraction: z.number(),
+  distinctCount: z.number().int().nonnegative(),
+  min: CellSchema,
+  max: CellSchema,
+  mean: z.number().nullable(),
+  stddev: z.number().nullable(),
+  quantiles: z.object({ p25: CellSchema, p50: CellSchema, p75: CellSchema }).nullable(),
+  topValues: z.array(z.object({ value: CellSchema, count: z.number().int() })),
+});
+export type ColumnProfile = z.infer<typeof ColumnProfileSchema>;
 
 /** Lowercase, replace unsafe characters with `_`, and make sure it starts with a letter. */
 export function suggestDatasetName(fileName: string): string {
