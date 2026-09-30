@@ -12,7 +12,7 @@ Legend: `[ ]` todo · `[x]` done
 - [x] Docs: CLAUDE.md, ROADMAP.md, DECISIONS.md, docs/ARCHITECTURE.md, docs/learning-log.md
 - [x] Scaffold electron-vite + React + strict TypeScript + Tailwind v4
 - [x] ESLint (flat, type-checked) + Prettier + EditorConfig
-- [ ] Vitest (network guard) + Playwright Electron smoke test
+- [x] Vitest (network guard) + Playwright Electron smoke test
 - [ ] Hardened window: isolation, sandbox, CSP header, navigation/permission guards
 - [ ] Typed zod IPC contract + validated `handle()` + explicit preload bridge
 - [ ] safeStorage KeyStore + Settings dialog (set / clear / status only)

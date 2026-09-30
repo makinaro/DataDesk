@@ -1,6 +1,10 @@
 import { join } from 'node:path';
 import { app, BrowserWindow } from 'electron';
 
+// Lets e2e tests run against a throwaway profile. Must run before 'ready'.
+const userDataOverride = process.env.DATADESK_USER_DATA;
+if (userDataOverride) app.setPath('userData', userDataOverride);
+
 function createMainWindow(): BrowserWindow {
   const win = new BrowserWindow({
     width: 1400,

@@ -11,7 +11,7 @@
     "tests/main/**/*",
     "tests/preload/**/*",
     "tests/shared/**/*",
-    "tests/setup/**/*",
+    "tests/setup/no-network*.ts",
     "tests/e2e/**/*",
     "electron.vite.config.ts",
     "vitest.config.ts",
