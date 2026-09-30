@@ -30,13 +30,13 @@ hooks and permissions from the developer side.
 
 - [x] DuckDB wrapper: in-memory instance, `memory_limit`, `threads`, query timeout via `interrupt()`
 - [x] Catalog (`userData/catalog.json`, atomic writes) and view re-creation on startup
-- [ ] `register_dataset` (CSV, Parquet, JSON, XLSX)
-- [ ] `list_datasets`, `get_schema`, `sample_rows`, `profile_column`
-- [ ] `run_sql`: single statement, `statementType === SELECT` (by statement type, not regex),
-      row cap via `runAndReadUntil(cap+1)` with a truncation flag, timeout, file access locked to
-      dataset dirs (`enable_external_access` / `allowed_directories` / `lock_configuration`, names verified first)
-- [ ] stdio entry point + `mcp:dev` / `mcp:inspect` scripts
-- [ ] InMemoryTransport tests incl. escape attempts (COPY, ATTACH, INSTALL, multi-statement, `read_text` outside allowed dirs)
+- [ ] `register_dataset` (CSV, Parquet, JSON, XLSX); CSV/Parquet/JSON done, XLSX pending
+- [x] `list_datasets`, `get_schema`, `sample_rows`, `profile_column`
+- [x] `run_sql`: single statement, `statementType === SELECT` (by statement type, not regex),
+      row cap via `streamAndReadUntil(cap+1)` with a truncation flag, timeout/cancel via `interrupt()`,
+      file access locked to exactly the registered files (`allowed_paths` + `enable_external_access=false` + `lock_configuration`; D-009)
+- [x] stdio entry point + `mcp:inspect` (web UI) / `mcp:tools` (CLI) scripts
+- [x] InMemoryTransport tests incl. escape attempts (COPY, ATTACH, INSTALL, multi-statement, `read_text` outside allowed dirs)
 - [ ] Main-process `UiMcpClient` + IPC channels for datasets
 - [ ] Sidebar: drag-drop registration and schema preview
 
@@ -50,6 +50,7 @@ transport, being both an MCP server _and_ client.
 - [ ] `Orchestrator` interface (provider seam for Phase 7)
 - [ ] `ClaudeOrchestrator`: streaming-input `query()`, isolated options builder, abort
 - [ ] `system:init` guard: abort if any tool/skill/server outside the allowlist appears
+- [ ] Agent-initiated `register_dataset` requires human approval (`canUseTool`; D-010)
 - [ ] Cost/loop limits: `maxBudgetUsd`, `maxTurns`
 - [ ] SDK message → `TimelineEvent` mapper + `agent:event` channel
 - [ ] Chat UI with streaming partial messages

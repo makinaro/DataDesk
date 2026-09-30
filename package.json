@@ -7,12 +7,14 @@
   "type": "module",
   "main": "./out/main/index.js",
   "engines": {
-    "node": ">=22.12.0"
+    "node": ">=22.19.0"
   },
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
+    "mcp:inspect": "electron-vite build && npx -y @modelcontextprotocol/inspector@2.8.0 --web -e DATADESK_CATALOG_PATH=.dev-data/catalog.json node out/main/mcp-server.js",
+    "mcp:tools": "electron-vite build && npx -y @modelcontextprotocol/inspector@2.8.0 --cli node out/main/mcp-server.js --method tools/list -e DATADESK_CATALOG_PATH=.dev-data/catalog.json",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.e2e.json",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",

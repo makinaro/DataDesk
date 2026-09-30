@@ -14,6 +14,10 @@ const EnvSchema = z.object({
     .string()
     .regex(/^\d+(\.\d+)?\s?(KB|MB|GB)$/i)
     .default('2GB'),
+  /** Where DuckDB spills to disk. Defaults to a per-process folder in the OS temp dir. */
+  DATADESK_TEMP_DIR: z.string().min(1).optional(),
+  /** Pre-fetched DuckDB extensions (Excel). Nothing is downloaded at query time. */
+  DATADESK_EXTENSION_DIR: z.string().min(1).optional(),
   DATADESK_THREADS: z.coerce.number().int().min(1).max(64).default(4),
   DATADESK_MAX_FILE_BYTES: z.coerce
     .number()
@@ -30,6 +34,8 @@ export interface ServerConfig {
   memoryLimit: string;
   threads: number;
   maxFileBytes: number;
+  tempDir: string | undefined;
+  extensionDir: string | undefined;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv): ServerConfig {
@@ -44,5 +50,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): ServerConfig {
     memoryLimit: parsed.DATADESK_MEMORY_LIMIT.replace(/\s/g, ''),
     threads: parsed.DATADESK_THREADS,
     maxFileBytes: parsed.DATADESK_MAX_FILE_BYTES,
+    tempDir: parsed.DATADESK_TEMP_DIR,
+    extensionDir: parsed.DATADESK_EXTENSION_DIR,
   };
 }

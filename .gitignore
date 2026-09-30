@@ -30,3 +30,6 @@ Thumbs.db
 !.vscode/extensions.json
 .idea/
 *.log
+
+# local MCP dev catalog (npm run mcp:inspect)
+.dev-data/

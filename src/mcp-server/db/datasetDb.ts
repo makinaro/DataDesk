@@ -117,13 +117,14 @@ export class DatasetDb {
     });
   }
 
-  /** Runs model-supplied SQL: read-only guard, row cap, timeout. */
-  query(sql: string, maxRows = this.options.maxRows): Promise<QueryResult> {
+  /** Runs model-supplied SQL: read-only guard, row cap, timeout, optional cancellation. */
+  query(sql: string, maxRows = this.options.maxRows, signal?: AbortSignal): Promise<QueryResult> {
     const cap = Math.min(maxRows, this.options.maxRows);
     return this.exclusive(async () => {
+      signal?.throwIfAborted();
       const { connection } = await this.fresh();
       const prepared = await prepareReadOnly(connection, sql);
-      return this.execute(connection, prepared, cap);
+      return this.execute(connection, prepared, cap, signal);
     });
   }
 
@@ -157,13 +158,20 @@ export class DatasetDb {
     connection: DuckDBConnection,
     prepared: DuckDBPreparedStatement,
     maxRows: number,
+    signal?: AbortSignal,
   ): Promise<QueryResult> {
-    // An object, not a `let`: TS flow analysis can't see the timer callback mutating a local.
-    const state = { timedOut: false };
+    // An object, not a `let`: TS flow analysis can't see the callbacks mutating a local.
+    const state = { timedOut: false, cancelled: false };
     const timer = setTimeout(() => {
       state.timedOut = true;
       connection.interrupt();
     }, this.options.queryTimeoutMs);
+    // The MCP client cancelled the tool call (e.g. the user pressed Stop): stop DuckDB too.
+    const onAbort = () => {
+      state.cancelled = true;
+      connection.interrupt();
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
     try {
       // Stream, and stop after cap+1 rows, so a huge result is never materialized.
       const reader = await prepared.streamAndReadUntil(maxRows + 1);
@@ -172,9 +180,11 @@ export class DatasetDb {
       return { ...table, rowCount: table.rows.length, truncated };
     } catch (error) {
       if (state.timedOut) throw new QueryTimeoutError(this.options.queryTimeoutMs);
+      if (state.cancelled) throw new Error('Query cancelled.', { cause: error });
       throw error;
     } finally {
       clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
     }
   }
 
