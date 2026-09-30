@@ -23,13 +23,13 @@
                          └────────────────────────────────────────────────────┘
 ```
 
-| Process | Trust | Can touch keys? | Talks to |
-|---|---|---|---|
-| Renderer | untrusted UI | no, only booleans | main, via typed IPC |
-| Preload | bridge | no | exposes explicit functions only |
-| Main | trusted | decrypts, passes to children via explicit env/headers | renderer, SDK, UiMcpClient |
-| Claude Code binary | agent engine | receives `ANTHROPIC_API_KEY` in env | our MCP servers |
-| datadesk-mcp | tool server | receives OpenAI/HF keys in env (Phase 5+) | DuckDB, OpenAI, HF Hub |
+| Process            | Trust        | Can touch keys?                                       | Talks to                        |
+| ------------------ | ------------ | ----------------------------------------------------- | ------------------------------- |
+| Renderer           | untrusted UI | no, only booleans                                     | main, via typed IPC             |
+| Preload            | bridge       | no                                                    | exposes explicit functions only |
+| Main               | trusted      | decrypts, passes to children via explicit env/headers | renderer, SDK, UiMcpClient      |
+| Claude Code binary | agent engine | receives `ANTHROPIC_API_KEY` in env                   | our MCP servers                 |
+| datadesk-mcp       | tool server  | receives OpenAI/HF keys in env (Phase 5+)             | DuckDB, OpenAI, HF Hub          |
 
 ## Security layers
 

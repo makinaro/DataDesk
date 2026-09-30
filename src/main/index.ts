@@ -15,9 +15,11 @@ function createMainWindow(): BrowserWindow {
     },
   });
 
-  win.once('ready-to-show', () => win.show());
+  win.once('ready-to-show', () => {
+    win.show();
+  });
 
-  const devUrl = process.env['ELECTRON_RENDERER_URL'];
+  const devUrl = process.env.ELECTRON_RENDERER_URL;
   if (!app.isPackaged && devUrl) {
     void win.loadURL(devUrl);
   } else {

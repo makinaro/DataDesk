@@ -32,7 +32,7 @@ Conventional commits: `type(scope): summary` in the imperative, ≤72 chars.
 
 - Types: `feat` `fix` `test` `docs` `refactor` `chore` `build` `ci` `perf`
 - Scopes: `main` `preload` `ipc` `ui` `secrets` `mcp` `agent` `skills` `claude` `deps`
-- Body: *why*, not what. End with the co-author trailer from the harness.
+- Body: _why_, not what. End with the co-author trailer from the harness.
 
 ## Verify before use (fast-moving SDKs)
 
@@ -56,12 +56,12 @@ To reverse an earlier decision, add a new entry that references the old one. Don
 ## Security rules (non-negotiable)
 
 1. **API keys** (Anthropic, OpenAI, Hugging Face) live only in the main process, encrypted with
-   Electron `safeStorage` (`src/main/secrets/keyStore.ts`). The renderer can *set*, *clear*, and
-   check *status* (boolean). **No IPC channel ever returns a key.** There is no plaintext fallback.
+   Electron `safeStorage` (`src/main/secrets/keyStore.ts`). The renderer can _set_, _clear_, and
+   check _status_ (boolean). **No IPC channel ever returns a key.** There is no plaintext fallback.
 2. Every `BrowserWindow`: `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`,
    `webSecurity: true`, and the strict CSP from `src/main/security/csp.ts`. Navigation and new windows are denied.
 3. **All IPC is typed with zod** in `src/shared/ipc/contract.ts`. Main validates every request
-   *and* response, and checks the sender frame. The preload exposes explicit methods only, never a
+   _and_ response, and checks the sender frame. The preload exposes explicit methods only, never a
    generic `invoke`.
 4. **The in-app agent** gets no Bash/Write/Edit/Read/Glob/Grep/Web tools. It gets only `Skill`,
    `Agent` and the MCP tools we grant. Its `cwd` is `userData/agent-workspace`, and it runs with
@@ -87,7 +87,7 @@ To reverse an earlier decision, add a new entry that references the old one. Don
 - TypeScript strict + `noUncheckedIndexedAccess` + `verbatimModuleSyntax`. No `any`. Use `unknown` and narrow.
 - Derive types from zod (`z.infer`). Never hand-write a type that duplicates a schema.
 - `src/shared/` must not import from `electron`, `node:*`, or React.
-- Comments are sparse and explain *why*. Explanations for the owner go in PRs and the learning log.
+- Comments are sparse and explain _why_. Explanations for the owner go in PRs and the learning log.
 - npm scripts: `dev` `build` `typecheck` `lint` `format` `test` `test:e2e` `check`.
 
 ## Learning log format

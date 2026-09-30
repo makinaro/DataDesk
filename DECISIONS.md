@@ -38,8 +38,8 @@ and args pointing to the bundled `out/main/mcp-server.js`.
 
 ## D-004: In-app agent isolation strategy (2026-10-01)
 
-**Context:** The Agent SDK docs say project skills/CLAUDE.md are discovered in `cwd` *and every
-parent directory*, and that `~/.claude.json`, auto memory, claude.ai connectors and managed policy
+**Context:** The Agent SDK docs say project skills/CLAUDE.md are discovered in `cwd` _and every
+parent directory_, and that `~/.claude.json`, auto memory, claude.ai connectors and managed policy
 load regardless of `settingSources`. A workspace under `C:\Users\<me>\AppData\…` could otherwise
 pick up the developer's own `~/.claude` skills.
 **Decision:** `settingSources: []`; skills are loaded only through the SDK `plugins` option from

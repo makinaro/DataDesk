@@ -10,8 +10,8 @@ Legend: `[ ]` todo · `[x]` done
 ## Phase 0: Setup and secure shell
 
 - [x] Docs: CLAUDE.md, ROADMAP.md, DECISIONS.md, docs/ARCHITECTURE.md, docs/learning-log.md
-- [ ] Scaffold electron-vite + React + strict TypeScript + Tailwind v4
-- [ ] ESLint (flat, type-checked) + Prettier + EditorConfig
+- [x] Scaffold electron-vite + React + strict TypeScript + Tailwind v4
+- [x] ESLint (flat, type-checked) + Prettier + EditorConfig
 - [ ] Vitest (network guard) + Playwright Electron smoke test
 - [ ] Hardened window: isolation, sandbox, CSP header, navigation/permission guards
 - [ ] Typed zod IPC contract + validated `handle()` + explicit preload bridge
@@ -43,7 +43,7 @@ hooks and permissions from the developer side.
 **Done when:** tests prove every write/escape attempt is rejected, MCP Inspector lists 6 tools,
 and a dropped CSV appears in the sidebar with its schema.
 **Learn:** MCP primitives (tools, schemas, structured content), JSON-RPC lifecycle, stdio
-transport, being both an MCP server *and* client.
+transport, being both an MCP server _and_ client.
 
 ## Phase 2: Agent runtime, chat and timeline
 
