@@ -248,3 +248,125 @@ What happens when you drop `sales.csv` on the sidebar and it appears with a prev
    `npx vitest run tests/mcp-server/db/datasetDb.test.ts`. _Expect_ the "lockdown" tests to fail:
    the secret file becomes readable through a plain SELECT, even though the statement-type guard
    still passes. That's why one layer isn't enough. Revert afterwards.
+
+---
+
+## Phase 2: Agent runtime, chat and timeline (2026-10-01)
+
+### Concept
+
+**An agent is a loop:** the model reads the conversation, asks to call a tool, gets the result,
+and repeats until it can answer. The **Claude Agent SDK** runs that loop for you by driving a
+**Claude Code process** (a native binary it spawns). Your code decides three things:
+
+1. **What the agent can reach.** That's tools and MCP servers: here, only our 6 datadesk tools.
+2. **What happens when it wants to act.** That's permissions:
+   - `allowedTools` auto-approves the read-only tools;
+   - `canUseTool` is a callback that decides every other call; ours denies by default and asks
+     _you_ before `register_dataset`.
+3. **What you show while it works.** That's the message stream. We translate the SDK's
+   messages into our own provider-neutral `AgentEvent`s for the chat and timeline.
+
+The big lesson of this phase: **isolation is something you _verify_, not something you
+_configure_.** We configured `tools: []`, `settingSources: []` and an explicit env, and then
+checked at runtime:
+
+- **The init guard** checks every session reports exactly what we granted.
+- **Probes with a dummy key** confirmed which tools the model really saw.
+- **Probes also showed that typed `/commands` still ran**, until we disabled them.
+- **The code review found that the API key reached our MCP server anyway:** the CLI passes its
+  own environment to children. A probe confirmed it (D-014).
+
+### Where it lives
+
+- The capability surface: [src/main/agent/claude/agentOptions.ts:70](../src/main/agent/claude/agentOptions.ts#L70)
+  `buildAgentOptions`:
+  - no disk settings [:74](../src/main/agent/claude/agentOptions.ts#L74)
+  - no built-ins [:81](../src/main/agent/claude/agentOptions.ts#L81)
+  - explicit mode [:86](../src/main/agent/claude/agentOptions.ts#L86)
+  - auto-approved tools [:87](../src/main/agent/claude/agentOptions.ts#L87)
+  - no slash commands [:90](../src/main/agent/claude/agentOptions.ts#L90)
+- Child environment: [src/main/agent/claude/agentEnv.ts:41](../src/main/agent/claude/agentEnv.ts#L41),
+  second hop: [src/main/mcp/serverProcess.ts:19](../src/main/mcp/serverProcess.ts#L19) +
+  [src/mcp-server/scrubEnv.ts:12](../src/mcp-server/scrubEnv.ts#L12)
+- The session: [src/main/agent/claude/claudeOrchestrator.ts:80](../src/main/agent/claude/claudeOrchestrator.ts#L80) `send`,
+  [:176](../src/main/agent/claude/claudeOrchestrator.ts#L176) `start`,
+  [:198](../src/main/agent/claude/claudeOrchestrator.ts#L198) `consume` (guard at
+  [:215](../src/main/agent/claude/claudeOrchestrator.ts#L215), fail-closed at
+  [:225](../src/main/agent/claude/claudeOrchestrator.ts#L225)),
+  [:117](../src/main/agent/claude/claudeOrchestrator.ts#L117) `reset`,
+  [:144](../src/main/agent/claude/claudeOrchestrator.ts#L144) permission gate
+- Streaming input: [src/main/agent/claude/inputQueue.ts:8](../src/main/agent/claude/inputQueue.ts#L8)
+- SDK → events: [src/main/agent/claude/sdkMapper.ts:23](../src/main/agent/claude/sdkMapper.ts#L23)
+- Runtime tripwire: [src/main/agent/claude/initGuard.ts:17](../src/main/agent/claude/initGuard.ts#L17)
+- Human approval: [src/main/agent/approvals.ts:31](../src/main/agent/approvals.ts#L31)
+- Push to the UI: [src/main/agent/eventBus.ts:8](../src/main/agent/eventBus.ts#L8) →
+  [src/preload/index.ts:58](../src/preload/index.ts#L58) `onEvent` →
+  [src/renderer/src/agent/agentState.ts:94](../src/renderer/src/agent/agentState.ts#L94) reducer
+- Packaged binary path: [src/main/agent/claude/executable.ts:9](../src/main/agent/claude/executable.ts#L9);
+  smoke test: [scripts/smoke-packaged.mjs](../scripts/smoke-packaged.mjs)
+
+### How it works
+
+What happens when you type "Which region sold the most units?" and press Enter:
+
+1. The chat adds your message locally and calls `datadesk.agent.send(text)`. `agent:send` is
+   validated in main (1–20 000 chars) and handed to the orchestrator. If no Anthropic key is set,
+   the error "Add your Anthropic API key in Settings…" comes back instead.
+2. **First message only:** `start()` reads your key and settings and builds the options. The SDK
+   spawns `claude.exe` with our explicit env, and the CLI in turn spawns **its own**
+   datadesk-mcp (Electron-as-Node) with secrets blanked. That server also scrubs secrets itself.
+3. The message is pushed into the `InputQueue`, which is the prompt stream the SDK pulls from.
+   The session stays open between messages, so the CLI and its MCP server keep running.
+4. The CLI emits `system/init`. The **guard** checks it lists only our 6 tools, the datadesk
+   server, no agents, `default` mode, our key and our workspace. Otherwise it aborts. Model
+   output before this check also aborts.
+5. The model streams text (`stream_event` → `text_delta` → the chat updates live), then asks for
+   `mcp__datadesk__run_sql`. That tool is in `allowedTools`, so it runs without asking. The
+   timeline shows the call, then the `tool_result` (from a `user` message), with timing.
+6. If it asked for `register_dataset` instead, `canUseTool` would validate the input and ask the
+   `ApprovalBroker`. You'd see a dialog, with Deny focused. Timeout, Stop, New conversation, or
+   anything but "Allow" means deny.
+7. The model answers. The `result` message gives cost and turns, the timeline shows
+   `Turn complete · … · $0.0xx`, and the status returns to idle.
+
+### Gotchas
+
+- **`env` replaces the child's environment, but the child passes its env _on_.** We built the
+  CLI's env carefully, and the key still reached datadesk-mcp through the CLI (D-014). Always
+  check what the _grandchild_ receives.
+- **An omitted `permissionMode` may mean `auto`** (a classifier decides). Set `'default'`
+  explicitly if you want every non-allowlisted call to reach `canUseTool`.
+- **`init.skills` lists bundled skills even with `skills: []`**, and typed `/commands` dispatch
+  unless you pass `--disable-slash-commands`. A probe showed `/cost` running locally until we did.
+- **The CLI re-sends `init` every turn** in streaming mode. Also, a turn can finish with no
+  assistant message (e.g. a disabled command), so fall back to the result text.
+- **A bad key means about 10 API retries (~minutes)** unless you set `CLAUDE_CODE_MAX_RETRIES`.
+- **"New conversation" needs a boundary from the producer.** Clearing only in the UI lets
+  in-flight events from the old session land in the new one. The fix is to mark the old session
+  as ending _synchronously_, then emit `conversation_reset`.
+- **Don't `await` a starting session in `reset()`.** It deadlocked in a test. Let the starter
+  notice it was superseded instead.
+- **`spawn` can't execute from inside `app.asar`.** Unpack the binary and point the SDK at it.
+  The packaged app is 692 MB unpacked (the Claude binary alone is 234 MB).
+- **TypeScript narrows object flags across `await`.** Read timer- or callback-mutated flags
+  through a function.
+
+### Experiments
+
+1. **Your first real conversation** (needs your key, costs a few cents). Settings → paste your
+   Anthropic key → Analyst: _Haiku_, budget $0.25. Add `test-data/public/sales.csv`, then ask
+   "Which region sold the most units, and how many?". _Expect_ streamed text, then
+   `datadesk · list_datasets` / `get_schema` / `run_sql` in the timeline with ✓, the answer
+   **West** with a number, and a turn cost. Open a tool call to see the exact SQL it wrote.
+2. **Watch the permission gate.** Ask "Please add the file C:\\…\\test-data\\public\\events.ndjson
+   as a dataset" (full path). _Expect_ an approval dialog with the file path; **Deny** it and the
+   analyst says it can't add it. Ask again and **Allow**: the dataset appears in the sidebar. Then
+   type `/cost`. _Expect_ "/cost isn't available in this environment." (no Claude Code commands).
+3. **Trip the guard on purpose.** In
+   [agentOptions.ts](../src/main/agent/claude/agentOptions.ts), add a second server next to
+   datadesk: `extra: { type: 'stdio', ...input.mcpServer },`, run `npm run dev` and ask anything
+   (a dummy key is enough, since the guard runs before any model call). _Expect_ the timeline to
+   show "Stopped for safety: … unexpected tools: mcp__extra__… ; unexpected MCP servers: extra".
+   (Adding a built-in to `tools` wouldn't trip it: `disallowedTools` removes those first, which is
+   the other layer working.) Revert afterwards.
