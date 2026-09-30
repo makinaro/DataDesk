@@ -1,6 +1,7 @@
 import { join } from 'node:path';
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, safeStorage } from 'electron';
 import { registerAppHandlers } from './ipc/handlers/app';
+import { registerSecretsHandlers } from './ipc/handlers/secrets';
 import { createIpcRouter } from './ipc/router';
 import { createSenderCheck } from './ipc/trustedSender';
 import {
@@ -10,6 +11,7 @@ import {
   registerAppScheme,
 } from './security/appProtocol';
 import { buildCsp } from './security/csp';
+import { KeyStore } from './secrets/keyStore';
 import { applyDevCspHeader, hardenApp } from './security/hardenApp';
 import { createMainWindow } from './window';
 
@@ -40,6 +42,11 @@ void app.whenReady().then(() => {
     },
   });
   registerAppHandlers(handle);
+
+  const keyStore = new KeyStore(join(app.getPath('userData'), 'secrets.json'), safeStorage, () => {
+    console.error('[secrets] secrets.json was unreadable; treating it as empty.');
+  });
+  registerSecretsHandlers(handle, keyStore);
 
   createMainWindow(rendererUrl);
   app.on('activate', () => {
