@@ -1,0 +1,32 @@
+# dependencies
+node_modules/
+
+# build output
+out/
+dist/
+release/
+*.tsbuildinfo
+
+# test output
+coverage/
+test-results/
+playwright-report/
+blob-report/
+
+# secrets & private data (never commit, never read)
+.env
+.env.*
+!.env.example
+test-data/private/
+
+# local tooling
+.claude/settings.local.json
+.claude/tmp/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.log
