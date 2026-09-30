@@ -11,6 +11,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { Catalog } from './catalog';
 import { loadConfig } from './config';
 import { DatasetDb } from './db/datasetDb';
+import { scrubSecrets } from './scrubEnv';
 import { buildServer, SERVER_NAME, SERVER_VERSION } from './server';
 
 const log = (message: string) => {
@@ -18,6 +19,10 @@ const log = (message: string) => {
 };
 
 async function main(): Promise<void> {
+  // Before anything else: drop secrets inherited from whoever spawned us (names only in the log).
+  const scrubbed = scrubSecrets(process.env);
+  if (scrubbed.length > 0) log(`removed inherited secrets from env: ${scrubbed.join(', ')}`);
+
   const config = loadConfig(process.env);
   const db = new DatasetDb(new Catalog(config.catalogPath), {
     maxRows: config.maxRows,

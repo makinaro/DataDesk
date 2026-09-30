@@ -70,6 +70,8 @@ describe('createAgentRuntime', () => {
     expect(server.args[0]).toMatch(/mcp-server\.js$/);
     expect(server.env.ELECTRON_RUN_AS_NODE).toBe('1');
     expect(JSON.stringify(server.env)).not.toContain(KEY);
+    // The CLI merges its own env into MCP servers; ours must override the key with a blank.
+    expect(server.env.ANTHROPIC_API_KEY).toBe('');
     // Every delivered event was validated and stamped.
     expect(delivered.every((e, i) => e.seq === i)).toBe(true);
   });
