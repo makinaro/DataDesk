@@ -41,7 +41,7 @@ export function registerAgentHandlers(
   handle(IpcChannels.settingsSetAgent, async (next) => {
     const saved = await settings.setAgent(next);
     // Model and budget are session options, so start a fresh conversation with them.
-    await currentOrchestrator()?.reset();
+    await currentOrchestrator()?.reset('settings');
     return saved;
   });
 }

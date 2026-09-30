@@ -93,7 +93,7 @@ export function createAgentRuntime(deps: AgentRuntimeDeps) {
     },
     /** A changed or removed key must not keep an old session alive. */
     async onKeyChanged(): Promise<void> {
-      await orchestrator?.reset();
+      await orchestrator?.reset('key');
     },
     async dispose(): Promise<void> {
       await orchestrator?.dispose();

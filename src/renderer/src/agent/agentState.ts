@@ -39,7 +39,8 @@ export type TimelineItem =
       numTurns: number;
     }
   | { kind: 'error'; id: string; at: number; message: string }
-  | { kind: 'approval'; id: string; at: number; title: string; approved: boolean | null };
+  | { kind: 'approval'; id: string; at: number; title: string; approved: boolean | null }
+  | { kind: 'reset'; id: string; at: number; reason: 'user' | 'settings' | 'key' };
 
 export interface PendingApproval {
   requestId: string;
@@ -53,7 +54,8 @@ export interface AgentState {
   model: string | null;
   messages: ChatMessage[];
   timeline: TimelineItem[];
-  pendingApproval: PendingApproval | null;
+  /** Oldest first; the dialog shows the first one. */
+  pendingApprovals: PendingApproval[];
   sessionCostUsd: number;
   lastSeq: number;
 }
@@ -63,7 +65,7 @@ export const initialAgentState: AgentState = {
   model: null,
   messages: [],
   timeline: [],
-  pendingApproval: null,
+  pendingApprovals: [],
   sessionCostUsd: 0,
   lastSeq: -1,
 };
@@ -172,12 +174,10 @@ export function agentReducer(state: AgentState, action: AgentAction): AgentState
     case 'approval_request':
       return {
         ...s,
-        pendingApproval: {
-          requestId: e.requestId,
-          toolName: e.toolName,
-          title: e.title,
-          detail: e.detail,
-        },
+        pendingApprovals: [
+          ...s.pendingApprovals,
+          { requestId: e.requestId, toolName: e.toolName, title: e.title, detail: e.detail },
+        ],
         timeline: [
           ...s.timeline,
           { kind: 'approval', id: e.requestId, at: e.at, title: e.title, approved: null },
@@ -186,7 +186,7 @@ export function agentReducer(state: AgentState, action: AgentAction): AgentState
     case 'approval_resolved':
       return {
         ...s,
-        pendingApproval: s.pendingApproval?.requestId === e.requestId ? null : s.pendingApproval,
+        pendingApprovals: s.pendingApprovals.filter((a) => a.requestId !== e.requestId),
         timeline: s.timeline.map((item) =>
           item.kind === 'approval' && item.id === e.requestId
             ? { ...item, approved: e.approved }
@@ -211,6 +211,16 @@ export function agentReducer(state: AgentState, action: AgentAction): AgentState
             numTurns: e.numTurns,
           },
         ],
+      };
+    case 'conversation_reset':
+      // Main guarantees nothing from the previous conversation follows this marker.
+      return {
+        ...initialAgentState,
+        lastSeq: s.lastSeq,
+        timeline:
+          e.reason === 'user'
+            ? []
+            : [{ kind: 'reset', id: `reset-${String(e.seq)}`, at: e.at, reason: e.reason }],
       };
     case 'error':
       return {

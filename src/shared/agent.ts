@@ -83,8 +83,18 @@ export const AgentEventSchema = z.discriminatedUnion('kind', [
     numTurns: z.number().int().nonnegative(),
   }),
   z.object({ ...Base, kind: z.literal('error'), message: z.string().max(2_000) }),
+  /**
+   * Conversation boundary. The renderer clears chat, timeline and approvals; main guarantees
+   * no event from the previous conversation follows this one.
+   */
+  z.object({
+    ...Base,
+    kind: z.literal('conversation_reset'),
+    reason: z.enum(['user', 'settings', 'key']),
+  }),
 ]);
 export type AgentEvent = z.infer<typeof AgentEventSchema>;
+export type ResetReason = Extract<AgentEvent, { kind: 'conversation_reset' }>['reason'];
 export type AgentEventKind = AgentEvent['kind'];
 
 /** An event before main stamps `seq` and `at`. */
@@ -95,8 +105,15 @@ export type AgentEventInput = AgentEvent extends infer E
   : never;
 
 export const AgentSettingsSchema = z.strictObject({
-  /** Model alias or full ID passed to the provider. */
-  model: z.string().min(1).max(100),
+  /** Model alias or full ID passed to the provider (never starts with '-', so never a CLI flag). */
+  model: z
+    .string()
+    .min(1)
+    .max(100)
+    .regex(
+      /^[a-z0-9][a-z0-9.\-[\]]*$/i,
+      'Use a model alias or ID such as sonnet or claude-sonnet-5-5.',
+    ),
   /** Hard cap on spend per conversation. */
   maxBudgetUsd: z.number().min(0.01).max(100),
   /** Agentic turns per user message. */

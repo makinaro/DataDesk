@@ -1,4 +1,4 @@
-import type { AgentEventInput } from '../../shared/agent';
+import type { AgentEventInput, ResetReason } from '../../shared/agent';
 
 /**
  * The provider seam. The chat, timeline and IPC layer talk only to this interface, so the
@@ -9,8 +9,8 @@ export interface Orchestrator {
   send(text: string): void;
   /** Interrupts the current turn (the conversation continues). */
   stop(): Promise<void>;
-  /** Ends the conversation; the next send starts a fresh session. */
-  reset(): Promise<void>;
+  /** Ends the conversation (emits conversation_reset); the next send starts a fresh session. */
+  reset(reason?: ResetReason): Promise<void>;
   dispose(): Promise<void>;
 }
 

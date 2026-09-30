@@ -5,7 +5,9 @@ import type {
   SDKMessage,
   SDKUserMessage,
 } from '@anthropic-ai/claude-agent-sdk';
-import { preview } from '../../../shared/agent';
+import { z } from 'zod';
+import { preview, type ResetReason } from '../../../shared/agent';
+import { DatasetNameSchema } from '../../../shared/datasets';
 import type { ApprovalBroker } from '../approvals';
 import type { EmitAgentEvent, Orchestrator } from '../orchestrator';
 import { APPROVAL_TOOLS } from './agentOptions';
@@ -42,12 +44,23 @@ export interface ClaudeOrchestratorDeps {
 }
 
 interface Session {
+  generation: number;
   input: InputQueue;
   query: QueryLike;
   abortController: AbortController;
   done: Promise<void>;
+  /** Set synchronously when the session is being torn down: nothing more is emitted from it. */
   ending: boolean;
 }
+
+/** Thrown when a reset happened while a session was still starting. Not an error for the user. */
+class SupersededError extends Error {}
+
+const RegisterInput = z.object({
+  path: z.string().min(1).max(4096),
+  name: DatasetNameSchema.optional(),
+  sheet: z.string().max(100).optional(),
+});
 
 function firstLine(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
@@ -56,25 +69,31 @@ function firstLine(error: unknown): string {
 
 /** Runs the analyst on the Claude Agent SDK (one long-lived streaming-input session). */
 export class ClaudeOrchestrator implements Orchestrator {
+  /** Bumped on every reset; a session belongs to exactly one generation (conversation). */
+  private generation = 0;
   private session: Promise<Session> | undefined;
+  /** The started session, available synchronously (for reset/stop). */
+  private live: Session | undefined;
 
   constructor(private readonly deps: ClaudeOrchestratorDeps) {}
 
   send(text: string): void {
     const starting = this.session === undefined;
     this.deps.emit({ kind: 'status', status: starting ? 'starting' : 'running' });
-    this.session ??= this.start();
+    this.session ??= this.start(this.generation);
     const pending = this.session;
     pending.then(
       (session) => {
+        if (session.ending) return;
         session.input.push(text);
         this.deps.emit({ kind: 'status', status: 'running' });
       },
       (error: unknown) => {
         if (this.session === pending) this.session = undefined;
+        if (error instanceof SupersededError) return;
         this.deps.emit({
           kind: 'error',
-          message: `Could not start the analyst: ${firstLine(error)}`,
+          message: preview(`Could not start the analyst: ${firstLine(error)}`, 2_000),
         });
         this.deps.emit({ kind: 'status', status: 'error' });
       },
@@ -82,20 +101,32 @@ export class ClaudeOrchestrator implements Orchestrator {
   }
 
   async stop(): Promise<void> {
-    const session = await this.session?.catch(() => undefined);
-    if (!session) return;
+    const session = this.live;
+    if (!session || session.ending) return;
     this.deps.emit({ kind: 'status', status: 'stopping' });
-    this.deps.approvals.denyAll();
+    this.deps.approvals.denyAll(String(session.generation));
     await session.query.interrupt().catch((error: unknown) => {
       this.deps.log?.('interrupt failed', error);
     });
+    // Don't rely on a result message arriving after an interrupt (e.g. no turn was active).
+    // (Read via a function: TS would narrow `ending` to false across the await.)
+    const ended = () => session.ending;
+    if (!ended()) this.deps.emit({ kind: 'status', status: 'idle' });
   }
 
-  async reset(): Promise<void> {
-    const pending = this.session;
+  async reset(reason: ResetReason = 'user'): Promise<void> {
+    // Synchronous part: from here on the old conversation can't emit anything.
+    this.generation++;
+    const session = this.live;
+    this.live = undefined;
     this.session = undefined;
-    const session = await pending?.catch(() => undefined);
+    if (session) session.ending = true;
     this.deps.approvals.denyAll();
+    this.deps.emit({ kind: 'conversation_reset', reason });
+    this.deps.emit({ kind: 'status', status: 'idle' });
+
+    // A session that is still starting needs no teardown here: start() sees the generation
+    // changed and discards itself (SupersededError). Never await it: it may be slow.
     if (session) {
       session.ending = true;
       session.input.close();
@@ -103,83 +134,113 @@ export class ClaudeOrchestrator implements Orchestrator {
       session.query.close();
       await Promise.race([session.done, new Promise((r) => setTimeout(r, 5_000))]);
     }
-    this.deps.emit({ kind: 'status', status: 'idle' });
   }
 
   dispose(): Promise<void> {
     return this.reset();
   }
 
-  /** Deny by default; register_dataset asks the user (DECISIONS D-010). */
-  private readonly canUseTool: CanUseTool = async (toolName, input, { signal }) => {
-    if (!(APPROVAL_TOOLS as readonly string[]).includes(toolName)) {
-      return { behavior: 'deny', message: `${toolName} is not available in DataDesk.` };
-    }
-    const path = typeof input.path === 'string' ? input.path : '(no path given)';
-    const name = typeof input.name === 'string' ? `\nDataset name: ${input.name}` : '';
-    const approved = await this.deps.approvals.request({
-      toolName,
-      title: 'Add a dataset?',
-      detail: preview(
-        `The analyst wants to register this file so it can query it:\n${path}${name}`,
-      ),
-      signal,
-    });
-    const result: PermissionResult = approved
-      ? { behavior: 'allow', updatedInput: input }
-      : { behavior: 'deny', message: 'The user declined to add this file. Do not retry.' };
-    return result;
-  };
+  /** Deny by default; register_dataset asks the user (DECISIONS D-010). Scoped per session. */
+  private canUseToolFor(generation: number): CanUseTool {
+    return async (toolName, input, { signal }) => {
+      if (!(APPROVAL_TOOLS as readonly string[]).includes(toolName)) {
+        return { behavior: 'deny', message: `${toolName} is not available in DataDesk.` };
+      }
+      // Validate before asking: never show the user (or pass on) input the tool would reject.
+      const parsed = RegisterInput.safeParse(input);
+      if (!parsed.success) {
+        return { behavior: 'deny', message: 'Invalid register_dataset input; nothing was asked.' };
+      }
+      const { path, name, sheet } = parsed.data;
+      const lines = [
+        'The analyst wants to register this file so it can query it:',
+        '',
+        `File:  ${path}`,
+        ...(name ? [`Name:  ${name} (replaces any dataset with this name)`] : []),
+        ...(sheet ? [`Sheet: ${sheet}`] : []),
+      ];
+      const approved = await this.deps.approvals.request({
+        toolName,
+        title: 'Add a dataset?',
+        detail: preview(lines.join('\n')),
+        signal,
+        scope: String(generation),
+      });
+      const result: PermissionResult = approved
+        ? { behavior: 'allow', updatedInput: parsed.data }
+        : { behavior: 'deny', message: 'The user declined to add this file. Do not retry.' };
+      return result;
+    };
+  }
 
-  private async start(): Promise<Session> {
+  private async start(generation: number): Promise<Session> {
     const abortController = new AbortController();
     const { options, workspaceDir } = await this.deps.createSession({
       abortController,
-      canUseTool: this.canUseTool,
+      canUseTool: this.canUseToolFor(generation),
     });
+    if (generation !== this.generation) throw new SupersededError();
     const input = new InputQueue();
     const query = this.deps.query({ prompt: input, options });
     const session: Session = {
+      generation,
       input,
       query,
       abortController,
       ending: false,
       done: Promise.resolve(),
     };
+    this.live = session;
     session.done = this.consume(session, workspaceDir);
     return session;
   }
 
   private async consume(session: Session, workspaceDir: string): Promise<void> {
     const map = createSdkMapper();
-    const { emit } = this.deps;
+    // Only this session's events, and only until it starts ending.
+    const emit: EmitAgentEvent = (event) => {
+      if (!session.ending) this.deps.emit(event);
+    };
+    const abort = (message: string) => {
+      emit({ kind: 'error', message: preview(message, 2_000) });
+      session.ending = true;
+      session.abortController.abort();
+      session.query.close();
+    };
+    let validated = false;
     try {
       for await (const message of session.query) {
+        if (session.ending) break;
         if (message.type === 'system' && message.subtype === 'init') {
           const problems = checkInit(message, { cwd: workspaceDir });
           if (problems.length > 0) {
-            emit({
-              kind: 'error',
-              message: `Stopped for safety: the agent session had capabilities DataDesk did not grant (${problems.join('; ')}).`,
-            });
-            session.ending = true;
-            session.abortController.abort();
-            session.query.close();
+            abort(
+              `Stopped for safety: the agent session had capabilities DataDesk did not grant (${problems.join('; ')}).`,
+            );
             break;
           }
+          validated = true;
+        } else if (!validated && ['assistant', 'stream_event', 'user'].includes(message.type)) {
+          // Fail closed: model output before we could check what the session can do.
+          abort('Stopped for safety: the agent produced output before its session was verified.');
+          break;
         }
         for (const event of map(message)) emit(event);
         if (message.type === 'result') emit({ kind: 'status', status: 'idle' });
       }
     } catch (error) {
-      if (!session.ending) emit({ kind: 'error', message: firstLine(error) });
+      emit({ kind: 'error', message: preview(firstLine(error), 2_000) });
     } finally {
-      this.deps.approvals.denyAll();
+      this.deps.approvals.denyAll(String(session.generation));
       session.input.close();
-      // If this session ended on its own (crash, guard), the next send starts a fresh one.
-      const current = await this.session?.catch(() => undefined);
-      if (current === session) this.session = undefined;
-      if (!session.ending || current === session) emit({ kind: 'status', status: 'idle' });
+      const stoppedBySafety = session.ending;
+      if (this.live === session) {
+        // Ended on its own (crash, guard): the next send starts a fresh session.
+        this.live = undefined;
+        this.session = undefined;
+        session.ending = true;
+        this.deps.emit({ kind: 'status', status: stoppedBySafety ? 'error' : 'idle' });
+      }
     }
   }
 }

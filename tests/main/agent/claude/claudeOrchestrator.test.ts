@@ -181,5 +181,96 @@ describe('ClaudeOrchestrator', () => {
       if (req2?.kind === 'approval_request') t.approvals.respond(req2.requestId, false);
       await expect(denied).resolves.toMatchObject({ behavior: 'deny' });
     });
+
+    it('denies invalid register_dataset input without asking the user', async () => {
+      const { t, call } = await gate();
+      await expect(
+        call('mcp__datadesk__register_dataset', { path: 'C:/x.csv', name: 'Bad Name; DROP' }),
+      ).resolves.toMatchObject({ behavior: 'deny' });
+      await expect(call('mcp__datadesk__register_dataset', {})).resolves.toMatchObject({
+        behavior: 'deny',
+      });
+      expect(t.kinds()).not.toContain('approval_request');
+    });
+
+    it('shows path, name and sheet as separate fields', async () => {
+      const { t, call } = await gate();
+      void call('mcp__datadesk__register_dataset', {
+        path: 'C:/data/q1.xlsx',
+        name: 'q1',
+        sheet: 'Orders',
+      });
+      await t.until(() => t.kinds().includes('approval_request'));
+      const req = t.events.find((e) => e.kind === 'approval_request');
+      const detail = req?.kind === 'approval_request' ? req.detail : '';
+      expect(detail).toContain('File:  C:/data/q1.xlsx');
+      expect(detail).toContain('Name:  q1 (replaces any dataset with this name)');
+      expect(detail).toContain('Sheet: Orders');
+    });
+  });
+});
+
+describe('ClaudeOrchestrator lifecycle (review regressions)', () => {
+  it('reset emits a boundary marker and nothing from the old session follows it', async () => {
+    // A turn that keeps streaming until closed.
+    const endless = Array.from({ length: 50 }, (_, i) => sdk.textDelta(`chunk${String(i)} `));
+    const t = setup([[sdk.messageStart('m1'), ...endless]]);
+    t.orchestrator.send('stream please');
+    await t.until(() => t.kinds().includes('text_delta'));
+    await t.orchestrator.reset('user');
+    const markerIndex = t.events.findIndex((e) => e.kind === 'conversation_reset');
+    expect(markerIndex).toBeGreaterThan(-1);
+    const after = t.events.slice(markerIndex + 1).map((e) => e.kind);
+    expect(after.filter((k) => k !== 'status')).toEqual([]);
+  });
+
+  it('a reset while the session is still starting closes it and emits no error', async () => {
+    const t = setup([[sdk.result(0.01)]]);
+    let release: () => void = () => undefined;
+    t.createSession.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = () => {
+            resolve({ options: { cwd: WORKSPACE }, workspaceDir: WORKSPACE });
+          };
+        }),
+    );
+    t.orchestrator.send('hello');
+    await t.orchestrator.reset('settings');
+    release();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(t.kinds()).not.toContain('error');
+    expect(t.calls.prompts).toEqual([]); // the superseded session never received the message
+    // The next message starts a fresh session.
+    t.orchestrator.send('again');
+    await t.until(() => t.calls.prompts.includes('again'));
+  });
+
+  it('fails closed if the model produces output before init was verified', async () => {
+    const t = setup([[sdk.assistant('m1', [{ type: 'text', text: 'hi' }]), sdk.result(0)]], {
+      initFirst: null,
+    });
+    t.orchestrator.send('x');
+    await t.until(() => t.kinds().includes('error'));
+    const error = t.events.find((e) => e.kind === 'error');
+    expect(error?.kind === 'error' && error.message).toMatch(/before its session was verified/);
+    expect(t.kinds()).not.toContain('assistant_message');
+  });
+
+  it('stop returns the UI to idle even if no result message follows', async () => {
+    const t = setup([[]]);
+    t.orchestrator.send('x');
+    await t.until(() => t.calls.prompts.length === 1);
+    await t.orchestrator.stop();
+    expect(t.events.at(-1)).toEqual({ kind: 'status', status: 'idle' });
+  });
+
+  it('truncates long error messages instead of dropping them', async () => {
+    const t = setup([]);
+    t.createSession.mockRejectedValueOnce(new Error('x'.repeat(5_000)));
+    t.orchestrator.send('hi');
+    await t.until(() => t.kinds().includes('error'));
+    const error = t.events.find((e) => e.kind === 'error');
+    expect(error?.kind === 'error' && error.message.length).toBeLessThanOrEqual(2_000);
   });
 });

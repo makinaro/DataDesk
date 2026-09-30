@@ -73,6 +73,17 @@ describe('ApprovalBroker', () => {
     expect(events.filter((e) => e.kind === 'approval_resolved')).toHaveLength(1);
   });
 
+  it('denyAll(scope) only denies that scope (one session cannot cancel another)', async () => {
+    const { broker, lastRequestId } = setup();
+    const old = broker.request({ toolName: 'a', title: 'a', detail: '', scope: '1' });
+    const current = broker.request({ toolName: 'b', title: 'b', detail: '', scope: '2' });
+    const currentId = lastRequestId();
+    broker.denyAll('1');
+    await expect(old).resolves.toBe(false);
+    expect(broker.respond(currentId, true)).toBe(true);
+    await expect(current).resolves.toBe(true);
+  });
+
   it('denyAll rejects everything pending (e.g. on reset or shutdown)', async () => {
     const { broker } = setup();
     const a = broker.request({ toolName: 'a', title: 'a', detail: '' });

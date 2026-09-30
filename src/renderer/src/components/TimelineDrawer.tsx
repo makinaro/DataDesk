@@ -63,6 +63,13 @@ function Item({ item }: { item: TimelineItem }) {
           {item.approved === null ? 'waiting' : item.approved ? 'approved' : 'denied'}
         </li>
       );
+    case 'reset':
+      return (
+        <li className="text-xs text-slate-500">
+          New conversation (
+          {item.reason === 'settings' ? 'analyst settings changed' : 'Anthropic key changed'})
+        </li>
+      );
     case 'error':
       return (
         <li role="alert" className="text-xs text-red-300">

@@ -6,6 +6,13 @@ export interface ApprovalRequest {
   title: string;
   detail: string;
   signal?: AbortSignal;
+  /** Groups requests (e.g. per agent session) so one session can't cancel another's. */
+  scope?: string;
+}
+
+interface Pending {
+  scope: string | undefined;
+  finish: (approved: boolean) => void;
 }
 
 /**
@@ -14,14 +21,14 @@ export interface ApprovalRequest {
  * timeouts, aborts, unknown request ids, and shutting down.
  */
 export class ApprovalBroker {
-  private readonly pending = new Map<string, (approved: boolean) => void>();
+  private readonly pending = new Map<string, Pending>();
 
   constructor(
     private readonly emit: EmitAgentEvent,
     private readonly timeoutMs = 5 * 60_000,
   ) {}
 
-  request({ toolName, title, detail, signal }: ApprovalRequest): Promise<boolean> {
+  request({ toolName, title, detail, signal, scope }: ApprovalRequest): Promise<boolean> {
     const requestId = randomUUID();
     return new Promise<boolean>((resolve) => {
       const finish = (approved: boolean) => {
@@ -37,7 +44,7 @@ export class ApprovalBroker {
       const timer = setTimeout(() => {
         finish(false);
       }, this.timeoutMs);
-      this.pending.set(requestId, finish);
+      this.pending.set(requestId, { scope, finish });
       if (signal?.aborted) {
         finish(false);
         return;
@@ -49,13 +56,16 @@ export class ApprovalBroker {
 
   /** Returns false if the request is unknown or already resolved. */
   respond(requestId: string, approved: boolean): boolean {
-    const finish = this.pending.get(requestId);
-    if (!finish) return false;
-    finish(approved);
+    const entry = this.pending.get(requestId);
+    if (!entry) return false;
+    entry.finish(approved);
     return true;
   }
 
-  denyAll(): void {
-    for (const finish of [...this.pending.values()]) finish(false);
+  /** Denies every pending request, or only those in `scope`. */
+  denyAll(scope?: string): void {
+    for (const entry of [...this.pending.values()]) {
+      if (scope === undefined || entry.scope === scope) entry.finish(false);
+    }
   }
 }
