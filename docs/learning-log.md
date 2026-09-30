@@ -214,6 +214,11 @@ What happens when you drop `sales.csv` on the sidebar and it appears with a prev
 - **`realpath` also expands Windows 8.3 short names** (`C:\PROGRA~1`), so "real path ≠ requested
   path" doesn't mean "link". The reviewer caught this before CI did; GitHub runners use a short
   temp dir.
+- **Node has two `realpath`s** (found after merge, when CI went red): `fs.promises.realpath` and
+  `realpathSync.native` call the OS and expand 8.3 names. Plain `fs.realpathSync` is a JS
+  implementation that doesn't. My regression test used the JS one as its expected value, so it
+  failed only on CI's `C:\Users\RUNNER~1\…` temp dir. To reproduce CI locally, set `TEMP`/`TMP` to
+  the short form of a long-named folder.
 - **Excel has no integer type:** whole numbers arrive as `DOUBLE`. BIGINT/DECIMAL arrive from
   DuckDB's JSON converter as _strings_, so we convert safe ones back to numbers.
 - **stdout belongs to the protocol.** A stray `console.log` in the server corrupts the stream.
