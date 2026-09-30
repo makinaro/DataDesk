@@ -30,7 +30,7 @@ hooks and permissions from the developer side.
 
 - [x] DuckDB wrapper: in-memory instance, `memory_limit`, `threads`, query timeout via `interrupt()`
 - [x] Catalog (`userData/catalog.json`, atomic writes) and view re-creation on startup
-- [ ] `register_dataset` (CSV, Parquet, JSON, XLSX); CSV/Parquet/JSON done, XLSX pending
+- [x] `register_dataset` (CSV, Parquet, JSON, XLSX via pre-fetched `excel` extension)
 - [x] `list_datasets`, `get_schema`, `sample_rows`, `profile_column`
 - [x] `run_sql`: single statement, `statementType === SELECT` (by statement type, not regex),
       row cap via `streamAndReadUntil(cap+1)` with a truncation flag, timeout/cancel via `interrupt()`,

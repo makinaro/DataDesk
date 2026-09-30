@@ -16,7 +16,7 @@ export function createWorkspace(options: Partial<DbOptions> = {}) {
   const root = mkdtempSync(join(tmpdir(), 'datadesk-mcp-'));
   const dataDir = join(root, 'data');
   mkdirSync(dataDir, { recursive: true });
-  for (const f of ['sales.csv', 'sales.parquet', 'sales.json', 'events.ndjson']) {
+  for (const f of ['sales.csv', 'sales.parquet', 'sales.json', 'events.ndjson', 'sales.xlsx']) {
     copyFileSync(join(PUBLIC_DIR, f), join(dataDir, f));
   }
   const secretPath = join(dataDir, 'secret.txt');
@@ -61,3 +61,6 @@ export function createWorkspace(options: Partial<DbOptions> = {}) {
 
 /** Forward-slash path for embedding in SQL string literals. */
 export const sqlPath = (p: string) => p.split('\\').join('/');
+
+/** Fetched by `npm run duckdb:extensions` (not committed; see .gitignore). */
+export const EXTENSION_DIR = resolve('resources/duckdb-extensions');

@@ -30,6 +30,17 @@ jobs:
       - name: Install
         run: npm ci
 
+      # DuckDB's Excel extension isn't bundled and the app never auto-installs extensions, so fetch
+      # it once (signature-checked by DuckDB) and cache it per DuckDB version.
+      - name: Cache DuckDB extensions
+        uses: actions/cache@v6
+        with:
+          path: resources/duckdb-extensions
+          key: duckdb-ext-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Fetch DuckDB extensions
+        run: npm run duckdb:extensions
+
       - name: Typecheck, lint, format, unit tests
         run: npm run check
 

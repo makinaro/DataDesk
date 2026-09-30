@@ -13,6 +13,7 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
+    "duckdb:extensions": "node scripts/fetch-duckdb-extensions.mjs",
     "mcp:inspect": "electron-vite build && npx -y @modelcontextprotocol/inspector@2.8.0 --web -e DATADESK_CATALOG_PATH=.dev-data/catalog.json node out/main/mcp-server.js",
     "mcp:tools": "electron-vite build && npx -y @modelcontextprotocol/inspector@2.8.0 --cli node out/main/mcp-server.js --method tools/list -e DATADESK_CATALOG_PATH=.dev-data/catalog.json",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.e2e.json",
