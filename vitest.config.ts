@@ -11,7 +11,9 @@ export default defineConfig({
         test: {
           name: 'node',
           environment: 'node',
-          include: ['tests/{main,preload,shared,setup,tooling}/**/*.test.ts'],
+          include: [
+            'tests/{main,preload,shared,setup,tooling,node-shared,mcp-server}/**/*.test.ts',
+          ],
           setupFiles: ['tests/setup/no-network.ts'],
         },
       },

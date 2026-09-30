@@ -1,9 +1,13 @@
 import { join } from 'node:path';
-import { app, BrowserWindow, ipcMain, safeStorage } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, safeStorage } from 'electron';
 import { registerAppHandlers } from './ipc/handlers/app';
+import { registerDatasetHandlers } from './ipc/handlers/datasets';
 import { registerSecretsHandlers } from './ipc/handlers/secrets';
 import { createIpcRouter } from './ipc/router';
 import { createSenderCheck } from './ipc/trustedSender';
+import { createStdioTransport } from './mcp/serverProcess';
+import { UiMcpClient } from './mcp/uiClient';
+import { serverPaths } from './paths';
 import { KeyStore } from './secrets/keyStore';
 import {
   APP_ENTRY_URL,
@@ -75,6 +79,42 @@ function start(): void {
         },
       );
       registerSecretsHandlers(handle, keyStore);
+
+      const paths = serverPaths();
+      const uiClient = new UiMcpClient({
+        createTransport: () =>
+          createStdioTransport(paths, (line) => {
+            console.error(line);
+          }),
+        log: (message) => {
+          console.error(`[ui-mcp] ${message}`);
+        },
+      });
+      registerDatasetHandlers(handle, {
+        client: uiClient,
+        pickFile: async () => {
+          const owner = BrowserWindow.getFocusedWindow();
+          const options: Electron.OpenDialogOptions = {
+            title: 'Add a dataset',
+            properties: ['openFile'],
+            filters: [
+              {
+                name: 'Data files',
+                extensions: ['csv', 'tsv', 'parquet', 'json', 'jsonl', 'ndjson', 'xlsx'],
+              },
+            ],
+          };
+          const result = owner
+            ? await dialog.showOpenDialog(owner, options)
+            : await dialog.showOpenDialog(options);
+          return result.canceled ? null : (result.filePaths[0] ?? null);
+        },
+      });
+      app.on('will-quit', () => {
+        uiClient.close().catch((error: unknown) => {
+          console.error('[ui-mcp] close failed', error);
+        });
+      });
 
       createMainWindow(rendererUrl);
       app.on('activate', () => {

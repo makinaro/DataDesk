@@ -7,12 +7,15 @@
   "type": "module",
   "main": "./out/main/index.js",
   "engines": {
-    "node": ">=22.12.0"
+    "node": ">=22.19.0"
   },
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
+    "duckdb:extensions": "node scripts/fetch-duckdb-extensions.mjs",
+    "mcp:inspect": "electron-vite build && npx -y @modelcontextprotocol/inspector@2.8.0 --web -e DATADESK_CATALOG_PATH=.dev-data/catalog.json node out/main/mcp-server.js",
+    "mcp:tools": "electron-vite build && npx -y @modelcontextprotocol/inspector@2.8.0 --cli node out/main/mcp-server.js --method tools/list -e DATADESK_CATALOG_PATH=.dev-data/catalog.json",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.e2e.json",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
@@ -24,6 +27,8 @@
     "check": "npm run typecheck && npm run lint && npm run format:check && npm run test"
   },
   "dependencies": {
+    "@duckdb/node-api": "1.5.6-r.1",
+    "@modelcontextprotocol/sdk": "1.31.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "zod": "4.6.5"

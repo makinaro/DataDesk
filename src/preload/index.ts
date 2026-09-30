@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type { DatadeskApi } from '../shared/ipc/api';
 import { IpcChannels, type IpcChannel } from '../shared/ipc/channels';
 import type { IpcRequest, IpcResponse } from '../shared/ipc/contract';
@@ -22,6 +22,32 @@ const api: DatadeskApi = {
     status: () => invoke(IpcChannels.secretsStatus),
     set: (provider, key) => invoke(IpcChannels.secretsSet, { provider, key }),
     clear: (provider) => invoke(IpcChannels.secretsClear, { provider }),
+  },
+  datasets: {
+    list: () => invoke(IpcChannels.datasetsList),
+    registerFile: (file, name) => {
+      // Only a File that came from the user's file system (drag-drop / <input type=file>) has a
+      // path. A File constructed by page script resolves to '', so the page can't name paths.
+      let path = '';
+      try {
+        path = webUtils.getPathForFile(file);
+      } catch {
+        // Not a File object at all.
+      }
+      if (!path) {
+        return Promise.resolve({
+          ok: false,
+          error: {
+            code: 'INVALID_REQUEST',
+            message: 'Only files from your computer can be added.',
+          },
+        });
+      }
+      return invoke(IpcChannels.datasetsRegister, name === undefined ? { path } : { path, name });
+    },
+    pick: () => invoke(IpcChannels.datasetsPick),
+    schema: (name) => invoke(IpcChannels.datasetsSchema, { name }),
+    preview: (name, limit) => invoke(IpcChannels.datasetsPreview, { name, limit }),
   },
 };
 

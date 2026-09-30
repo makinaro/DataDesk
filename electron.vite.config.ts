@@ -9,7 +9,11 @@ export default defineConfig({
   main: {
     build: {
       rollupOptions: {
-        input: { index: resolve(root, 'src/main/index.ts') },
+        input: {
+          index: resolve(root, 'src/main/index.ts'),
+          // datadesk-mcp: a separate process entry (see src/mcp-server/index.ts).
+          'mcp-server': resolve(root, 'src/mcp-server/index.ts'),
+        },
       },
     },
   },

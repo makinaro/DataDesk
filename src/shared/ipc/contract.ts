@@ -1,4 +1,11 @@
 import { z } from 'zod';
+import {
+  ColumnInfoSchema,
+  DatasetNameSchema,
+  DatasetPreviewSchema,
+  DatasetSummarySchema,
+  RegisteredDatasetSchema,
+} from '../datasets';
 import { IpcChannels, type IpcChannel } from './channels';
 
 export const ProviderSchema = z.enum(['anthropic', 'openai', 'huggingface']);
@@ -35,6 +42,35 @@ export const ipcContract = {
   [IpcChannels.secretsClear]: {
     request: z.strictObject({ provider: ProviderSchema }),
     response: SecretsStatusSchema,
+  },
+  [IpcChannels.datasetsList]: {
+    request: NoPayload,
+    response: z.array(DatasetSummarySchema).max(10_000),
+  },
+  [IpcChannels.datasetsRegister]: {
+    // The preload resolves this path from a dropped File (webUtils.getPathForFile); the MCP
+    // server's import policy validates it again (DECISIONS D-010).
+    request: z.strictObject({
+      path: z.string().min(1).max(4096),
+      name: DatasetNameSchema.optional(),
+    }),
+    response: RegisteredDatasetSchema,
+  },
+  [IpcChannels.datasetsPick]: {
+    // Main shows the OS file dialog, so the path never comes from the renderer.
+    request: NoPayload,
+    response: RegisteredDatasetSchema.nullable(),
+  },
+  [IpcChannels.datasetsSchema]: {
+    request: z.strictObject({ name: DatasetNameSchema }),
+    response: z.array(ColumnInfoSchema).max(10_000),
+  },
+  [IpcChannels.datasetsPreview]: {
+    request: z.strictObject({
+      name: DatasetNameSchema,
+      limit: z.number().int().min(1).max(100),
+    }),
+    response: DatasetPreviewSchema,
   },
 } as const satisfies Record<IpcChannel, { request: z.ZodType; response: z.ZodType }>;
 

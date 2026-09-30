@@ -1,6 +1,6 @@
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import { readFile, rename } from 'node:fs/promises';
 import { z } from 'zod';
+import { writeFileAtomic, type RenameFn } from '../../node-shared/atomicFile';
 import { ProviderSchema, type Provider, type SecretsStatus } from '../../shared/ipc/contract';
 
 /** The slice of Electron's safeStorage we use (DPAPI on Windows). Injected for tests. */
@@ -24,26 +24,6 @@ const SecretsFileSchema = z.strictObject({
 type SecretsFile = z.infer<typeof SecretsFileSchema>;
 
 const EMPTY: SecretsFile = { version: 1, keys: {} };
-
-type RenameFn = (from: string, to: string) => Promise<void>;
-
-// On Windows, antivirus, the search indexer or sync clients can briefly hold the target open,
-// making rename-over-existing fail with one of these codes. They usually clear within ms.
-const TRANSIENT_RENAME_CODES = new Set(['EPERM', 'EACCES', 'EBUSY']);
-const RENAME_ATTEMPTS = 5;
-
-async function renameWithRetry(renameFile: RenameFn, from: string, to: string): Promise<void> {
-  for (let attempt = 1; ; attempt++) {
-    try {
-      await renameFile(from, to);
-      return;
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code ?? '';
-      if (attempt >= RENAME_ATTEMPTS || !TRANSIENT_RENAME_CODES.has(code)) throw error;
-      await new Promise((resolve) => setTimeout(resolve, 50 * attempt));
-    }
-  }
-}
 
 /**
  * Encrypted API key storage. Lives only in the main process.
@@ -120,15 +100,10 @@ export class KeyStore {
   private update(mutate: (file: SecretsFile) => SecretsFile): Promise<void> {
     const run = async (): Promise<void> => {
       const next = mutate(await this.load());
-      await mkdir(dirname(this.filePath), { recursive: true });
-      const tmp = `${this.filePath}.${String(process.pid)}.tmp`;
-      try {
-        await writeFile(tmp, JSON.stringify(next, null, 2), { encoding: 'utf8', mode: 0o600 });
-        await renameWithRetry(this.renameFile, tmp, this.filePath);
-      } catch (error) {
-        await rm(tmp, { force: true });
-        throw error;
-      }
+      await writeFileAtomic(this.filePath, JSON.stringify(next, null, 2), {
+        mode: 0o600,
+        renameFile: this.renameFile,
+      });
       this.cache = next;
     };
     const result = this.writeQueue.then(run, run);

@@ -30,3 +30,9 @@ Thumbs.db
 !.vscode/extensions.json
 .idea/
 *.log
+
+# local MCP dev catalog (npm run mcp:inspect)
+.dev-data/
+
+# fetched by npm run duckdb:extensions (22 MB, signature-checked by DuckDB)
+resources/duckdb-extensions/

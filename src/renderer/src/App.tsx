@@ -8,6 +8,8 @@ import { TimelineDrawer } from './components/TimelineDrawer';
 export function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [timelineOpen, setTimelineOpen] = useState(true);
+  const [selectedDataset, setSelectedDataset] = useState<string | null>(null);
+  const [datasetsRevision, setDatasetsRevision] = useState(0);
 
   return (
     <div className="flex h-screen flex-col bg-slate-950 text-slate-100">
@@ -37,9 +39,16 @@ export function App() {
       </header>
 
       <main className="flex min-h-0 flex-1">
-        <DatasetSidebar />
+        <DatasetSidebar
+          selected={selectedDataset}
+          onSelect={setSelectedDataset}
+          revision={datasetsRevision}
+          onChanged={() => {
+            setDatasetsRevision((r) => r + 1);
+          }}
+        />
         <ChatPanel />
-        <ResultsPanel />
+        <ResultsPanel dataset={selectedDataset} revision={datasetsRevision} />
       </main>
 
       {timelineOpen && <TimelineDrawer />}

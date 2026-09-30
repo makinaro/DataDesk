@@ -7,6 +7,11 @@ export const IpcChannels = {
   secretsStatus: 'secrets:status',
   secretsSet: 'secrets:set',
   secretsClear: 'secrets:clear',
+  datasetsList: 'datasets:list',
+  datasetsRegister: 'datasets:register',
+  datasetsPick: 'datasets:pick',
+  datasetsSchema: 'datasets:schema',
+  datasetsPreview: 'datasets:preview',
 } as const;
 
 export type IpcChannel = (typeof IpcChannels)[keyof typeof IpcChannels];

@@ -105,3 +105,81 @@ the protected names (a heredoc, a `git commit -m` message) is blocked too, so wr
 the file tools and commit with `git commit -F <file>`. It can still be bypassed by an indirect read
 (e.g. a script that opens files itself), so it's defense in depth, not a sandbox. Verified live in
 the Phase 0 session: a shell read of the env file was blocked.
+
+## D-009: `run_sql` is read-only in three layers; lockdown uses `allowed_paths` + rebuild (2026-10-01)
+
+**Context:** A statement-type check alone can't stop `SELECT * FROM read_text('C:/…')`. Verified
+on DuckDB 1.5.6 (probe scripts + `docs-researcher`): once `enable_external_access = false`,
+neither `allowed_paths` nor `allowed_directories` can change, access can't be re-enabled, and
+extensions can't be loaded. `allowed_directories` is a prefix match, so allowing the folder of a
+dropped file would expose every sibling (e.g. all of Downloads).
+**Decision:**
+
+1. **Parser layer:** `extractStatements().count === 1` and `prepared.statementType === SELECT`.
+2. **Instance layer:** each catalog change builds a fresh in-memory instance: set limits, disable
+   autoinstall/autoload, `LOAD excel` if needed, create one view per dataset, set
+   `allowed_paths` = exactly the registered files, then `enable_external_access = false` and
+   `lock_configuration = true`.
+3. **Execution layer:** `streamAndReadUntil(cap + 1)` for row caps, `interrupt()` on timeout or
+   MCP cancellation, and one serialized connection.
+
+**Alternatives:** regex filtering (bypassable); `allowed_directories` (exposes siblings);
+materialising data into tables (copies large files into memory).
+**Consequences:** A registration costs one instance rebuild (milliseconds; views don't copy data).
+Some writes are rejected by DuckDB's binder before our type check runs, which is fine because
+nothing executes. Statement-form `PIVOT` without `IN (...)` is rejected, because DuckDB expands
+it into several statements (it creates an ENUM type).
+
+## D-010: `register_dataset` is a security boundary (2026-10-01)
+
+**Context:** Registering a file grants the analyst read access to it, so a model-chosen path is
+a way to read arbitrary files (SSH keys, other apps' JSON configs).
+**Decision:** `validateImportPath` accepts only absolute local paths (no UNC, since on Windows those
+can leak credentials), no symlinks or junctions (the real path must equal the requested path),
+regular files with a data extension, under a size cap, and never inside deny-listed dirs (the
+app's userData). **In Phase 2, agent-initiated `register_dataset` calls go through human
+approval**; files the user drops in the UI are trusted.
+**Alternatives:** trusting the model (unsafe); removing the tool from the agent entirely (the
+roadmap wants it).
+**Consequences:** `.json` files are importable, so approval (Phase 2) matters. Tracked in ROADMAP
+Phase 2.
+
+## D-011: MCP server surface conventions (2026-10-01)
+
+**Context:** MCP SDK 1.31 turns every handler failure into an `isError` tool result, and only
+validates `structuredContent` against `outputSchema` when not `isError`.
+**Decision:** Every tool declares input and output zod schemas and annotations (read-only tools:
+`readOnlyHint: true, openWorldHint: false`). Tools return `structuredContent` plus a text mirror
+for clients that only read `content`. Expected failures (guard, timeout, import policy,
+unavailable dataset) return their message. Unexpected errors return only the first line (no
+stacks or paths). Logs go to stderr, because stdout is the protocol.
+**Consequences:** The model sees every mistake and can retry. Tests assert on `isError` and
+message text rather than thrown errors.
+
+## D-012: Phase 1 review hardening (2026-10-01)
+
+**Context:** The Phase 1 `code-reviewer` run found no lockdown escape, but it did find robustness
+gaps: an 8.3 short-path false positive (it would break on CI runners), a whole-list failure from
+one broken dataset, cross-process catalog lost updates, bind-time work outside the timeout, and
+no byte limit on results.
+**Decision:**
+
+- **Link detection** walks each path component with `lstat` instead of comparing against
+  `realpath` (which also expands `C:\PROGRA~1`).
+- **File names with `* ? [ ]` are rejected**, because DuckDB would treat them as globs.
+- **Catalog read-modify-write holds a cross-process lockfile** (`catalog.json.lock`, created
+  exclusively, taken over after 15 s if stale).
+- **Row counts are taken once at registration** (under the timeout) and stored in the catalog.
+  Listings never scan files, and a failed entry is reported per dataset.
+- **Failed datasets are retried on each listing**, so a reconnected drive recovers.
+- **Sessions are stamped with the signature they were built from**, so a concurrent change in
+  another process always triggers a rebuild.
+- **Timeout and cancellation now cover `prepare` (binding) as well as streaming.** Verified by a
+  test: `interrupt()` aborts a full-file CSV sniff.
+- **Results stream chunk by chunk under a row cap _and_ a byte budget** (2 MB), with cells over
+  10 000 characters clipped (`clippedCells`).
+
+**Alternatives:** last-write-wins catalog (silently loses registrations once agent servers exist).
+**Consequences:** One chunk (up to 2048 rows) is the granularity of the byte budget, so
+DuckDB's `memory_limit` remains the backstop for pathological rows. Row counts can be stale if a
+file changes after registration.
