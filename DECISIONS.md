@@ -86,3 +86,22 @@ truth); keeping `file://`.
 **Consequences:** Navigation checks must compare scheme and host explicitly: Node's `URL` reports
 origin `"null"` for non-special schemes, so a naive `.origin` comparison matched _every_ custom
 scheme. A regression test guards this.
+
+## D-008: Enforce dev-agent limits with hooks, not just prompts (2026-10-01)
+
+**Context:** The owner asked for a read-only `code-reviewer` and a `test-writer` that edits only
+test files. Claude Code subagent `tools` lists can't scope Bash to specific commands, because a
+specifier in `disallowedTools` removes the whole tool. Read deny rules are best-effort for
+Grep/Glob and don't cover arbitrary subprocesses.
+**Decision:** One Node hook script (`.claude/hooks/agent-guards.mjs`) with three pure policies in
+`policies.mjs`: `private-paths` (project-wide PreToolUse on shell, search and file tools),
+`git-readonly` (code-reviewer frontmatter hook) and `tests-only` (test-writer frontmatter hook).
+Hooks exit 2 to block, and fail closed on bad input. The policies are unit-tested in
+`tests/tooling/`.
+**Alternatives:** prompt-only instructions (not enforced); shell-script hooks (bash/PowerShell
+portability issues on Windows).
+**Consequences:** String matching is deliberately strict. Any shell command that merely _mentions_
+the protected names (a heredoc, a `git commit -m` message) is blocked too, so write such text with
+the file tools and commit with `git commit -F <file>`. It can still be bypassed by an indirect read
+(e.g. a script that opens files itself), so it's defense in depth, not a sandbox. Verified live in
+the Phase 0 session: a shell read of the env file was blocked.

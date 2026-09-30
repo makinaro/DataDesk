@@ -18,7 +18,7 @@ Legend: `[ ]` todo · `[x]` done
 - [x] safeStorage KeyStore + Settings dialog (set / clear / status only)
 - [x] App shell placeholders: dataset sidebar, chat, charts/report panel, timeline drawer
 - [x] CI: GitHub Actions on windows-latest (check + e2e)
-- [ ] `.claude/`: settings permissions + hooks, 3 agents, 3 skills
+- [x] `.claude/`: settings permissions + hooks, 3 agents, 3 skills
 
 **Done when:** `npm run check` and `npm run test:e2e` pass locally and in CI. The e2e test proves
 that `webPreferences` are hardened, `window.require` is undefined, the bridge exposes only the
