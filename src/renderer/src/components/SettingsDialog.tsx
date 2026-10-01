@@ -11,7 +11,11 @@ const PROVIDERS: { id: Provider; label: string; hint: string }[] = [
     label: 'OpenAI',
     hint: 'Enables column search and second-opinion tools. When the analyst uses them, OpenAI receives column names and types, a few sample values, the search wording, and for second opinions the question, the SQL, a preview of up to 50 result rows and the draft answer. Critiques are requested with storage off; OpenAI’s API data policy still applies. Changing this key starts a new conversation.',
   },
-  { id: 'huggingface', label: 'Hugging Face', hint: 'Dataset discovery and downloads.' },
+  {
+    id: 'huggingface',
+    label: 'Hugging Face',
+    hint: 'Lets the analyst search the Hugging Face Hub and download public datasets. Hugging Face receives the search words, the dataset ids and files it looks at, and your token (a read-only token is enough). Nothing from your local datasets is sent. Every download asks you first and is capped at 500 MB; files are kept in DataDesk’s data folder. Changing this token starts a new conversation.',
+  },
 ];
 
 interface Props {

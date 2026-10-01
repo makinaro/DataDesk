@@ -82,4 +82,11 @@ describe('SettingsDialog', () => {
     await user.click(screen.getByRole('button', { name: 'Save OpenAI key' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('encryption is unavailable');
   });
+
+  it('says what the Hugging Face token sends, that downloads ask first, and the reset', () => {
+    renderDialog(createFakeApi());
+    expect(screen.getByText(/Hugging Face receives the search words/)).toHaveTextContent(
+      /Nothing from your local datasets is sent.*Every download asks you first.*starts a new conversation/,
+    );
+  });
 });
