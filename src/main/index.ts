@@ -134,6 +134,7 @@ function start(): void {
         currentOrchestrator: () => agent.current(),
         approvals: agent.approvals,
         settings,
+        onSettingsChanged: () => agent.onSettingsChanged(),
       });
       const uiClient = new UiMcpClient({
         createTransport: () =>

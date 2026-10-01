@@ -1,6 +1,11 @@
 import { useEffect, useId, useState, type SyntheticEvent } from 'react';
-import type { AgentSettings } from '../../../shared/agent';
+import type { AgentSettings, AnalystProvider, OpenAIModel } from '../../../shared/agent';
 import { useApi } from '../api';
+
+const PROVIDERS: { value: AnalystProvider; label: string }[] = [
+  { value: 'anthropic', label: 'Claude (Anthropic)' },
+  { value: 'openai', label: 'GPT (OpenAI)' },
+];
 
 const MODELS = [
   { value: 'sonnet', label: 'Sonnet (balanced, default)' },
@@ -8,10 +13,16 @@ const MODELS = [
   { value: 'haiku', label: 'Haiku (fastest, cheapest)' },
 ];
 
-/** Model, spend cap and turn cap for the analyst. Saving starts a new conversation. */
+const OPENAI_MODEL_OPTIONS: { value: OpenAIModel; label: string }[] = [
+  { value: 'gpt-5.4-mini', label: 'GPT-5.4 mini (fast, cheap, default)' },
+  { value: 'gpt-5.4', label: 'GPT-5.4 (balanced)' },
+  { value: 'gpt-5.5', label: 'GPT-5.5 (most capable)' },
+];
+
+/** Provider, model, spend cap and turn cap for the analyst. Saving starts a new conversation. */
 export function AnalystSettingsForm() {
   const api = useApi();
-  const ids = { model: useId(), budget: useId(), turns: useId() };
+  const ids = { provider: useId(), model: useId(), budget: useId(), turns: useId() };
   const [settings, setSettings] = useState<AgentSettings | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -34,22 +45,62 @@ export function AnalystSettingsForm() {
   return (
     <form onSubmit={(e) => void save(e)} className="space-y-3 text-sm">
       <div className="flex items-center justify-between gap-3">
-        <label htmlFor={ids.model}>Model</label>
+        <label htmlFor={ids.provider}>Provider</label>
         <select
-          id={ids.model}
-          value={settings.model}
+          id={ids.provider}
+          value={settings.provider}
           onChange={(e) => {
-            setSettings({ ...settings, model: e.target.value });
+            setSettings({ ...settings, provider: e.target.value as AnalystProvider });
           }}
           className="rounded border border-slate-700 bg-slate-950 px-2 py-1"
         >
-          {MODELS.map((m) => (
-            <option key={m.value} value={m.value}>
-              {m.label}
+          {PROVIDERS.map((p) => (
+            <option key={p.value} value={p.value}>
+              {p.label}
             </option>
           ))}
         </select>
       </div>
+      <div className="flex items-center justify-between gap-3">
+        <label htmlFor={ids.model}>Model</label>
+        {settings.provider === 'openai' ? (
+          <select
+            id={ids.model}
+            value={settings.openaiModel}
+            onChange={(e) => {
+              setSettings({ ...settings, openaiModel: e.target.value as OpenAIModel });
+            }}
+            className="rounded border border-slate-700 bg-slate-950 px-2 py-1"
+          >
+            {OPENAI_MODEL_OPTIONS.map((m) => (
+              <option key={m.value} value={m.value}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <select
+            id={ids.model}
+            value={settings.model}
+            onChange={(e) => {
+              setSettings({ ...settings, model: e.target.value });
+            }}
+            className="rounded border border-slate-700 bg-slate-950 px-2 py-1"
+          >
+            {MODELS.map((m) => (
+              <option key={m.value} value={m.value}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+        )}
+      </div>
+      {settings.provider === 'openai' && (
+        <p className="text-xs text-slate-500">
+          Needs your OpenAI key. OpenAI then receives the whole conversation (see the OpenAI key
+          note). Hugging Face tools are only available with Claude.
+        </p>
+      )}
       <div className="flex items-center justify-between gap-3">
         <label htmlFor={ids.budget}>Max spend per conversation (USD)</label>
         <input

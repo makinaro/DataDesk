@@ -89,4 +89,31 @@ describe('SettingsDialog', () => {
       /never uploads your files.*private or gated.*read-only token.*Every download asks you first.*starts a new conversation/,
     );
   });
+
+  it('says that choosing OpenAI as the provider sends it the whole conversation', () => {
+    renderDialog(createFakeApi());
+    expect(screen.getByText(/Enables column search/)).toHaveTextContent(
+      /choose OpenAI as the analyst’s provider.*whole conversation.*sample rows and query results.*storage off and tracing disabled/,
+    );
+  });
+
+  it('switches the analyst to OpenAI with an OpenAI model', async () => {
+    const user = userEvent.setup();
+    const { api } = renderDialog(createFakeApi({ openai: true }));
+    const provider = await screen.findByLabelText('Provider');
+    expect(provider).toHaveValue('anthropic');
+    expect(screen.getByLabelText('Model')).toHaveValue('sonnet');
+
+    await user.selectOptions(provider, 'openai');
+    const model = screen.getByLabelText('Model');
+    expect(model).toHaveValue('gpt-5.4-mini');
+    expect(screen.getByText(/Hugging Face tools are only available with Claude/)).toBeVisible();
+    await user.selectOptions(model, 'gpt-5.5');
+    await user.click(screen.getByRole('button', { name: 'Save analyst settings' }));
+
+    expect(api.settings.setAgent).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: 'openai', openaiModel: 'gpt-5.5', model: 'sonnet' }),
+    );
+    expect(await screen.findByText(/Saved/)).toBeVisible();
+  });
 });

@@ -11,11 +11,19 @@ export interface AgentHandlerDeps {
   currentOrchestrator: () => Orchestrator | undefined;
   approvals: Pick<ApprovalBroker, 'respond'>;
   settings: Pick<SettingsStore, 'getAgent' | 'setAgent'>;
+  /** Ends the conversation (and switches provider if it changed). */
+  onSettingsChanged: () => Promise<void>;
 }
 
 export function registerAgentHandlers(
   handle: IpcHandle,
-  { getOrchestrator, currentOrchestrator, approvals, settings }: AgentHandlerDeps,
+  {
+    getOrchestrator,
+    currentOrchestrator,
+    approvals,
+    settings,
+    onSettingsChanged,
+  }: AgentHandlerDeps,
 ): void {
   handle(IpcChannels.agentSend, async ({ text }) => {
     (await getOrchestrator()).send(text);
@@ -40,8 +48,8 @@ export function registerAgentHandlers(
 
   handle(IpcChannels.settingsSetAgent, async (next) => {
     const saved = await settings.setAgent(next);
-    // Model and budget are session options, so start a fresh conversation with them.
-    await currentOrchestrator()?.reset('settings');
+    // Provider, model and budget are session options: start a fresh conversation with them.
+    await onSettingsChanged();
     return saved;
   });
 }

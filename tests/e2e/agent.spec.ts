@@ -15,17 +15,28 @@ test('chat explains that an Anthropic key is needed before the analyst can start
 });
 
 test('analyst settings persist and are validated by main', async ({ page }) => {
-  const saved = await page.evaluate(() =>
-    window.datadesk.settings.setAgent({ model: 'haiku', maxBudgetUsd: 0.5, maxTurns: 8 }),
-  );
-  expect(saved).toEqual({ ok: true, data: { model: 'haiku', maxBudgetUsd: 0.5, maxTurns: 8 } });
-  const invalid = await page.evaluate(() =>
-    window.datadesk.settings.setAgent({ model: 'haiku', maxBudgetUsd: 999, maxTurns: 8 }),
+  const settings = {
+    provider: 'openai' as const,
+    model: 'haiku',
+    openaiModel: 'gpt-5.4' as const,
+    maxBudgetUsd: 0.5,
+    maxTurns: 8,
+  };
+  const saved = await page.evaluate((s) => window.datadesk.settings.setAgent(s), settings);
+  expect(saved).toEqual({ ok: true, data: settings });
+  const invalid = await page.evaluate(
+    (s) => window.datadesk.settings.setAgent({ ...s, maxBudgetUsd: 999 }),
+    settings,
   );
   expect(invalid).toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
+  const unknownModel = await page.evaluate(
+    (s) => window.datadesk.settings.setAgent({ ...s, openaiModel: 'gpt-4o' as 'gpt-5.4' }),
+    settings,
+  );
+  expect(unknownModel).toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
   await expect
     .poll(() => page.evaluate(() => window.datadesk.settings.getAgent()))
-    .toEqual({ ok: true, data: { model: 'haiku', maxBudgetUsd: 0.5, maxTurns: 8 } });
+    .toEqual({ ok: true, data: settings });
 });
 
 test('approving an unknown request is a no-op', async ({ page }) => {

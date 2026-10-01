@@ -23,14 +23,43 @@ describe('SettingsStore', () => {
   });
 
   it('persists valid settings across instances', async () => {
-    const next = { model: 'opus', maxBudgetUsd: 5, maxTurns: 10 };
+    const next = {
+      provider: 'openai' as const,
+      model: 'opus',
+      openaiModel: 'gpt-5.5' as const,
+      maxBudgetUsd: 5,
+      maxTurns: 10,
+    };
     await new SettingsStore(file).setAgent(next);
     await expect(new SettingsStore(file).getAgent()).resolves.toEqual(next);
   });
 
   it('rejects invalid settings', async () => {
     await expect(
-      new SettingsStore(file).setAgent({ model: '', maxBudgetUsd: 0, maxTurns: 0 }),
+      new SettingsStore(file).setAgent({ ...DEFAULT_AGENT_SETTINGS, model: '', maxBudgetUsd: 0 }),
+    ).rejects.toThrow();
+  });
+
+  it('keeps settings saved before Phase 7 (no provider) and defaults to Claude', async () => {
+    writeFileSync(
+      file,
+      JSON.stringify({ version: 1, agent: { model: 'opus', maxBudgetUsd: 3, maxTurns: 12 } }),
+    );
+    await expect(new SettingsStore(file).getAgent()).resolves.toEqual({
+      provider: 'anthropic',
+      model: 'opus',
+      openaiModel: 'gpt-5.4-mini',
+      maxBudgetUsd: 3,
+      maxTurns: 12,
+    });
+  });
+
+  it('refuses an OpenAI model without a price (cost and the spend cap need one)', async () => {
+    await expect(
+      new SettingsStore(file).setAgent({
+        ...DEFAULT_AGENT_SETTINGS,
+        openaiModel: 'gpt-4o' as never,
+      }),
     ).rejects.toThrow();
   });
 });

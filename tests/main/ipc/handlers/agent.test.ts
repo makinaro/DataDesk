@@ -16,6 +16,7 @@ function wire(opts: { noKey?: boolean } = {}) {
     dispose: vi.fn(() => Promise.resolve()),
   };
   const approvals = { respond: vi.fn(() => true) };
+  const onSettingsChanged = vi.fn(() => Promise.resolve());
   const settings = {
     getAgent: vi.fn(() => Promise.resolve(DEFAULT_AGENT_SETTINGS)),
     setAgent: vi.fn((s: typeof DEFAULT_AGENT_SETTINGS) => Promise.resolve(s)),
@@ -32,10 +33,11 @@ function wire(opts: { noKey?: boolean } = {}) {
     currentOrchestrator: () => orchestrator,
     approvals,
     settings,
+    onSettingsChanged,
   });
   const call = (channel: string, payload?: unknown) =>
     listeners.get(channel)?.({} as IpcMainInvokeEvent, payload);
-  return { call, orchestrator, approvals, settings };
+  return { call, orchestrator, approvals, settings, onSettingsChanged };
 }
 
 describe('agent IPC handlers', () => {
@@ -79,14 +81,28 @@ describe('agent IPC handlers', () => {
   });
 
   it('saving settings validates them and restarts the conversation', async () => {
-    const { call, orchestrator, settings } = wire();
-    const next = { model: 'opus', maxBudgetUsd: 1, maxTurns: 5 };
+    const { call, settings, onSettingsChanged } = wire();
+    const next = { ...DEFAULT_AGENT_SETTINGS, provider: 'openai', model: 'opus', maxTurns: 5 };
     await expect(call('settings:setAgent', next)).resolves.toEqual({ ok: true, data: next });
     expect(settings.setAgent).toHaveBeenCalledWith(next);
-    expect(orchestrator.reset).toHaveBeenCalled();
+    expect(onSettingsChanged).toHaveBeenCalledOnce();
+    await expect(call('settings:setAgent', { ...next, maxBudgetUsd: 1000 })).resolves.toMatchObject(
+      { ok: false, error: { code: 'INVALID_REQUEST' } },
+    );
+    await expect(call('settings:setAgent', { ...next, provider: 'gemini' })).resolves.toMatchObject(
+      { ok: false, error: { code: 'INVALID_REQUEST' } },
+    );
+    expect(onSettingsChanged).toHaveBeenCalledOnce();
+  });
+
+  it('fills the provider fields of settings saved by an older renderer', async () => {
+    const { call } = wire();
     await expect(
-      call('settings:setAgent', { model: 'opus', maxBudgetUsd: 1000, maxTurns: 5 }),
-    ).resolves.toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
+      call('settings:setAgent', { model: 'opus', maxBudgetUsd: 1, maxTurns: 5 }),
+    ).resolves.toEqual({
+      ok: true,
+      data: { ...DEFAULT_AGENT_SETTINGS, model: 'opus', maxBudgetUsd: 1, maxTurns: 5 },
+    });
   });
 
   it('stop and reset reach the orchestrator', async () => {
