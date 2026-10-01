@@ -2,6 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ApiProvider } from '../../../src/renderer/src/api';
+import { AppearanceProvider } from '../../../src/renderer/src/appearance/AppearanceProvider';
 import { SettingsDialog } from '../../../src/renderer/src/components/SettingsDialog';
 import { createFakeApi } from '../fakeApi';
 
@@ -11,7 +12,9 @@ function renderDialog(api = createFakeApi()) {
   const onClose = vi.fn();
   render(
     <ApiProvider api={api}>
-      <SettingsDialog onClose={onClose} />
+      <AppearanceProvider>
+        <SettingsDialog onClose={onClose} />
+      </AppearanceProvider>
     </ApiProvider>,
   );
   return { api, onClose };
@@ -100,6 +103,7 @@ describe('SettingsDialog', () => {
   it('switches the analyst to OpenAI with an OpenAI model', async () => {
     const user = userEvent.setup();
     const { api } = renderDialog(createFakeApi({ openai: true }));
+    await user.click(screen.getByRole('tab', { name: 'Analyst' }));
     const provider = await screen.findByLabelText('Provider');
     expect(provider).toHaveValue('anthropic');
     expect(screen.getByLabelText('Model')).toHaveValue('sonnet');
@@ -115,5 +119,57 @@ describe('SettingsDialog', () => {
       expect.objectContaining({ provider: 'openai', openaiModel: 'gpt-5.5', model: 'sonnet' }),
     );
     expect(await screen.findByText(/Saved/)).toBeVisible();
+  });
+
+  it('opens on API keys; arrow keys move between the tabs', async () => {
+    const user = userEvent.setup();
+    renderDialog();
+    const keys = screen.getByRole('tab', { name: 'API keys' });
+    expect(keys).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tabpanel', { name: 'API keys' })).toBeInTheDocument();
+
+    keys.focus();
+    await user.keyboard('{ArrowRight}');
+    expect(screen.getByRole('tab', { name: 'Analyst' })).toHaveFocus();
+    expect(screen.getByRole('tabpanel', { name: 'Analyst' })).toBeInTheDocument();
+    await user.keyboard('{ArrowLeft}{ArrowLeft}');
+    expect(screen.getByRole('tab', { name: 'Appearance' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+  });
+
+  it('applies and saves a theme without touching agent settings', async () => {
+    const user = userEvent.setup();
+    const { api } = renderDialog();
+    await user.click(screen.getByRole('tab', { name: 'Appearance' }));
+    const light = screen.getByRole('radio', { name: /Light/ });
+    expect(screen.getByRole('radio', { name: /Dark/ })).toBeChecked();
+
+    await user.click(light);
+
+    expect(light).toBeChecked();
+    expect(document.documentElement.dataset.theme).toBe('light');
+    expect(api.settings.setAppearance).toHaveBeenCalledWith({
+      theme: 'light',
+      layout: 'results-first',
+    });
+    expect(api.settings.setAgent).not.toHaveBeenCalled();
+  });
+
+  it('reverts the theme and says why when saving fails', async () => {
+    const user = userEvent.setup();
+    const api = createFakeApi();
+    api.settings.setAppearance.mockResolvedValueOnce({
+      ok: false,
+      error: { code: 'INTERNAL', message: 'Disk full.' },
+    } as never);
+    renderDialog(api);
+    await user.click(screen.getByRole('tab', { name: 'Appearance' }));
+    await user.click(screen.getByRole('radio', { name: /Slate/ }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Disk full.');
+    expect(screen.getByRole('radio', { name: /Dark/ })).toBeChecked();
+    expect(document.documentElement.dataset.theme).toBe('dark');
   });
 });

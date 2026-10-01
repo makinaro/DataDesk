@@ -1,5 +1,6 @@
 import { join } from 'node:path';
 import { BrowserWindow, type WebPreferences } from 'electron';
+import type { WindowChrome } from './appearance';
 
 /** The only webPreferences any DataDesk window may use (CLAUDE.md, Security rule 2). */
 export function secureWebPreferences(preloadPath: string): WebPreferences {
@@ -19,7 +20,7 @@ export function secureWebPreferences(preloadPath: string): WebPreferences {
   };
 }
 
-export function createMainWindow(rendererUrl: string): BrowserWindow {
+export function createMainWindow(rendererUrl: string, chrome: WindowChrome): BrowserWindow {
   const win = new BrowserWindow({
     width: 1400,
     height: 900,
@@ -27,7 +28,7 @@ export function createMainWindow(rendererUrl: string): BrowserWindow {
     minHeight: 600,
     show: false,
     title: 'DataDesk',
-    backgroundColor: '#0e0e0e',
+    backgroundColor: chrome.canvas,
     webPreferences: secureWebPreferences(join(import.meta.dirname, '../preload/index.cjs')),
   });
 
@@ -36,4 +37,9 @@ export function createMainWindow(rendererUrl: string): BrowserWindow {
   });
   void win.loadURL(rendererUrl);
   return win;
+}
+
+/** Repaints the colours main owns when the theme changes. */
+export function paintWindow(win: BrowserWindow, chrome: WindowChrome): void {
+  win.setBackgroundColor(chrome.canvas);
 }

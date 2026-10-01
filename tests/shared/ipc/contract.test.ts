@@ -119,4 +119,21 @@ describe('ipcContract', () => {
       expect(ipcContract[IpcChannels.compareReset].request.safeParse(undefined).success).toBe(true);
     });
   });
+
+  describe('appearance channels', () => {
+    const set = ipcContract[IpcChannels.settingsSetAppearance].request;
+
+    it('takes only a known theme and layout', () => {
+      expect(set.safeParse({ theme: 'slate', layout: 'chat-first' }).success).toBe(true);
+      expect(set.safeParse({ theme: 'neon', layout: 'chat-first' }).success).toBe(false);
+      expect(set.safeParse({ theme: 'dark', layout: 'sideways' }).success).toBe(false);
+      expect(set.safeParse({ theme: 'dark' }).success).toBe(false);
+      expect(set.safeParse({ theme: 'dark', layout: 'chat-first', css: 'body{}' }).success).toBe(
+        false,
+      );
+      expect(ipcContract[IpcChannels.settingsGetAppearance].request.safeParse({}).success).toBe(
+        false,
+      );
+    });
+  });
 });

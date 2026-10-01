@@ -6,6 +6,7 @@ import {
   type AgentSettings,
   type CompareEvent,
 } from '../../src/shared/agent';
+import { DEFAULT_APPEARANCE, type Appearance } from '../../src/shared/appearance';
 import type { ChartArtifact, ReportArtifact } from '../../src/shared/artifacts';
 import type { DatasetSummary, RegisteredDataset } from '../../src/shared/datasets';
 import type { DatadeskApi } from '../../src/shared/ipc/api';
@@ -82,6 +83,7 @@ export function createFakeApi(
   const listeners = new Set<(event: AgentEvent) => void>();
   const compareListeners = new Set<(event: CompareEvent) => void>();
   let agentSettings: AgentSettings = { ...DEFAULT_AGENT_SETTINGS };
+  let appearance: Appearance = { ...DEFAULT_APPEARANCE };
   const register = (name: string): RegisteredDataset => {
     // Like the real catalog: re-registering a name replaces it.
     const existing = registered.findIndex((d) => d.name === name);
@@ -165,6 +167,11 @@ export function createFakeApi(
       getAgent: vi.fn(() => ok({ ...agentSettings })),
       setAgent: vi.fn((next: AgentSettings) => {
         agentSettings = next;
+        return ok({ ...next });
+      }),
+      getAppearance: vi.fn(() => ok({ ...appearance })),
+      setAppearance: vi.fn((next: Appearance) => {
+        appearance = next;
         return ok({ ...next });
       }),
     },

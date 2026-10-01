@@ -1,4 +1,5 @@
 import type { AgentEvent, AgentSettings, CompareEvent } from '../agent';
+import type { Appearance } from '../appearance';
 import type { ChartArtifact, ReportArtifact } from '../artifacts';
 import type { ColumnInfo, DatasetPreview, DatasetSummary, RegisteredDataset } from '../datasets';
 import type { IpcChannels } from './channels';
@@ -51,6 +52,9 @@ export interface DatadeskApi {
   settings: {
     getAgent(): Promise<IpcResult<AgentSettings>>;
     setAgent(settings: AgentSettings): Promise<IpcResult<AgentSettings>>;
+    /** Theme and layout. Saving them never restarts the conversation. */
+    getAppearance(): Promise<IpcResult<Appearance>>;
+    setAppearance(appearance: Appearance): Promise<IpcResult<Appearance>>;
   };
   artifacts: {
     getChart(id: string): Promise<IpcResult<ChartArtifact>>;

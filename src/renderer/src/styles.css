@@ -29,9 +29,12 @@
   --color-scrim: var(--dd-scrim);
 }
 
-/* Dark is also the fallback before the stored theme is applied. */
+/*
+ * Themes apply to any element, so a settings card can preview one. Dark is also the fallback
+ * before the stored theme is applied.
+ */
 :root,
-:root[data-theme='dark'] {
+[data-theme='dark'] {
   color-scheme: dark;
   --dd-canvas: #0e0e0e;
   --dd-surface: #151515;
@@ -57,7 +60,7 @@
   --dd-scrollbar-hover: #4e4e4e;
 }
 
-:root[data-theme='light'] {
+[data-theme='light'] {
   color-scheme: light;
   --dd-canvas: #ffffff;
   --dd-surface: #f7f7f6;
@@ -84,7 +87,7 @@
 }
 
 /* The pre-Phase-9 look (slate + sky), kept as an option. */
-:root[data-theme='slate'] {
+[data-theme='slate'] {
   color-scheme: dark;
   --dd-canvas: #020617;
   --dd-surface: #0b1224;
@@ -111,8 +114,11 @@
 }
 
 @layer base {
-  body {
+  /* Until the saved theme is applied, the window background (painted by main) shows through. */
+  :root[data-theme] body {
     background-color: var(--dd-canvas);
+  }
+  body {
     color: var(--dd-fg);
     font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;

@@ -830,3 +830,51 @@ runtime).
 - If a certificate is added later (`cscLink`), check that `claude.exe` keeps Anthropic's
   signature (`signExts` / `signtoolOptions`), so it isn't re-signed with ours.
 - Updates mean reinstalling; there is no auto-updater (no `electron-updater`, no publish target).
+
+## D-024: Theme tokens and a separate appearance store (2026-10-01)
+
+**Context:** Phase 9 (UI polish). The owner wants a black-and-white look and a theme switcher.
+Every component hard-coded Tailwind palette classes (`bg-slate-900`, `bg-sky-700`, ...), so any
+new theme meant editing every component. Main also draws colours the page can't reach: the
+window background before first paint, and (from the next task) the native window controls.
+Verified 2026-10-01: Tailwind **4.3.3** `@theme inline` (https://tailwindcss.com/docs/theme,
+"Referencing other variables"); Electron **44.5.1** `nativeTheme.themeSource` /
+`shouldUseDarkColors` / `'updated'` (`node_modules/electron/electron.d.ts:10130-10236`), and
+`prefers-color-scheme` in the renderer follows `themeSource` (same lines;
+https://www.electronjs.org/docs/latest/tutorial/dark-mode).
+
+**Decision:**
+
+- **Tokens:** components use semantic colours only (`bg-canvas`, `bg-surface`, `bg-raised`,
+  `text-muted`, `text-faint`, `border-line`, `bg-accent`, `text-danger`, ...). `@theme inline`
+  maps each to a `--dd-*` variable, and `[data-theme='dark'|'light'|'slate']` blocks set the
+  values. The selectors work on any element, so Settings previews each theme in place.
+- **Themes:** Dark (neutral black and white, default), Light, Slate (the pre-Phase-9 look), and
+  System (Dark or Light from the OS).
+- **Storage:** `userData/appearance.json` (`{ version: 1, appearance: { theme, layout } }`) via
+  `AppearanceStore`, behind `settings:getAppearance` / `settings:setAppearance`. It is separate
+  from `settings.json` because saving agent settings restarts the conversation; a theme change
+  must not.
+- **Who resolves System:** main sets `nativeTheme.themeSource` (`system`, or `dark`/`light`;
+  slate counts as dark), so `prefers-color-scheme` in the page follows it and the renderer
+  resolves System with `matchMedia`. Main resolves it again with `shouldUseDarkColors` for the
+  colours it paints, and repaints on `nativeTheme` `'updated'`.
+- **No flash:** main creates the window with the saved theme's background. `<html>` gets no
+  `data-theme` until the saved appearance has loaded, and the body background applies only
+  once it has, so the window background shows through until then.
+- **Guards:** a tooling test fails on any palette class in `src/renderer`, on a theme missing a
+  token, and on `THEME_CHROME` (main's colours) drifting from `styles.css`.
+
+**Alternatives:**
+
+- `localStorage` for the theme: main still needs it for the window background and title bar,
+  so it would be stored twice.
+- A `dark:` variant per class: it only handles two themes, and every component would spell out
+  every theme.
+- Keeping the theme in `AgentSettings`: saving it would reset the conversation.
+
+**Consequences:**
+
+- A new theme is one CSS block plus one `THEME_CHROME` entry. The tests point at anything
+  missing.
+- Charts keep a white surface until they get a theme-aware Vega config (later Phase 9 task).

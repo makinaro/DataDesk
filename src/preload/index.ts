@@ -83,6 +83,8 @@ const api: DatadeskApi = {
   settings: {
     getAgent: () => invoke(IpcChannels.settingsGetAgent),
     setAgent: (settings) => invoke(IpcChannels.settingsSetAgent, settings),
+    getAppearance: () => invoke(IpcChannels.settingsGetAppearance),
+    setAppearance: (appearance) => invoke(IpcChannels.settingsSetAppearance, appearance),
   },
   artifacts: {
     getChart: (id) => invoke(IpcChannels.artifactsGetChart, { id }),

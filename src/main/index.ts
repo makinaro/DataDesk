@@ -1,12 +1,14 @@
 import { join } from 'node:path';
-import { app, BrowserWindow, dialog, ipcMain, safeStorage } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, nativeTheme, safeStorage } from 'electron';
 import { IpcEvents } from '../shared/ipc/channels';
 import { createAgentRuntime } from './agent/agentRuntime';
+import { applyTheme, chromeFor } from './appearance';
 import { createCompareRuntime } from './agent/compareRuntime';
 import { ArtifactStore } from '../node-shared/artifactStore';
 import { printHtmlToPdf } from './artifacts/printPdf';
 import { renderChartSvg } from './artifacts/chartSvg';
 import { registerAgentHandlers } from './ipc/handlers/agent';
+import { registerAppearanceHandlers } from './ipc/handlers/appearance';
 import { registerArtifactHandlers } from './ipc/handlers/artifacts';
 import { registerCompareHandlers } from './ipc/handlers/compare';
 import { registerAppHandlers } from './ipc/handlers/app';
@@ -18,6 +20,7 @@ import { createStdioTransport } from './mcp/serverProcess';
 import { UiMcpClient } from './mcp/uiClient';
 import { serverPaths } from './paths';
 import { KeyStore } from './secrets/keyStore';
+import { AppearanceStore } from './settings/appearanceStore';
 import { SettingsStore } from './settings/settingsStore';
 import {
   APP_ENTRY_URL,
@@ -27,7 +30,7 @@ import {
 } from './security/appProtocol';
 import { buildCsp } from './security/csp';
 import { applyDevCspHeader, hardenApp } from './security/hardenApp';
-import { createMainWindow } from './window';
+import { createMainWindow, paintWindow } from './window';
 
 // Lets e2e tests run against a throwaway profile. Dev/test builds only; must run before 'ready'.
 const userDataOverride = !app.isPackaged ? process.env.DATADESK_USER_DATA : undefined;
@@ -60,7 +63,7 @@ function start(): void {
 
   app
     .whenReady()
-    .then(() => {
+    .then(async () => {
       hardenApp(rendererOrigin);
 
       if (devServerUrl) {
@@ -80,6 +83,24 @@ function start(): void {
         },
       });
       registerAppHandlers(handle);
+
+      const appearanceStore = new AppearanceStore(join(app.getPath('userData'), 'appearance.json'));
+      let theme = (await appearanceStore.get()).theme;
+      const paintAll = (chrome: ReturnType<typeof chromeFor>) => {
+        for (const win of BrowserWindow.getAllWindows()) paintWindow(win, chrome);
+      };
+      applyTheme(theme, { nativeTheme, paint: paintAll });
+      // Fires when the OS theme changes, which matters while the theme is "system".
+      nativeTheme.on('updated', () => {
+        paintAll(chromeFor(theme, nativeTheme.shouldUseDarkColors));
+      });
+      registerAppearanceHandlers(handle, {
+        store: appearanceStore,
+        onChanged: (appearance) => {
+          theme = appearance.theme;
+          applyTheme(theme, { nativeTheme, paint: paintAll });
+        },
+      });
 
       const keyStore = new KeyStore(
         join(app.getPath('userData'), 'secrets.json'),
@@ -202,9 +223,11 @@ function start(): void {
         });
       });
 
-      createMainWindow(rendererUrl);
+      const openWindow = () =>
+        createMainWindow(rendererUrl, chromeFor(theme, nativeTheme.shouldUseDarkColors));
+      openWindow();
       app.on('activate', () => {
-        if (BrowserWindow.getAllWindows().length === 0) createMainWindow(rendererUrl);
+        if (BrowserWindow.getAllWindows().length === 0) openWindow();
       });
     })
     .catch((error: unknown) => {

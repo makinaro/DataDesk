@@ -1,6 +1,7 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { THEME_CHROME } from '../../src/shared/appearance';
 
 const SRC = resolve('src/renderer/src');
 const css = readFileSync(join(SRC, 'styles.css'), 'utf8');
@@ -13,11 +14,19 @@ function sourceFiles(dir: string): string[] {
   });
 }
 
+function themeBlock(theme: string): string {
+  const block = new RegExp(`\\[data-theme='${theme}'\\] \\{([^}]*)\\}`).exec(css);
+  if (!block?.[1]) throw new Error(`No block for theme ${theme}`);
+  return block[1];
+}
+
 /** The `--dd-*` variables a theme block defines. */
 function themeVars(theme: string): Set<string> {
-  const block = new RegExp(`:root\\[data-theme='${theme}'\\] \\{([^}]*)\\}`).exec(css);
-  if (!block?.[1]) throw new Error(`No block for theme ${theme}`);
-  return new Set([...block[1].matchAll(/(--dd-[\w-]+):/g)].map((m) => m[1] ?? ''));
+  return new Set([...themeBlock(theme).matchAll(/(--dd-[\w-]+):/g)].map((m) => m[1] ?? ''));
+}
+
+function themeValue(theme: string, name: string): string | undefined {
+  return new RegExp(`${name}: ([^;]+);`).exec(themeBlock(theme))?.[1];
 }
 
 describe('theme tokens', () => {
@@ -48,4 +57,14 @@ describe('theme tokens', () => {
     expect(referenced.length).toBeGreaterThan(15);
     for (const name of referenced) expect(dark).toContain(name);
   });
+
+  it.each(Object.entries(THEME_CHROME))(
+    'main paints the %s theme in the same colours as the stylesheet',
+    (theme, chrome) => {
+      expect(chrome.canvas).toBe(themeValue(theme, '--dd-canvas'));
+      expect(chrome.titleBar).toBe(themeValue(theme, '--dd-surface'));
+      expect(chrome.symbols).toBe(themeValue(theme, '--dd-muted'));
+      expect(chrome.nativeSource).toBe(/color-scheme: (\w+)/.exec(themeBlock(theme))?.[1]);
+    },
+  );
 });

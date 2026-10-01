@@ -21,6 +21,8 @@ export const IpcChannels = {
   compareReset: 'compare:reset',
   settingsGetAgent: 'settings:getAgent',
   settingsSetAgent: 'settings:setAgent',
+  settingsGetAppearance: 'settings:getAppearance',
+  settingsSetAppearance: 'settings:setAppearance',
   artifactsGetChart: 'artifacts:getChart',
   artifactsGetReport: 'artifacts:getReport',
   artifactsExportReport: 'artifacts:exportReport',

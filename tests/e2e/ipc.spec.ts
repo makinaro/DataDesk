@@ -14,7 +14,7 @@ test('bridge exposes only whitelisted methods', async ({ page }) => {
     compare: ['onEvent', 'reset', 'run', 'stop'],
     datasets: ['list', 'pick', 'preview', 'registerFile', 'schema'],
     secrets: ['clear', 'set', 'status'],
-    settings: ['getAgent', 'setAgent'],
+    settings: ['getAgent', 'getAppearance', 'setAgent', 'setAppearance'],
   });
 });
 

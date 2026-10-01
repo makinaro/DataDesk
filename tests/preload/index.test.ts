@@ -42,7 +42,12 @@ describe('preload bridge', () => {
     ]);
     expect(Object.keys(api.artifacts).sort()).toEqual(['exportReport', 'getChart', 'getReport']);
     expect(Object.keys(api.agent).sort()).toEqual(['approve', 'onEvent', 'reset', 'send', 'stop']);
-    expect(Object.keys(api.settings).sort()).toEqual(['getAgent', 'setAgent']);
+    expect(Object.keys(api.settings).sort()).toEqual([
+      'getAgent',
+      'getAppearance',
+      'setAgent',
+      'setAppearance',
+    ]);
     expect(Object.keys(api.compare).sort()).toEqual(['onEvent', 'reset', 'run', 'stop']);
     expect(Object.keys(api.app).sort()).toEqual(['info']);
     expect(Object.keys(api.secrets).sort()).toEqual(['clear', 'set', 'status']);
@@ -120,6 +125,8 @@ describe('preload bridge', () => {
     await api.compare.run('Which region?');
     await api.compare.stop();
     await api.compare.reset();
+    await api.settings.getAppearance();
+    await api.settings.setAppearance({ theme: 'light', layout: 'chat-first' });
     expect(invoke.mock.calls).toEqual([
       ['secrets:set', { provider: 'openai', key: 'sk-test-12345678' }],
       ['secrets:clear', { provider: 'huggingface' }],
@@ -136,6 +143,8 @@ describe('preload bridge', () => {
       ['compare:run', { text: 'Which region?' }],
       ['compare:stop', undefined],
       ['compare:reset', undefined],
+      ['settings:getAppearance', undefined],
+      ['settings:setAppearance', { theme: 'light', layout: 'chat-first' }],
     ]);
   });
 

@@ -7,6 +7,7 @@ import {
   RegisteredDatasetSchema,
 } from '../datasets';
 import { AgentSettingsSchema } from '../agent';
+import { AppearanceSchema } from '../appearance';
 import { ArtifactIdSchema, ChartArtifactSchema, ReportArtifactSchema } from '../artifacts';
 import { IpcChannels, type IpcChannel } from './channels';
 
@@ -105,6 +106,8 @@ export const ipcContract = {
   },
   [IpcChannels.settingsGetAgent]: { request: NoPayload, response: AgentSettingsSchema },
   [IpcChannels.settingsSetAgent]: { request: AgentSettingsSchema, response: AgentSettingsSchema },
+  [IpcChannels.settingsGetAppearance]: { request: NoPayload, response: AppearanceSchema },
+  [IpcChannels.settingsSetAppearance]: { request: AppearanceSchema, response: AppearanceSchema },
   [IpcChannels.artifactsGetChart]: {
     request: z.strictObject({ id: ArtifactIdSchema }),
     response: ChartArtifactSchema,

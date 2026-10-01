@@ -137,7 +137,7 @@ Prototype: branch `prototype/ui-polish` (`prototypes/datadesk-ui.prototype.html`
 layouts A (Chat-first) and C (Results-first, default); charts stay Vega-Lite.
 
 - [x] Theme tokens: Dark (black & white, default), Light, Slate; themed scrollbars
-- [ ] Appearance settings (theme incl. System, layout) persisted in main, separate from agent settings
+- [x] Appearance settings (theme incl. System, layout) persisted in main, separate from agent settings
 - [ ] Integrated title bar: no menu bar, native window controls follow the theme
 - [ ] Markdown in chat: tables, bold, lists, highlighted code blocks, chart chips; streaming-safe
 - [ ] Claude-style chat: no answer bubbles, compact user messages, composer card
