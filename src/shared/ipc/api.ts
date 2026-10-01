@@ -58,7 +58,7 @@ export interface DatadeskApi {
   };
   /** Write-only: there is deliberately no way to read the clipboard. */
   clipboard: {
-    writeText(text: string): Promise<IpcResult<{ ok: true }>>;
+    writeText(text: string): Promise<IpcResult<IpcResponse<typeof IpcChannels.clipboardWriteText>>>;
   };
   artifacts: {
     getChart(id: string): Promise<IpcResult<ChartArtifact>>;

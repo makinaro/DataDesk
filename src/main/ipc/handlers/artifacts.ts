@@ -4,6 +4,7 @@ import type { ArtifactStore } from '../../../node-shared/artifactStore';
 import type { ResolvedTheme } from '../../../shared/appearance';
 import type { ChartArtifact } from '../../../shared/artifacts';
 import { IpcChannels } from '../../../shared/ipc/channels';
+import type { IpcRequest } from '../../../shared/ipc/contract';
 import {
   buildMarkdownExport,
   buildPrintDocument,
@@ -25,7 +26,9 @@ export interface ArtifactHandlerDeps {
   writeFile?: (path: string, data: string | Buffer) => Promise<void>;
 }
 
-export type ExportFormat = 'md' | 'pdf' | 'png' | 'svg';
+export type ExportFormat =
+  | IpcRequest<typeof IpcChannels.artifactsExportReport>['format']
+  | IpcRequest<typeof IpcChannels.artifactsExportChart>['format'];
 
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
