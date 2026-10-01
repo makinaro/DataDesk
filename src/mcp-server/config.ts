@@ -22,6 +22,13 @@ const EnvSchema = z.object({
   /** Pre-fetched DuckDB extensions (Excel). Nothing is downloaded at query time. */
   DATADESK_EXTENSION_DIR: z.string().min(1).optional(),
   DATADESK_THREADS: z.coerce.number().int().min(1).max(64).default(4),
+  /**
+   * Enables the OpenAI tools (search_columns, second_opinion). Passed by main through the agent
+   * CLI's explicitly built env, never on a command line (DECISIONS D-018). Empty = disabled.
+   */
+  DATADESK_OPENAI_API_KEY: z.string().optional(),
+  /** Embedding cache. Defaults to a "cache" folder next to the catalog. */
+  DATADESK_CACHE_DIR: z.string().min(1).optional(),
   DATADESK_MAX_FILE_BYTES: z.coerce
     .number()
     .int()
@@ -40,10 +47,13 @@ export interface ServerConfig {
   maxFileBytes: number;
   tempDir: string | undefined;
   extensionDir: string | undefined;
+  openaiApiKey: string | undefined;
+  cacheDir: string;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv): ServerConfig {
   const parsed = EnvSchema.parse(env);
+  const openaiKey = parsed.DATADESK_OPENAI_API_KEY?.trim();
   return {
     catalogPath: parsed.DATADESK_CATALOG_PATH,
     artifactsDir:
@@ -58,5 +68,18 @@ export function loadConfig(env: NodeJS.ProcessEnv): ServerConfig {
     maxFileBytes: parsed.DATADESK_MAX_FILE_BYTES,
     tempDir: parsed.DATADESK_TEMP_DIR,
     extensionDir: parsed.DATADESK_EXTENSION_DIR,
+    // Blank (main blanks secrets with '') means disabled.
+    openaiApiKey: openaiKey === '' ? undefined : openaiKey,
+    cacheDir: parsed.DATADESK_CACHE_DIR ?? join(dirname(parsed.DATADESK_CATALOG_PATH), 'cache'),
   };
+}
+
+/**
+ * Reads the config, then removes the OpenAI key from the environment: from here on it lives
+ * only in the returned config, so nothing else in this process (or a child it spawned) sees it.
+ */
+export function loadConfigAndTakeSecrets(env: NodeJS.ProcessEnv): ServerConfig {
+  const config = loadConfig(env);
+  Reflect.deleteProperty(env, 'DATADESK_OPENAI_API_KEY');
+  return config;
 }

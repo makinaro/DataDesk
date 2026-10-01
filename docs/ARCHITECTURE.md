@@ -23,13 +23,13 @@
                          └────────────────────────────────────────────────────┘
 ```
 
-| Process            | Trust        | Can touch keys?                                       | Talks to                        |
-| ------------------ | ------------ | ----------------------------------------------------- | ------------------------------- |
-| Renderer           | untrusted UI | no, only booleans                                     | main, via typed IPC             |
-| Preload            | bridge       | no                                                    | exposes explicit functions only |
-| Main               | trusted      | decrypts, passes to children via explicit env/headers | renderer, SDK, UiMcpClient      |
-| Claude Code binary | agent engine | receives `ANTHROPIC_API_KEY` in env                   | our MCP servers                 |
-| datadesk-mcp       | tool server  | receives OpenAI/HF keys in env (Phase 5+)             | DuckDB, OpenAI, HF Hub          |
+| Process            | Trust        | Can touch keys?                                                    | Talks to                        |
+| ------------------ | ------------ | ------------------------------------------------------------------ | ------------------------------- |
+| Renderer           | untrusted UI | no, only booleans                                                  | main, via typed IPC             |
+| Preload            | bridge       | no                                                                 | exposes explicit functions only |
+| Main               | trusted      | decrypts, passes to children via explicit env/headers              | renderer, SDK, UiMcpClient      |
+| Claude Code binary | agent engine | `ANTHROPIC_API_KEY`, plus the OpenAI key to pass to datadesk-mcp   | our MCP servers                 |
+| datadesk-mcp       | tool server  | agent copy only: `DATADESK_OPENAI_API_KEY` via the CLI env (D-018) | DuckDB, OpenAI (when keyed)     |
 
 ## Security layers
 
@@ -77,3 +77,6 @@ resources/       agent-plugin (runtime skills), icons
    sub-agent type and the call shape (canUseTool strips it too), the sub-agent (profiler, sql-analyst, report-writer) runs
    with only its scoped tools in a fresh context, and the scope hook re-checks every call. Its
    tool calls and messages arrive with `parent_tool_use_id` and render as a nested timeline lane.
+8. With an OpenAI key set, the agent's datadesk-mcp also offers `search_columns` (embeddings,
+   cached by content hash) and `second_opinion` (a second model critiques SQL + result). The key
+   reaches it through the CLI's env, never a command line (D-018).

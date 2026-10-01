@@ -4,6 +4,9 @@
 //   npm run smoke:packaged             datasets via the packaged MCP server (offline)
 //   npm run smoke:packaged -- --agent  also starts a real Claude Code session with a DUMMY key
 //                                      (makes one failing 401 request to Anthropic; manual use only)
+//   npm run smoke:packaged -- --agent --openai
+//                                      also sets a DUMMY OpenAI key: the agent's datadesk-mcp must
+//                                      offer the 2 OpenAI tools (listed only, never called; D-018)
 //
 // Uses a throwaway profile via Chromium's --user-data-dir and aborts if that isn't honoured,
 // so it never touches the real DataDesk profile.
@@ -17,6 +20,8 @@ import { _electron as electron } from '@playwright/test';
 
 const exe = resolve('release/win-unpacked/DataDesk.exe');
 const withAgent = process.argv.includes('--agent');
+const withOpenAI = process.argv.includes('--openai');
+const expectedDatadeskTools = withOpenAI ? 10 : 8;
 if (!existsSync(exe)) {
   console.error(`Missing ${exe}. Run: npm run package:dir`);
   process.exit(1);
@@ -76,6 +81,11 @@ try {
     await page.evaluate(() =>
       window.datadesk.secrets.set('anthropic', 'sk-ant-dummy-smoke-key-not-real'),
     );
+    if (withOpenAI) {
+      await page.evaluate(() =>
+        window.datadesk.secrets.set('openai', 'sk-openai-dummy-smoke-key-not-real'),
+      );
+    }
     await page.evaluate(() => window.datadesk.agent.send('Which datasets do I have?'));
     let events = [];
     for (let i = 0; i < 90; i++) {
@@ -86,8 +96,9 @@ try {
     const session = events.find((e) => e.kind === 'session');
     check('Claude binary spawned from app.asar.unpacked', session !== undefined);
     check(
-      'agent sees exactly the 8 datadesk tools',
-      session?.tools.filter((t) => t.startsWith('mcp__datadesk__')).length === 8,
+      `agent sees exactly the ${String(expectedDatadeskTools)} datadesk tools`,
+      session?.tools.filter((t) => t.startsWith('mcp__datadesk__')).length ===
+        expectedDatadeskTools,
       session?.tools.join(', '),
     );
     check('agent has the Skill tool', session?.tools.includes('Skill') === true);

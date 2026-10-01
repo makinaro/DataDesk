@@ -1,6 +1,6 @@
 import type { CanUseTool, Options } from '@anthropic-ai/claude-agent-sdk';
 import { SUBAGENT_TOOL_NAMES, type AgentSettings } from '../../../shared/agent';
-import { DATADESK_SERVER, datadeskTool as tool } from './datadeskTools';
+import { DATADESK_SERVER, datadeskTool as tool, OPENAI_TOOLS } from './datadeskTools';
 import { scopeHook } from './scopeHook';
 import { buildSubagents } from './subagents';
 
@@ -33,13 +33,20 @@ export const SKILL_NAMES = [
   'datadesk:report-format',
 ] as const;
 
+/** Auto-approved tools for a session; the OpenAI ones only when the user set a key. */
+export function autoApprovedTools(openaiTools: boolean): string[] {
+  return [...AUTO_APPROVED_TOOLS, ...(openaiTools ? OPENAI_TOOLS : [])];
+}
+
 /** Every tool the analyst may see. The init guard aborts the session on anything else. */
-export const EXPECTED_TOOLS: ReadonlySet<string> = new Set([
-  'Skill',
-  ...SUBAGENT_TOOL_NAMES,
-  ...AUTO_APPROVED_TOOLS,
-  ...APPROVAL_TOOLS,
-]);
+export function expectedTools(openaiTools: boolean): ReadonlySet<string> {
+  return new Set([
+    'Skill',
+    ...SUBAGENT_TOOL_NAMES,
+    ...autoApprovedTools(openaiTools),
+    ...APPROVAL_TOOLS,
+  ]);
+}
 
 /** Built-in Claude Code tools the analyst must never get (belt and braces with `tools: []`). */
 export const FORBIDDEN_BUILTINS = [
@@ -72,8 +79,15 @@ Delegating (Agent tool):
 - Each sub-agent starts fresh: put everything it needs in the prompt (dataset names, the question, relevant facts, chartIds). Sub-agents cost extra time and tokens, so delegate only when it helps.
 - "Analyze X and write a report" typically means: profiler, then one or more sql-analyst runs, then report-writer.`;
 
+/** Added to the system prompt when the OpenAI tools are available. */
+export const OPENAI_TOOLS_PROMPT = `Extra tools (they send data to OpenAI, so use them when they help, not by default):
+- search_columns: find columns by meaning when names are unclear or there are many datasets.
+- second_opinion: before you rely on a non-trivial SQL answer (joins, ratios, time windows), ask for a critique. Treat it as advice and check any SQL it suggests.`;
+
 export interface AgentOptionsInput {
   settings: AgentSettings;
+  /** The user set an OpenAI key, so datadesk-mcp exposes search_columns and second_opinion. */
+  openaiTools: boolean;
   workspaceDir: string;
   env: Record<string, string>;
   mcpServer: { command: string; args: string[]; env: Record<string, string> };
@@ -102,7 +116,7 @@ export function buildAgentOptions(input: AgentOptionsInput): Options {
     // Built-ins: Skill and the sub-agent tool only. Which sub-agents exist and what they may use
     // is fixed here (D-017); builtin agents, nesting and background runs are off via env.
     tools: ['Skill', 'Agent'],
-    agents: buildSubagents(),
+    agents: buildSubagents({ openaiTools: input.openaiTools }),
     // Defense in depth: every sub-agent tool call is checked against the scope table.
     hooks: { PreToolUse: [{ hooks: [scopeHook] }] },
     // Sub-agent text (not just tool calls) for their timeline lanes.
@@ -117,11 +131,15 @@ export function buildAgentOptions(input: AgentOptionsInput): Options {
     // Explicit: when omitted the CLI may choose `auto`. In `default` mode every non-allowlisted
     // tool call reaches canUseTool (where approvals and the deny-by-default live).
     permissionMode: 'default',
-    allowedTools: [...AUTO_APPROVED_TOOLS],
+    allowedTools: autoApprovedTools(input.openaiTools),
     canUseTool: input.canUseTool,
     // Slash commands stay enabled because skills depend on them (D-015); InputQueue neutralizes
     // user messages starting with '/' so the chat box never dispatches Claude Code commands.
-    systemPrompt: ANALYST_SYSTEM_PROMPT,
+    systemPrompt: input.openaiTools
+      ? `${ANALYST_SYSTEM_PROMPT}
+
+${OPENAI_TOOLS_PROMPT}`
+      : ANALYST_SYSTEM_PROMPT,
     model: input.settings.model,
     maxTurns: input.settings.maxTurns,
     maxBudgetUsd: input.settings.maxBudgetUsd,

@@ -10,8 +10,10 @@ import { join } from 'node:path';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { ArtifactStore } from '../node-shared/artifactStore';
 import { Catalog } from './catalog';
-import { loadConfig } from './config';
+import { loadConfigAndTakeSecrets } from './config';
 import { DatasetDb } from './db/datasetDb';
+import { createOpenAIClient } from './openai/client';
+import { EmbeddingCache } from './openai/embeddingCache';
 import { scrubSecrets } from './scrubEnv';
 import { buildServer, SERVER_NAME, SERVER_VERSION } from './server';
 
@@ -24,7 +26,7 @@ async function main(): Promise<void> {
   const scrubbed = scrubSecrets(process.env);
   if (scrubbed.length > 0) log(`removed inherited secrets from env: ${scrubbed.join(', ')}`);
 
-  const config = loadConfig(process.env);
+  const config = loadConfigAndTakeSecrets(process.env);
   const db = new DatasetDb(new Catalog(config.catalogPath), {
     maxRows: config.maxRows,
     queryTimeoutMs: config.queryTimeoutMs,
@@ -37,6 +39,12 @@ async function main(): Promise<void> {
     db,
     importPolicy: { denyDirs: config.denyDirs, maxFileBytes: config.maxFileBytes },
     artifacts: new ArtifactStore(config.artifactsDir),
+    openai: config.openaiApiKey
+      ? {
+          client: createOpenAIClient(config.openaiApiKey),
+          cache: new EmbeddingCache(join(config.cacheDir, 'embeddings.json')),
+        }
+      : undefined,
   });
 
   let closing = false;
@@ -63,7 +71,9 @@ async function main(): Promise<void> {
   });
 
   await server.connect(new StdioServerTransport());
-  log(`${SERVER_NAME} ${SERVER_VERSION} ready (catalog: ${config.catalogPath})`);
+  log(
+    `${SERVER_NAME} ${SERVER_VERSION} ready (catalog: ${config.catalogPath}; OpenAI tools: ${config.openaiApiKey ? 'on' : 'off'})`,
+  );
 }
 
 main().catch((error: unknown) => {

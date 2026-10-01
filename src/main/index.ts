@@ -108,7 +108,8 @@ function start(): void {
         },
       });
       registerSecretsHandlers(handle, keyStore, async (provider) => {
-        if (provider === 'anthropic') await agent.onKeyChanged();
+        // Both keys shape the session (the OpenAI key adds tools), so either change resets it.
+        if (provider === 'anthropic' || provider === 'openai') await agent.onKeyChanged();
       });
       registerArtifactHandlers(handle, {
         store: new ArtifactStore(join(app.getPath('userData'), 'artifacts')),
