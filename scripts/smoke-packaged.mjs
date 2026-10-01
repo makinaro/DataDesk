@@ -91,11 +91,15 @@ try {
       session?.tools.join(', '),
     );
     check('agent has the Skill tool', session?.tools.includes('Skill') === true);
+    check(
+      'agent has the sub-agent tool (reported as Task)',
+      session?.tools.includes('Task') === true,
+    );
     const guardError = events.find(
       (e) => e.kind === 'error' && e.message.startsWith('Stopped for safety'),
     );
     check(
-      'init guard passed (bundled skills plugin loaded from resources/agent-plugin)',
+      'init guard passed (our plugin, skills and exactly our 3 sub-agents)',
       session !== undefined && guardError === undefined,
       guardError?.message,
     );

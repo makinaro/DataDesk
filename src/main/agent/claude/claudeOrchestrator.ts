@@ -10,10 +10,11 @@ import { preview, type ResetReason } from '../../../shared/agent';
 import { DatasetNameSchema } from '../../../shared/datasets';
 import type { ApprovalBroker } from '../approvals';
 import type { EmitAgentEvent, Orchestrator } from '../orchestrator';
-import { APPROVAL_TOOLS } from './agentOptions';
+import { APPROVAL_TOOLS, SUBAGENT_TOOL_NAMES } from './agentOptions';
 import { checkInit } from './initGuard';
 import { InputQueue } from './inputQueue';
 import { createSdkMapper } from './sdkMapper';
+import { DelegationInput, SUBAGENT_NAMES } from './subagents';
 
 /** The slice of the SDK's Query we use; injected so tests can script a session. */
 export interface QueryLike extends AsyncIterable<SDKMessage> {
@@ -142,11 +143,33 @@ export class ClaudeOrchestrator implements Orchestrator {
     return this.reset();
   }
 
-  /** Deny by default; register_dataset asks the user (DECISIONS D-010). Scoped per session. */
+  /**
+   * Deny by default. Delegations are validated and stripped to what we allow (D-017);
+   * register_dataset asks the user (D-010), and only for the main analyst. Scoped per session.
+   */
   private canUseToolFor(generation: number): CanUseTool {
-    return async (toolName, input, { signal }) => {
+    return async (toolName, input, { signal, agentID }) => {
+      if ((SUBAGENT_TOOL_NAMES as readonly string[]).includes(toolName)) {
+        if (agentID !== undefined) {
+          return { behavior: 'deny', message: 'Sub-agents cannot start other sub-agents.' };
+        }
+        const delegation = DelegationInput.safeParse(input);
+        if (!delegation.success) {
+          return {
+            behavior: 'deny',
+            message: `Delegate with subagent_type ${SUBAGENT_NAMES.join(', ')} plus a description and a self-contained prompt.`,
+          };
+        }
+        return { behavior: 'allow', updatedInput: delegation.data };
+      }
       if (!(APPROVAL_TOOLS as readonly string[]).includes(toolName)) {
         return { behavior: 'deny', message: `${toolName} is not available in DataDesk.` };
+      }
+      if (agentID !== undefined) {
+        return {
+          behavior: 'deny',
+          message: 'Only the main analyst can ask the user to add files.',
+        };
       }
       // Validate before asking: never show the user (or pass on) input the tool would reject.
       const parsed = RegisterInput.safeParse(input);

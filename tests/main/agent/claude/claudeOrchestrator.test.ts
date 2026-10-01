@@ -154,11 +154,12 @@ describe('ClaudeOrchestrator', () => {
       await t.until(() => t.canUse() !== undefined);
       const canUseTool = t.canUse();
       if (!canUseTool) throw new Error('no gate');
-      const call = (tool: string, input: Record<string, unknown>) =>
+      const call = (tool: string, input: Record<string, unknown>, agentID?: string) =>
         canUseTool(tool, input, {
           signal: new AbortController().signal,
           toolUseID: 't',
           requestId: 'r',
+          ...(agentID === undefined ? {} : { agentID }),
         });
       return { t, call };
     }
@@ -194,6 +195,55 @@ describe('ClaudeOrchestrator', () => {
       await expect(call('mcp__datadesk__register_dataset', {})).resolves.toMatchObject({
         behavior: 'deny',
       });
+      expect(t.kinds()).not.toContain('approval_request');
+    });
+
+    it('allows delegations to our sub-agents, stripped to type, description and prompt', async () => {
+      const { call } = await gate();
+      for (const tool of ['Agent', 'Task']) {
+        await expect(
+          call(tool, {
+            subagent_type: 'profiler',
+            description: 'Profile sales',
+            prompt: 'Profile the sales dataset',
+            run_in_background: true,
+            model: 'opus',
+            isolation: 'worktree',
+            name: 'p1',
+            mode: 'bypassPermissions',
+          }),
+        ).resolves.toEqual({
+          behavior: 'allow',
+          updatedInput: {
+            subagent_type: 'profiler',
+            description: 'Profile sales',
+            prompt: 'Profile the sales dataset',
+          },
+        });
+      }
+    });
+
+    it.each([
+      ['a built-in agent', { subagent_type: 'general-purpose', description: 'd', prompt: 'p' }],
+      ['a fork', { subagent_type: 'fork', description: 'd', prompt: 'p' }],
+      ['no agent type', { description: 'd', prompt: 'p' }],
+      ['an empty prompt', { subagent_type: 'sql-analyst', description: 'd', prompt: '' }],
+    ])('denies delegating to %s', async (_label, input) => {
+      const { call } = await gate();
+      await expect(call('Agent', input)).resolves.toMatchObject({
+        behavior: 'deny',
+        message: expect.stringContaining('profiler, sql-analyst, report-writer') as string,
+      });
+    });
+
+    it('denies sub-agents spawning sub-agents or asking the user to add files', async () => {
+      const { t, call } = await gate();
+      await expect(
+        call('Agent', { subagent_type: 'profiler', description: 'd', prompt: 'p' }, 'agent-1'),
+      ).resolves.toMatchObject({ behavior: 'deny' });
+      await expect(
+        call('mcp__datadesk__register_dataset', { path: 'C:/data/x.csv' }, 'agent-1'),
+      ).resolves.toMatchObject({ behavior: 'deny' });
       expect(t.kinds()).not.toContain('approval_request');
     });
 

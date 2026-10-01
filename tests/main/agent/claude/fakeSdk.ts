@@ -20,7 +20,7 @@ export const sdk = {
       cwd: WORKSPACE,
       permissionMode: 'default',
       apiKeySource: 'ANTHROPIC_API_KEY',
-      agents: [],
+      agents: ['profiler', 'sql-analyst', 'report-writer'],
       skills: [
         'datadesk:chart-style',
         'datadesk:eda-checklist',
@@ -32,6 +32,7 @@ export const sdk = {
         { name: 'cc-plugin-agents-md', path: 'builtin' },
       ],
       tools: [
+        'Task',
         'Skill',
         'mcp__datadesk__list_datasets',
         'mcp__datadesk__get_schema',

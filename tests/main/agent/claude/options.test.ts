@@ -9,6 +9,7 @@ import {
 } from '../../../../src/main/agent/claude/agentOptions';
 import { checkInit } from '../../../../src/main/agent/claude/initGuard';
 import { neutralizeSlashCommand } from '../../../../src/main/agent/claude/inputQueue';
+import { scopeHook } from '../../../../src/main/agent/claude/scopeHook';
 import { DEFAULT_AGENT_SETTINGS } from '../../../../src/shared/agent';
 
 const KEY = 'sk-ant-test-key-0123456789';
@@ -38,13 +39,24 @@ describe('buildAgentOptions (the whole capability surface of the in-app agent)',
     expect(o.cwd).toBe(WORKSPACE);
   });
 
-  it('grants only the Skill built-in and denies the dangerous ones explicitly', () => {
+  it('grants only Skill and the sub-agent tool, and denies the dangerous built-ins explicitly', () => {
     const o = options();
-    expect(o.tools).toEqual(['Skill']);
-    expect(o.disallowedTools).not.toContain('Skill');
-    for (const t of ['Bash', 'Read', 'Write', 'Edit', 'WebFetch', 'WebSearch', 'Agent']) {
+    expect(o.tools).toEqual(['Skill', 'Agent']);
+    for (const t of ['Skill', 'Agent', 'Task']) expect(o.disallowedTools).not.toContain(t);
+    for (const t of ['Bash', 'Read', 'Write', 'Edit', 'WebFetch', 'WebSearch', 'ToolSearch']) {
       expect(o.disallowedTools).toContain(t);
     }
+  });
+
+  it('defines exactly our three sub-agents, enforces scope with a hook, forwards their text', () => {
+    const o = options();
+    expect(Object.keys(o.agents ?? {}).sort()).toEqual([
+      'profiler',
+      'report-writer',
+      'sql-analyst',
+    ]);
+    expect(o.hooks?.PreToolUse).toEqual([{ hooks: [scopeHook] }]);
+    expect(o.forwardSubagentText).toBe(true);
   });
 
   it('loads only our plugin and allows only our three skills, without shell injection', () => {
@@ -98,6 +110,10 @@ describe('buildAgentEnv', () => {
       CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1',
       ENABLE_CLAUDEAI_MCP_SERVERS: 'false',
       CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS: '1',
+      CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH: '1',
+      CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS: '3',
+      CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1',
+      CLAUDE_CODE_FORK_SUBAGENT: '0',
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
       DISABLE_AUTOUPDATER: '1',
     });
@@ -106,7 +122,7 @@ describe('buildAgentEnv', () => {
 
 describe('checkInit (runtime tripwire)', () => {
   const good = {
-    tools: ['Skill', ...AUTO_APPROVED_TOOLS, ...APPROVAL_TOOLS],
+    tools: ['Task', 'Skill', ...AUTO_APPROVED_TOOLS, ...APPROVAL_TOOLS],
     skills: [...SKILL_NAMES, 'doctor'],
     plugins: [
       // The CLI reports Windows-style paths; the guard compares paths separator-insensitively.
@@ -114,7 +130,7 @@ describe('checkInit (runtime tripwire)', () => {
       { name: 'cc-plugin-agents-md', path: 'builtin' },
     ],
     mcp_servers: [{ name: 'datadesk', status: 'pending' }],
-    agents: [],
+    agents: ['profiler', 'sql-analyst', 'report-writer'],
     permissionMode: 'default' as const,
     apiKeySource: 'ANTHROPIC_API_KEY' as const,
     cwd: WORKSPACE,
@@ -132,7 +148,12 @@ describe('checkInit (runtime tripwire)', () => {
       { mcp_servers: [...good.mcp_servers, { name: 'claude_ai_Gmail', status: 'connected' }] },
       /MCP servers/,
     ],
-    [{ agents: ['general-purpose'] }, /agents/],
+    [
+      { agents: ['profiler', 'sql-analyst', 'report-writer', 'general-purpose'] },
+      /unexpected agents: general-purpose/,
+    ],
+    [{ agents: ['profiler', 'sql-analyst'] }, /sub-agents did not load: report-writer/],
+    [{ agents: [] }, /sub-agents did not load/],
     [{ permissionMode: 'bypassPermissions' as const }, /permission mode/],
     [{ apiKeySource: '/login managed key' as const }, /credentials/],
     [{ cwd: 'C:/github_projects/data-analysis-assistant' }, /working directory/],
