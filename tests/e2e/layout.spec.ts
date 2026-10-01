@@ -66,3 +66,42 @@ test('every theme and both layouts render with zero CSP violations', async ({ pa
 
   expect(violations).toEqual([]);
 });
+
+test('the window itself never scrolls, however long the conversation gets', async ({
+  electronApp,
+  page,
+}) => {
+  // Regression: each message's screen-reader label (sr-only, position: absolute) escaped the
+  // chat's scroll box and stretched the document, so the whole page, title bar and all, scrolled.
+  let seq = 1000;
+  for (let i = 0; i < 25; i++) {
+    await electronApp.evaluate(
+      ({ BrowserWindow }, payload) => {
+        BrowserWindow.getAllWindows()[0]?.webContents.send('agent:event', payload);
+      },
+      {
+        kind: 'assistant_message',
+        messageId: `m${String(i)}`,
+        text: `Answer ${String(i)}\n\n- a\n- b\n- c`,
+        parentToolUseId: null,
+        seq: seq++,
+        at: Date.now(),
+      },
+    );
+  }
+  await expect(page.getByText('Answer 24')).toBeAttached();
+  const size = () =>
+    page.evaluate(() => {
+      const doc = document.scrollingElement;
+      return { scroll: doc?.scrollHeight, client: doc?.clientHeight, top: doc?.scrollTop };
+    });
+  const before = await size();
+  expect(before.scroll).toBe(before.client);
+
+  await page.mouse.move(600, 300);
+  await page.mouse.wheel(0, 3000);
+  await expect.poll(async () => (await size()).top).toBe(0);
+  await expect(page.getByRole('heading', { name: 'DataDesk' })).toBeInViewport();
+  // The chat itself still scrolls.
+  await expect(page.getByText('Answer 0')).not.toBeInViewport();
+});

@@ -76,7 +76,9 @@ export function App() {
   );
 
   return (
-    <div className="flex h-screen flex-col text-fg">
+    // The window never scrolls, only the panels in it: relative + overflow-clip keeps any
+    // absolutely positioned descendant from stretching the document (fixed overlays still work).
+    <div className="relative flex h-screen flex-col overflow-clip text-fg">
       <TitleBar>
         <span className="flex-1" />
         <nav aria-label="App" className="flex items-center gap-1">

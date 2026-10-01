@@ -67,7 +67,9 @@ export function ChatPanel({ className = '', style, docked = false }: ChatPanelPr
       style={style}
       className={`flex min-h-0 min-w-0 flex-col ${docked ? 'bg-surface' : ''} ${className}`}
     >
-      <div className="min-h-0 flex-1 overflow-auto">
+      {/* relative: the sr-only labels (position: absolute) must scroll with the chat, not
+          stretch the whole window. */}
+      <div className="relative min-h-0 flex-1 overflow-auto">
         <ol
           aria-label="Conversation"
           className={`mx-auto max-w-[760px] pb-2 ${docked ? 'px-3.5 pt-3' : 'px-6 pt-6'}`}

@@ -14,7 +14,8 @@ export function Panel({ title, className = '', style, children }: PanelProps) {
       <h2 className="border-b border-line px-4 py-2 text-xs font-semibold tracking-wide text-muted uppercase">
         {title}
       </h2>
-      <div className="min-h-0 flex-1 overflow-auto p-4">{children}</div>
+      {/* relative: absolutely positioned content stays inside the box that scrolls it. */}
+      <div className="relative min-h-0 flex-1 overflow-auto p-4">{children}</div>
     </section>
   );
 }
