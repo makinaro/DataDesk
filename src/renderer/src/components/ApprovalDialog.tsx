@@ -19,7 +19,7 @@ export function ApprovalDialog() {
   if (!pending) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-scrim">
       <div
         role="alertdialog"
         aria-modal="true"
@@ -27,17 +27,17 @@ export function ApprovalDialog() {
         onKeyDown={(event) => {
           if (event.key === 'Escape') answerApproval(pending.requestId, false);
         }}
-        className="w-full max-w-lg rounded-xl border border-amber-700 bg-slate-900 p-6 shadow-xl"
+        className="w-full max-w-lg rounded-xl border border-warn bg-surface p-6 shadow-xl"
       >
         <h2 id={titleId} className="mb-2 text-lg font-semibold">
           {pending.title}
         </h2>
-        <p className="mb-3 text-sm text-slate-400">
+        <p className="mb-3 text-sm text-muted">
           The analyst wants to run <span className="font-mono">{pending.toolName}</span>. Nothing
           happens unless you allow it.
           {waiting > 0 && ` (${String(waiting)} more request${waiting > 1 ? 's' : ''} waiting)`}
         </p>
-        <pre className="mb-4 max-h-60 overflow-auto rounded bg-slate-950 p-3 text-xs whitespace-pre-wrap">
+        <pre className="mb-4 max-h-60 overflow-auto rounded bg-canvas p-3 text-xs whitespace-pre-wrap">
           {pending.detail}
         </pre>
         <div className="flex justify-end gap-2">
@@ -47,7 +47,7 @@ export function ApprovalDialog() {
             onClick={() => {
               answerApproval(pending.requestId, false);
             }}
-            className="rounded border border-slate-700 px-4 py-1.5 text-sm hover:bg-slate-800"
+            className="rounded border border-strong px-4 py-1.5 text-sm hover:bg-raised"
           >
             Deny
           </button>
@@ -56,7 +56,7 @@ export function ApprovalDialog() {
             onClick={() => {
               answerApproval(pending.requestId, true);
             }}
-            className="rounded bg-amber-700 px-4 py-1.5 text-sm hover:bg-amber-600"
+            className="rounded bg-accent px-4 py-1.5 text-sm text-on-accent hover:bg-accent-hover"
           >
             Allow
           </button>

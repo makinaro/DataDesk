@@ -27,7 +27,7 @@ export function createMainWindow(rendererUrl: string): BrowserWindow {
     minHeight: 600,
     show: false,
     title: 'DataDesk',
-    backgroundColor: '#020617',
+    backgroundColor: '#0e0e0e',
     webPreferences: secureWebPreferences(join(import.meta.dirname, '../preload/index.cjs')),
   });
 

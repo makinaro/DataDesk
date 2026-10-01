@@ -40,12 +40,12 @@ export function SettingsDialog({ onClose }: Props) {
   }, [api]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-scrim">
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="max-h-[90vh] w-full max-w-lg overflow-auto rounded-xl border border-slate-700 bg-slate-900 p-6 shadow-xl"
+        className="max-h-[90vh] w-full max-w-lg overflow-auto rounded-xl border border-strong bg-surface p-6 shadow-xl"
       >
         <div className="mb-4 flex items-center justify-between">
           <h2 id={titleId} className="text-lg font-semibold">
@@ -54,18 +54,18 @@ export function SettingsDialog({ onClose }: Props) {
           <button
             type="button"
             onClick={onClose}
-            className="rounded px-2 py-1 text-slate-400 hover:bg-slate-800 hover:text-slate-100"
+            className="rounded px-2 py-1 text-muted hover:bg-raised hover:text-fg"
           >
             Close
           </button>
         </div>
         <h3 className="mb-1 font-medium">API keys</h3>
-        <p className="mb-4 text-sm text-slate-400">
+        <p className="mb-4 text-sm text-muted">
           Keys are encrypted by your operating system and stay in the app&apos;s main process. They
           can be replaced or removed, but never displayed.
         </p>
         {error && (
-          <p role="alert" className="mb-4 rounded bg-red-950 px-3 py-2 text-sm text-red-300">
+          <p role="alert" className="mb-4 rounded bg-danger-soft px-3 py-2 text-sm text-danger">
             {error}
           </p>
         )}
@@ -134,7 +134,7 @@ function ProviderRow({ provider, label, hint, isSet, onStatus, onError }: RowPro
   }
 
   return (
-    <li className="rounded-lg border border-slate-800 p-3">
+    <li className="rounded-lg border border-line p-3">
       <form onSubmit={(e) => void save(e)} className="space-y-2">
         <div className="flex items-center justify-between">
           <label htmlFor={inputId} className="font-medium">
@@ -143,13 +143,13 @@ function ProviderRow({ provider, label, hint, isSet, onStatus, onError }: RowPro
           <span
             data-testid={`status-${provider}`}
             className={`rounded-full px-2 py-0.5 text-xs ${
-              isSet ? 'bg-emerald-900 text-emerald-300' : 'bg-slate-800 text-slate-400'
+              isSet ? 'bg-raised text-ok' : 'bg-raised text-muted'
             }`}
           >
             {isSet ? 'Set' : 'Not set'}
           </span>
         </div>
-        <p className="text-xs text-slate-500">{hint}</p>
+        <p className="text-xs text-faint">{hint}</p>
         <div className="flex gap-2">
           <input
             id={inputId}
@@ -161,13 +161,13 @@ function ProviderRow({ provider, label, hint, isSet, onStatus, onError }: RowPro
               setDraft(e.target.value);
             }}
             placeholder={isSet ? 'Replace key…' : 'Paste key…'}
-            className="min-w-0 flex-1 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-sm"
+            className="min-w-0 flex-1 rounded border border-strong bg-canvas px-2 py-1 text-sm"
           />
           <button
             type="submit"
             aria-label={`Save ${label} key`}
             disabled={busy || draft.trim().length === 0}
-            className="rounded bg-sky-700 px-3 py-1 text-sm hover:bg-sky-600 disabled:opacity-40"
+            className="rounded bg-accent px-3 py-1 text-sm text-on-accent hover:bg-accent-hover disabled:opacity-40"
           >
             Save
           </button>
@@ -176,7 +176,7 @@ function ProviderRow({ provider, label, hint, isSet, onStatus, onError }: RowPro
             aria-label={`Clear ${label} key`}
             onClick={() => void clear()}
             disabled={busy || !isSet}
-            className="rounded border border-slate-700 px-3 py-1 text-sm hover:bg-slate-800 disabled:opacity-40"
+            className="rounded border border-strong px-3 py-1 text-sm hover:bg-raised disabled:opacity-40"
           >
             Clear
           </button>

@@ -130,3 +130,22 @@ works manually.
 **Done when:** the installer installs, the app launches, a dataset registers and queries, and the
 agent starts after a manual key entry.
 **Learn:** asar, native modules, shipping an agent runtime.
+
+## Phase 9: UI polish
+
+Prototype: branch `prototype/ui-polish` (`prototypes/datadesk-ui.prototype.html`). Owner picked
+layouts A (Chat-first) and C (Results-first, default); charts stay Vega-Lite.
+
+- [x] Theme tokens: Dark (black & white, default), Light, Slate; themed scrollbars
+- [ ] Appearance settings (theme incl. System, layout) persisted in main, separate from agent settings
+- [ ] Integrated title bar: no menu bar, native window controls follow the theme
+- [ ] Markdown in chat: tables, bold, lists, highlighted code blocks, chart chips; streaming-safe
+- [ ] Claude-style chat: no answer bubbles, compact user messages, composer card
+- [ ] Resizable panels with keyboard-accessible handles; sizes remembered per layout
+- [ ] Layouts: Results-first (default) and Chat-first, with inline tool steps in Results-first
+- [ ] Interactive, theme-aware charts: tooltips, zoom/pan, legend filter, reset, save PNG/SVG
+
+**Done when:** every theme and both layouts work in the dev and packaged app with zero CSP
+violations; chat renders GFM markdown (including partial streams) with no raw HTML or navigating
+links; panels resize by mouse and keyboard; `npm run check`, e2e and the packaged smokes pass.
+**Learn:** design tokens, frameless windows, safe markdown rendering, accessible split panes.

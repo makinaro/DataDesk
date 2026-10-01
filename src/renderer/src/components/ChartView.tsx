@@ -53,14 +53,14 @@ export function ChartView({ id, compact = false }: { id: string; compact?: boole
     <figure aria-label={chart ? `Chart: ${chart.title}` : 'Chart'} className="space-y-1">
       {!compact && chart && <figcaption className="text-sm font-medium">{chart.title}</figcaption>}
       {message ? (
-        <p role="alert" className="text-sm text-red-300">
+        <p role="alert" className="text-sm text-danger">
           Chart could not be shown: {message}
         </p>
       ) : (
-        <div ref={ref} className="chart-surface overflow-auto rounded bg-white p-2" />
+        <div ref={ref} className="chart-surface overflow-auto rounded p-2" />
       )}
       {!compact && chart?.truncated && (
-        <p className="text-xs text-amber-300">
+        <p className="text-xs text-warn">
           Showing the first {chart.rowCount} rows (chart row limit).
         </p>
       )}

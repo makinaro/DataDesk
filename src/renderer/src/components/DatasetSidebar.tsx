@@ -91,7 +91,7 @@ export function DatasetSidebar({ selected, onSelect, revision, onChanged }: Prop
   }
 
   return (
-    <Panel title="Datasets" className="w-72 shrink-0 border-r border-slate-800">
+    <Panel title="Datasets" className="w-72 shrink-0 border-r border-line">
       <div
         data-testid="dataset-dropzone"
         onDragOver={onDragOver}
@@ -100,29 +100,29 @@ export function DatasetSidebar({ selected, onSelect, revision, onChanged }: Prop
         }}
         onDrop={onDrop}
         className={`flex min-h-full flex-col gap-3 rounded-lg ${
-          dragging ? 'outline-2 outline-sky-500 outline-dashed' : ''
+          dragging ? 'outline-2 outline-focus outline-dashed' : ''
         }`}
       >
         <button
           type="button"
           onClick={() => void pick()}
           disabled={busy}
-          className="rounded border border-slate-700 px-3 py-1.5 text-sm hover:bg-slate-800 disabled:opacity-40"
+          className="rounded border border-strong px-3 py-1.5 text-sm hover:bg-raised disabled:opacity-40"
         >
           {busy ? 'Adding…' : 'Add file…'}
         </button>
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-faint">
           Or drop CSV, Excel, Parquet or JSON files anywhere in this panel.
         </p>
 
         {error && (
-          <p role="alert" className="rounded bg-red-950 px-2 py-1.5 text-xs text-red-300">
+          <p role="alert" className="rounded bg-danger-soft px-2 py-1.5 text-xs text-danger">
             {error}
           </p>
         )}
 
         {datasets.length === 0 ? (
-          <p className="text-sm text-slate-500">No datasets yet.</p>
+          <p className="text-sm text-faint">No datasets yet.</p>
         ) : (
           <ul aria-label="Registered datasets" className="space-y-1">
             {datasets.map((d) => (
@@ -133,12 +133,12 @@ export function DatasetSidebar({ selected, onSelect, revision, onChanged }: Prop
                   onClick={() => {
                     onSelect(selected === d.name ? null : d.name);
                   }}
-                  className={`w-full rounded px-2 py-1.5 text-left hover:bg-slate-800 ${
-                    selected === d.name ? 'bg-slate-800' : ''
+                  className={`w-full rounded px-2 py-1.5 text-left hover:bg-raised ${
+                    selected === d.name ? 'bg-raised' : ''
                   }`}
                 >
                   <span className="block font-mono text-sm">{d.name}</span>
-                  <span className="block text-xs text-slate-500">
+                  <span className="block text-xs text-faint">
                     {d.error
                       ? `⚠ ${d.error}`
                       : `${d.format.toUpperCase()} · ${String(d.rowCount ?? '?')} rows · ${String(
@@ -149,12 +149,12 @@ export function DatasetSidebar({ selected, onSelect, revision, onChanged }: Prop
                 {selected === d.name && schema && (
                   <ul
                     aria-label={`Columns of ${d.name}`}
-                    className="mt-1 ml-3 space-y-0.5 border-l border-slate-800 pl-2"
+                    className="mt-1 ml-3 space-y-0.5 border-l border-line pl-2"
                   >
                     {schema.map((c) => (
                       <li key={c.name} className="flex justify-between gap-2 text-xs">
                         <span className="truncate font-mono">{c.name}</span>
-                        <span className="shrink-0 text-slate-500">{c.type}</span>
+                        <span className="shrink-0 text-faint">{c.type}</span>
                       </li>
                     ))}
                   </ul>

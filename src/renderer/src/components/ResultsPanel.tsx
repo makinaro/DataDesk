@@ -55,7 +55,7 @@ export function ResultsPanel({ dataset, revision }: { dataset: string | null; re
   };
 
   return (
-    <Panel title="Charts & report" className="w-[520px] shrink-0 border-l border-slate-800">
+    <Panel title="Charts & report" className="w-[520px] shrink-0 border-l border-line">
       <div role="tablist" aria-label="Results" className="mb-3 flex flex-wrap gap-1 text-xs">
         <TabButton
           selected={tab === PREVIEW}
@@ -73,7 +73,7 @@ export function ResultsPanel({ dataset, revision }: { dataset: string | null; re
               choose(a.id);
             }}
           >
-            <span className="text-slate-500">{a.kind === 'chart' ? 'Chart' : 'Report'} · </span>
+            <span className="text-faint">{a.kind === 'chart' ? 'Chart' : 'Report'} · </span>
             {a.title}
           </TabButton>
         ))}
@@ -103,9 +103,7 @@ function TabButton({
       aria-selected={selected}
       onClick={onClick}
       className={`max-w-[220px] truncate rounded border px-2 py-1 ${
-        selected
-          ? 'border-sky-600 bg-sky-950 text-sky-100'
-          : 'border-slate-700 text-slate-300 hover:bg-slate-800'
+        selected ? 'border-fg bg-strong text-fg' : 'border-strong text-muted hover:bg-raised'
       }`}
     >
       {children}
@@ -123,14 +121,14 @@ function DatasetPreview({ dataset, revision }: { dataset: string | null; revisio
 
   if (!dataset) {
     return (
-      <p className="rounded-lg border border-dashed border-slate-700 p-4 text-sm text-slate-500">
+      <p className="rounded-lg border border-dashed border-strong p-4 text-sm text-faint">
         Select a dataset to preview it. Charts and reports the analyst creates appear here as tabs.
       </p>
     );
   }
   if (error) {
     return (
-      <p role="alert" className="text-sm text-red-300">
+      <p role="alert" className="text-sm text-danger">
         {error}
       </p>
     );
@@ -138,25 +136,25 @@ function DatasetPreview({ dataset, revision }: { dataset: string | null; revisio
   if (!preview) return null;
   return (
     <figure>
-      <figcaption className="mb-2 text-sm text-slate-400">
-        Preview of <span className="font-mono text-slate-200">{dataset}</span> (first{' '}
-        {preview.rowCount} rows)
+      <figcaption className="mb-2 text-sm text-muted">
+        Preview of <span className="font-mono text-fg">{dataset}</span> (first {preview.rowCount}{' '}
+        rows)
       </figcaption>
-      <div className="overflow-auto rounded border border-slate-800">
+      <div className="overflow-auto rounded border border-line">
         <table aria-label={`Preview of ${dataset}`} className="w-full text-xs">
-          <thead className="bg-slate-900">
+          <thead className="bg-surface">
             <tr>
               {preview.columns.map((c) => (
                 <th key={c.name} className="px-2 py-1 text-left font-medium whitespace-nowrap">
                   {c.name}
-                  <span className="ml-1 font-normal text-slate-500">{c.type}</span>
+                  <span className="ml-1 font-normal text-faint">{c.type}</span>
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
             {preview.rows.map((row, i) => (
-              <tr key={i} className="odd:bg-slate-950 even:bg-slate-900/50">
+              <tr key={i} className="odd:bg-canvas even:bg-surface">
                 {row.map((cell, j) => (
                   <td key={j} className="px-2 py-1 font-mono whitespace-nowrap">
                     {renderCell(cell)}

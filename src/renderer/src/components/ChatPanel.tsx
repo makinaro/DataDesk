@@ -32,7 +32,7 @@ export function ChatPanel() {
   return (
     <Panel title="Chat" className="min-w-0 flex-1">
       <div className="flex h-full flex-col gap-3">
-        <div className="flex items-center justify-between text-xs text-slate-500">
+        <div className="flex items-center justify-between text-xs text-faint">
           <span data-testid="agent-status">
             {state.model ? `${state.model} · ` : ''}
             {state.status}
@@ -42,7 +42,7 @@ export function ChatPanel() {
             type="button"
             onClick={reset}
             disabled={state.messages.length === 0}
-            className="rounded px-2 py-0.5 hover:bg-slate-800 disabled:opacity-40"
+            className="rounded px-2 py-0.5 hover:bg-raised disabled:opacity-40"
           >
             New conversation
           </button>
@@ -50,7 +50,7 @@ export function ChatPanel() {
 
         <ol aria-label="Conversation" className="flex-1 space-y-3 overflow-auto">
           {state.messages.length === 0 && (
-            <li className="rounded-lg border border-dashed border-slate-700 p-4 text-sm text-slate-500">
+            <li className="rounded-lg border border-dashed border-strong p-4 text-sm text-faint">
               Ask a question about your datasets, e.g. “Which region sold the most units?”
             </li>
           )}
@@ -58,19 +58,19 @@ export function ChatPanel() {
             <li
               key={m.id}
               className={`max-w-[85%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap ${
-                m.role === 'user' ? 'ml-auto bg-sky-900/60' : 'bg-slate-900'
+                m.role === 'user' ? 'ml-auto bg-bubble' : 'bg-surface'
               }`}
             >
               <span className="sr-only">{m.role === 'user' ? 'You: ' : 'Analyst: '}</span>
               {m.text}
-              {m.streaming && <span className="ml-1 animate-pulse text-slate-500">▍</span>}
+              {m.streaming && <span className="ml-1 animate-pulse text-faint">▍</span>}
             </li>
           ))}
           <div ref={endRef} />
         </ol>
 
         {error && (
-          <p role="alert" className="rounded bg-red-950 px-3 py-2 text-sm text-red-300">
+          <p role="alert" className="rounded bg-danger-soft px-3 py-2 text-sm text-danger">
             {error}
           </p>
         )}
@@ -84,13 +84,13 @@ export function ChatPanel() {
             }}
             onKeyDown={onKeyDown}
             placeholder="Ask about your data… (Enter to send, Shift+Enter for a new line)"
-            className="h-20 flex-1 resize-none rounded-lg border border-slate-800 bg-slate-900 p-3 text-sm"
+            className="h-20 flex-1 resize-none rounded-lg border border-line bg-surface p-3 text-sm"
           />
           {busy ? (
             <button
               type="button"
               onClick={stop}
-              className="rounded-lg border border-red-800 px-4 text-sm text-red-300 hover:bg-red-950"
+              className="rounded-lg border border-danger px-4 text-sm text-danger hover:bg-danger-soft"
             >
               Stop
             </button>
@@ -99,7 +99,7 @@ export function ChatPanel() {
               type="button"
               onClick={() => void submit()}
               disabled={!draft.trim()}
-              className="rounded-lg bg-sky-700 px-4 text-sm hover:bg-sky-600 disabled:opacity-40"
+              className="rounded-lg bg-accent px-4 text-sm text-on-accent hover:bg-accent-hover disabled:opacity-40"
             >
               Send
             </button>

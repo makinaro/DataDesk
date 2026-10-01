@@ -1,9 +1,159 @@
 @import 'tailwindcss';
 
 /*
+ * Theme tokens. Components use only these semantic colours (bg-canvas, text-muted,
+ * border-line, ...), never palette classes like slate-800, so a theme is just a set of
+ * variable values on <html data-theme="...">. `inline` makes each utility read the variable
+ * directly, so switching data-theme restyles everything without rebuilding CSS.
+ */
+@theme inline {
+  --color-canvas: var(--dd-canvas);
+  --color-surface: var(--dd-surface);
+  --color-raised: var(--dd-raised);
+  --color-strong: var(--dd-strong);
+  --color-line: var(--dd-line);
+  --color-fg: var(--dd-fg);
+  --color-muted: var(--dd-muted);
+  --color-faint: var(--dd-faint);
+  --color-accent: var(--dd-accent);
+  --color-accent-hover: var(--dd-accent-hover);
+  --color-on-accent: var(--dd-on-accent);
+  --color-bubble: var(--dd-bubble);
+  --color-focus: var(--dd-focus);
+  --color-danger: var(--dd-danger);
+  --color-danger-soft: var(--dd-danger-soft);
+  --color-warn: var(--dd-warn);
+  --color-warn-soft: var(--dd-warn-soft);
+  --color-ok: var(--dd-ok);
+  --color-agent: var(--dd-agent);
+  --color-scrim: var(--dd-scrim);
+}
+
+/* Dark is also the fallback before the stored theme is applied. */
+:root,
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --dd-canvas: #0e0e0e;
+  --dd-surface: #151515;
+  --dd-raised: #1e1e1e;
+  --dd-strong: #2a2a2a;
+  --dd-line: #262626;
+  --dd-fg: #ececec;
+  --dd-muted: #b4b4b4;
+  --dd-faint: #8a8a8a;
+  --dd-accent: #ececec;
+  --dd-accent-hover: #ffffff;
+  --dd-on-accent: #0e0e0e;
+  --dd-bubble: #222222;
+  --dd-focus: #ffffff;
+  --dd-danger: #f87171;
+  --dd-danger-soft: #2b1515;
+  --dd-warn: #fbbf24;
+  --dd-warn-soft: #2a2110;
+  --dd-ok: #4ade80;
+  --dd-agent: #c8c8c8;
+  --dd-scrim: rgb(0 0 0 / 0.6);
+  --dd-scrollbar: #363636;
+  --dd-scrollbar-hover: #4e4e4e;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --dd-canvas: #ffffff;
+  --dd-surface: #f7f7f6;
+  --dd-raised: #efefee;
+  --dd-strong: #e4e4e3;
+  --dd-line: #e4e4e3;
+  --dd-fg: #171717;
+  --dd-muted: #464646;
+  --dd-faint: #6b6b6b;
+  --dd-accent: #171717;
+  --dd-accent-hover: #000000;
+  --dd-on-accent: #ffffff;
+  --dd-bubble: #f0f0ef;
+  --dd-focus: #000000;
+  --dd-danger: #b91c1c;
+  --dd-danger-soft: #fdecec;
+  --dd-warn: #92400e;
+  --dd-warn-soft: #fdf3e1;
+  --dd-ok: #15803d;
+  --dd-agent: #3a3a3a;
+  --dd-scrim: rgb(0 0 0 / 0.35);
+  --dd-scrollbar: #d0d0cf;
+  --dd-scrollbar-hover: #acacab;
+}
+
+/* The pre-Phase-9 look (slate + sky), kept as an option. */
+:root[data-theme='slate'] {
+  color-scheme: dark;
+  --dd-canvas: #020617;
+  --dd-surface: #0b1224;
+  --dd-raised: #1e293b;
+  --dd-strong: #273449;
+  --dd-line: #1e293b;
+  --dd-fg: #f1f5f9;
+  --dd-muted: #b4c0d0;
+  --dd-faint: #8391a7;
+  --dd-accent: #0369a1;
+  --dd-accent-hover: #0284c7;
+  --dd-on-accent: #ffffff;
+  --dd-bubble: #0c2a44;
+  --dd-focus: #38bdf8;
+  --dd-danger: #fca5a5;
+  --dd-danger-soft: #450a0a;
+  --dd-warn: #fcd34d;
+  --dd-warn-soft: #3a2a07;
+  --dd-ok: #6ee7b7;
+  --dd-agent: #a5b4fc;
+  --dd-scrim: rgb(0 0 0 / 0.6);
+  --dd-scrollbar: #1e293b;
+  --dd-scrollbar-hover: #334155;
+}
+
+@layer base {
+  body {
+    background-color: var(--dd-canvas);
+    color: var(--dd-fg);
+    font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  :focus-visible {
+    outline: 2px solid var(--dd-focus);
+    outline-offset: 2px;
+  }
+  ::placeholder {
+    color: var(--dd-faint);
+  }
+}
+
+/* Thin rounded scrollbars in the theme's colours (Chromium). */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 10px;
+  background: var(--dd-scrollbar) padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--dd-scrollbar-hover) padding-box;
+}
+
+/*
  * Vega renders with defaultStyle:false and tooltip.disableDefaultStyle:true because the CSP
  * forbids injected <style> elements (DECISIONS D-016), so the equivalent rules live here.
  */
+/* Vega's default config is drawn for a light background in every theme. */
+.chart-surface {
+  background-color: #ffffff;
+  color-scheme: light;
+}
+
 .vega-embed {
   position: relative;
   display: inline-block;
@@ -16,12 +166,12 @@
   position: fixed;
   z-index: 1000;
   padding: 8px;
-  border: 1px solid #d9d9d9;
-  border-radius: 3px;
-  background-color: rgb(255 255 255 / 0.95);
-  box-shadow: 2px 2px 4px rgb(0 0 0 / 0.1);
-  color: black;
-  font-family: sans-serif;
+  border: 1px solid var(--dd-line);
+  border-radius: 6px;
+  background-color: var(--dd-surface);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.2);
+  color: var(--dd-fg);
+  font-family: inherit;
   font-size: 11px;
   white-space: pre-line;
 }
@@ -44,7 +194,7 @@
 #vg-tooltip-element td.key {
   max-width: 150px;
   padding-right: 4px;
-  color: #808080;
+  color: var(--dd-faint);
   text-align: right;
 }
 #vg-tooltip-element td.value {
@@ -90,19 +240,19 @@
   list-style: decimal;
 }
 .report-prose a {
-  color: var(--color-sky-300);
+  color: var(--dd-fg);
   text-decoration: underline;
 }
 .report-prose code {
   border-radius: 0.25rem;
-  background: var(--color-slate-800);
+  background: var(--dd-raised);
   padding: 0 0.25rem;
   font-size: 0.8em;
 }
 .report-prose pre {
   overflow: auto;
   border-radius: 0.25rem;
-  background: var(--color-slate-900);
+  background: var(--dd-surface);
   padding: 0.5rem;
 }
 .report-prose pre code {
@@ -115,12 +265,12 @@
 }
 .report-prose th,
 .report-prose td {
-  border: 1px solid var(--color-slate-700);
+  border: 1px solid var(--dd-line);
   padding: 0.25rem 0.5rem;
   text-align: left;
 }
 .report-prose blockquote {
-  border-left: 3px solid var(--color-slate-600);
+  border-left: 3px solid var(--dd-strong);
   padding-left: 0.75rem;
-  color: var(--color-slate-400);
+  color: var(--dd-muted);
 }
