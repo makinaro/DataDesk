@@ -1,5 +1,5 @@
-import { randomUUID } from 'node:crypto';
-import { mkdir, open, rename, rm } from 'node:fs/promises';
+import { createHash, randomUUID } from 'node:crypto';
+import { mkdir, open, rename, rm, type FileHandle } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative } from 'node:path';
 import { z } from 'zod';
 import { ColumnInfoSchema, DatasetNameSchema, DatasetFormatSchema } from '../../shared/datasets';
@@ -70,11 +70,17 @@ export function localPathFor(
 ): string {
   const safe = (segment: string) => segment.replace(/[^A-Za-z0-9._-]/g, '_');
   const [owner = '', repo = ''] = repoId.split('/');
+  // safe() and case-insensitive NTFS map different Hub files (a b.csv / a_b.csv, Data/ / data/)
+  // to one name; a hash of the exact input keeps each file in its own folder, so a download can
+  // never replace the file behind another dataset.
+  const id = createHash('sha256')
+    .update(JSON.stringify([repoId, revision, file]))
+    .digest('hex');
   const target = join(
     hfDir,
     safe(owner),
     safe(repo),
-    safe(revision.replaceAll('/', '_')),
+    `${safe(revision.replaceAll('/', '_'))}-${id.slice(0, 10)}`,
     ...file.split('/').map(safe),
   );
   const rel = relative(hfDir, target);
@@ -132,7 +138,7 @@ async function openDownload(
     }
     // Redirects are followed by hand so the token is sent to huggingface.co and nowhere else.
     const headers: Record<string, string> = {};
-    if (config.token && url.hostname.toLowerCase() === 'huggingface.co') {
+    if (config.token && url.hostname.toLowerCase() === 'huggingface.co' && url.port === '') {
       headers.Authorization = `Bearer ${config.token}`;
     }
     const response = await config.fetch(url, { headers, redirect: 'manual', signal });
@@ -167,9 +173,15 @@ async function saveCapped(
     throw tooLarge(declared, maxBytes);
   }
   if (!response.body) throw new HfDownloadError('Hugging Face sent an empty response.');
-  await mkdir(dirname(target), { recursive: true });
   const temp = `${target}.${randomUUID()}.part`;
-  const file = await open(temp, 'wx');
+  let file: FileHandle;
+  try {
+    await mkdir(dirname(target), { recursive: true });
+    file = await open(temp, 'wx');
+  } catch (error) {
+    await response.body.cancel().catch(() => undefined);
+    throw error;
+  }
   let written = 0;
   try {
     // Node types the body as ReadableStream<any>; fetch bodies are always bytes.
@@ -236,11 +248,22 @@ export async function loadHfDataset(
       `Could not download from Hugging Face: ${message.split('\n')[0] ?? ''}`,
     );
   }
-  const { entry, columns, rowCount } = await registerDataset(
-    db,
-    { ...policy, allowDirs: [config.hfDir] },
-    { path: target, name: args.name ?? defaultHfDatasetName(input.repoId, input.file) },
-  );
+  let registered: Awaited<ReturnType<typeof registerDataset>>;
+  try {
+    registered = await registerDataset(
+      db,
+      { ...policy, allowDirs: [config.hfDir] },
+      { path: target, name: args.name ?? defaultHfDatasetName(input.repoId, input.file) },
+    );
+  } catch (error) {
+    // Don't leave up to the cap's worth of unusable data behind.
+    await rm(target, { force: true });
+    const message = error instanceof Error ? (error.message.split('\n')[0] ?? '') : String(error);
+    throw new HfDownloadError(
+      `Downloaded the file, but it could not be added as a dataset (${message}); the file was removed.`,
+    );
+  }
+  const { entry, columns, rowCount } = registered;
   return {
     name: entry.name,
     format: entry.format,

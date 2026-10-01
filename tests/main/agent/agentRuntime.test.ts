@@ -171,8 +171,10 @@ describe('createAgentRuntime', () => {
     });
     const options = calls.options as Options;
     expect(options.env?.DATADESK_HF_TOKEN).toBe(hfToken);
-    // mcpServers becomes the CLI's --mcp-config argument: the token must not be in it.
+    // mcpServers becomes the CLI's --mcp-config argument: the token must not be in it. Nothing
+    // else in the options may carry it either; only the CLI's env.
     expect(JSON.stringify(options.mcpServers)).not.toContain(hfToken);
+    expect(JSON.stringify({ ...options, env: undefined })).not.toContain(hfToken);
     expect(options.mcpServers?.hf).toMatchObject({
       type: 'http',
       headers: { Authorization: 'Bearer ${DATADESK_HF_TOKEN}' },

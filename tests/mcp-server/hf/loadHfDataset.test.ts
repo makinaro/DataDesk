@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, relative, sep } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { registerDataset } from '../../../src/mcp-server/datasets';
 import {
@@ -55,6 +55,12 @@ function load(
   return { promise, hub };
 }
 
+/** The path below the HF folder, as segments. */
+const parts = (path: string) => relative(hfDir, path).split(sep);
+/** <revision>-<hash of the exact repo, revision and path>. */
+const folder = (revision: string): unknown =>
+  expect.stringMatching(new RegExp(`^${revision}-[0-9a-f]{10}$`));
+
 /** Every file left in the HF folder (to prove nothing partial survives). */
 function filesIn(dir: string): string[] {
   if (!existsSync(dir)) return [];
@@ -80,7 +86,7 @@ describe('loadHfDataset', () => {
       file: 'Iris.csv',
       downloadedBytes: CSV.length,
     });
-    expect(loaded.path).toBe(join(hfDir, 'scikit-learn', 'iris', 'main', 'Iris.csv'));
+    expect(parts(loaded.path)).toEqual(['scikit-learn', 'iris', folder('main'), 'Iris.csv']);
     expect(readFileSync(loaded.path, 'utf8')).toBe(CSV);
     const result = await ws.db.query('SELECT count(*) AS n FROM hf_iris', 10);
     expect(result.rows).toEqual([[3]]);
@@ -126,9 +132,14 @@ describe('loadHfDataset', () => {
     );
     const loaded = await promise;
     expect(loaded.name).toBe('iris_train');
-    expect(loaded.path).toBe(
-      join(hfDir, 'scikit-learn', 'iris', 'refs_convert_parquet', 'default', 'train', '0000.csv'),
-    );
+    expect(parts(loaded.path)).toEqual([
+      'scikit-learn',
+      'iris',
+      folder('refs_convert_parquet'),
+      'default',
+      'train',
+      '0000.csv',
+    ]);
   });
 
   describe('download cap', () => {
@@ -251,10 +262,57 @@ describe('the registration exception (D-020)', () => {
   });
 
   it('keeps every path inside the HF folder', () => {
-    expect(localPathFor(hfDir, 'a/b', 'main', 'x.csv')).toBe(
-      join(hfDir, 'a', 'b', 'main', 'x.csv'),
-    );
+    expect(parts(localPathFor(hfDir, 'a/b', 'main', 'x.csv'))).toEqual([
+      'a',
+      'b',
+      folder('main'),
+      'x.csv',
+    ]);
     // The input schema rejects .. segments first; the path builder refuses an escape on its own.
     expect(() => localPathFor(hfDir, 'a/b', 'main', '../../../../x.csv')).toThrow(HfDownloadError);
+  });
+});
+
+describe('review hardening', () => {
+  it('gives Hub files that look alike on Windows their own local files', () => {
+    const pairs: [string, string, string, string][] = [
+      ['main', 'a b.csv', 'main', 'a_b.csv'],
+      ['main', 'Data/x.csv', 'main', 'data/x.csv'],
+      ['refs/convert/parquet', 'x.csv', 'refs_convert_parquet', 'x.csv'],
+    ];
+    for (const [revA, fileA, revB, fileB] of pairs) {
+      const a = localPathFor(hfDir, 'o/r', revA, fileA).toLowerCase();
+      const b = localPathFor(hfDir, 'o/r', revB, fileB).toLowerCase();
+      expect(a).not.toBe(b);
+    }
+  });
+
+  it('follows a redirect to another HF host without the token', async () => {
+    const other = 'https://cdn-lfs.huggingface.co/datasets/x';
+    const port = 'https://huggingface.co:8443/x.csv';
+    const { promise, hub } = load({
+      [URL_IRIS]: { status: 302, headers: { location: other } },
+      [other]: { status: 302, headers: { location: port } },
+      [port]: { status: 200, body: CSV },
+    });
+    await promise;
+    expect(hub.calls.map((c) => c.auth)).toEqual([`Bearer ${TOKEN}`, null, null]);
+  });
+
+  it('refuses a redirect that hides another host behind userinfo', async () => {
+    const { promise } = load({
+      [URL_IRIS]: { status: 302, headers: { location: 'https://huggingface.co@evil.example/x' } },
+    });
+    await expect(promise).rejects.toThrow(/evil\.example: not a Hugging Face host/);
+  });
+
+  it('removes the download when it cannot be registered, and says so', async () => {
+    const parquet = 'https://huggingface.co/datasets/scikit-learn/iris/resolve/main/broken.parquet';
+    const { promise } = load(
+      { [parquet]: { status: 200, body: 'this is not parquet' } },
+      { path: 'broken.parquet' },
+    );
+    await expect(promise).rejects.toThrow(/could not be added as a dataset.*file was removed/);
+    expect(filesIn(hfDir)).toEqual([]);
   });
 });

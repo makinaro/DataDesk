@@ -199,6 +199,29 @@ describe('ClaudeOrchestrator', () => {
         await expect(pending).resolves.toEqual({ behavior: 'allow', updatedInput: input });
       });
 
+      it.each([
+        ['v2.0', /Revision: v2\.0 \(NOT the main branch/],
+        [
+          'refs/convert/parquet',
+          /Revision: refs\/convert\/parquet \(the Hub's automatic Parquet copy\)/,
+        ],
+      ])('points out revision %s in the dialog', async (revision, line) => {
+        const { t, call } = await gate();
+        const pending = call(LOAD, { ...input, revision });
+        await t.until(() => t.kinds().includes('approval_request'));
+        expect(request(t).detail).toMatch(line);
+        t.approvals.respond(request(t).requestId, false);
+        await pending;
+      });
+
+      it('refuses pull-request revisions without asking (anyone can author them)', async () => {
+        const { t, call } = await gate();
+        await expect(call(LOAD, { ...input, revision: 'refs/pr/7' })).resolves.toMatchObject({
+          behavior: 'deny',
+        });
+        expect(t.kinds()).not.toContain('approval_request');
+      });
+
       it('deny: the tool does not run and the analyst is told not to retry', async () => {
         const { t, call } = await gate();
         const pending = call(LOAD, input);

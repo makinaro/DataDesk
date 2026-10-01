@@ -27,6 +27,20 @@ describe('LoadHfDatasetInput (what the user approves and the tool downloads)', (
     { ...ok, path: 'data//x.csv' },
     { ...ok, path: 'data/x\u0000.csv' },
     { ...ok, path: 'x\n.csv' },
+    // Characters that make the approval dialog show something other than the real name.
+    { ...ok, path: 'data/‮csv.exe.csv' },
+    { ...ok, path: 'data/x⁦.csv' },
+    { ...ok, path: 'data/x\u0085.csv' },
+    { ...ok, path: 'data/x\u007F.csv' },
+    // Names Windows can't store faithfully.
+    { ...ok, path: 'data./x.csv' },
+    { ...ok, path: 'data /x.csv' },
+    { ...ok, path: 'nul/x.csv' },
+    { ...ok, path: 'COM1.csv' },
+    { ...ok, path: `${'a'.repeat(256)}/x.csv` },
+    // Anyone can author a pull request on the Hub.
+    { ...ok, revision: 'refs/pr/7' },
+    { ...ok, revision: 'REFS/PR/7' },
     { ...ok, path: 'model.safetensors' },
     { ...ok, path: 'x.csv.exe' },
     { ...ok, path: 'sheet.xlsx' },

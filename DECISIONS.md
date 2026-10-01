@@ -568,8 +568,15 @@ Verified 2026-10-01 from the HF OpenAPI description, the huggingface.js `file-do
 .ndjson` only. The input schema lives in `src/shared/hf.ts`, so main's approval dialog and the
   tool validate the same thing. The default name is `hf_<repo>_<file>`, so a Hub dataset doesn't
   silently replace a local one.
-- **Location:** `userData/datasets/hf/<owner>/<repo>/<revision>/<path>`, with each segment made
-  file-system safe and the result checked to stay inside the folder.
+- **Location:** `userData/datasets/hf/<owner>/<repo>/<revision>-<hash>/<path>`, with each segment
+  made file-system safe and the result checked to stay inside the folder. The hash covers the
+  exact repo, revision and path: the safe-name mapping and case-insensitive NTFS would otherwise
+  let two Hub files share one local file, so one download could replace the data behind another
+  dataset.
+- **Input rules:** no `refs/pr/*` revisions, because anyone can author a Hub pull request; the
+  dialog points out any other non-`main` revision. Paths may not contain controls, bidi or
+  separator characters (they would make the dialog misleading), nor names Windows can't store
+  (trailing dot or space, device names, segments over 255 characters).
 - **Exception:** `ImportPolicy.allowDirs` lets a path inside a denied directory through only if
   it is inside an allowed one. Only `load_hf_dataset` passes `allowDirs: [hfDir]`, for the file
   it just wrote. `register_dataset` (model or UI) still refuses all of userData, the HF folder

@@ -83,6 +83,13 @@ interface ApprovalQuestion {
   declined: string;
 }
 
+/** Anything but the main branch is pointed out: users rarely read the revision line. */
+function revisionNote(revision: string): string {
+  if (revision === DEFAULT_HF_REVISION) return revision;
+  if (revision === 'refs/convert/parquet') return `${revision} (the Hub's automatic Parquet copy)`;
+  return `${revision} (NOT the main branch: only allow it if you expected this version)`;
+}
+
 const mb = (bytes: number) => `${String(Math.round(bytes / 1024 ** 2))} MB`;
 
 /**
@@ -121,7 +128,7 @@ const APPROVALS: Record<string, ((input: unknown) => ApprovalQuestion | undefine
         `Dataset:  ${repo_id}`,
         `          https://huggingface.co/datasets/${repo_id}`,
         `File:     ${path}`,
-        `Revision: ${revision ?? DEFAULT_HF_REVISION}`,
+        `Revision: ${revisionNote(revision ?? DEFAULT_HF_REVISION)}`,
         `Name:     ${name ?? defaultHfDatasetName(repo_id, path)} (replaces any dataset with this name)`,
         '',
         `It is saved in DataDesk's data folder. Files over ${mb(HF_MAX_DOWNLOAD_BYTES)} are refused.`,
@@ -230,7 +237,8 @@ export class ClaudeOrchestrator implements Orchestrator {
         }
         return { behavior: 'allow', updatedInput: delegation.data };
       }
-      const ask = APPROVALS[toolName];
+      // hasOwn: a plain object would also resolve prototype keys such as "constructor".
+      const ask = Object.hasOwn(APPROVALS, toolName) ? APPROVALS[toolName] : undefined;
       if (!ask) {
         return { behavior: 'deny', message: `${toolName} is not available in DataDesk.` };
       }
