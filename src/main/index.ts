@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { app, BrowserWindow, dialog, ipcMain, nativeTheme, safeStorage } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, safeStorage } from 'electron';
 import { IpcEvents } from '../shared/ipc/channels';
 import { createAgentRuntime } from './agent/agentRuntime';
 import { applyTheme, chromeFor } from './appearance';
@@ -65,6 +65,9 @@ function start(): void {
     .whenReady()
     .then(async () => {
       hardenApp(rendererOrigin);
+      // No File/Edit/View menu: the page draws the title bar (D-025). Its shortcuts that still
+      // matter are handled per window in createMainWindow.
+      Menu.setApplicationMenu(null);
 
       if (devServerUrl) {
         applyDevCspHeader(buildCsp({ kind: 'development', devServerUrl }));
@@ -224,7 +227,9 @@ function start(): void {
       });
 
       const openWindow = () =>
-        createMainWindow(rendererUrl, chromeFor(theme, nativeTheme.shouldUseDarkColors));
+        createMainWindow(rendererUrl, chromeFor(theme, nativeTheme.shouldUseDarkColors), {
+          dev: !app.isPackaged,
+        });
       openWindow();
       app.on('activate', () => {
         if (BrowserWindow.getAllWindows().length === 0) openWindow();

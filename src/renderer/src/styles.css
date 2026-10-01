@@ -132,6 +132,23 @@
   }
 }
 
+/*
+ * The page-drawn title bar (D-025). Its height matches TITLE_BAR_HEIGHT in src/main/window.ts.
+ * env(titlebar-area-*) is where Windows leaves room beside its native window controls.
+ */
+.titlebar {
+  height: 40px;
+  padding-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw));
+  app-region: drag;
+  user-select: none;
+}
+.titlebar button,
+.titlebar a,
+.titlebar input,
+.titlebar [role='tab'] {
+  app-region: no-drag;
+}
+
 /* Thin rounded scrollbars in the theme's colours (Chromium). */
 ::-webkit-scrollbar {
   width: 10px;

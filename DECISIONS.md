@@ -878,3 +878,42 @@ https://www.electronjs.org/docs/latest/tutorial/dark-mode).
 - A new theme is one CSS block plus one `THEME_CHROME` entry. The tests point at anything
   missing.
 - Charts keep a white surface until they get a theme-aware Vega config (later Phase 9 task).
+
+## D-025: Page-drawn title bar with native window controls (2026-10-01)
+
+**Context:** The owner wanted the "File, Edit, View, Window" menu gone and a title bar that
+belongs to the app, like VS Code, Discord or Obsidian. Verified 2026-10-01 against Electron
+**44.5.1** (`node_modules/electron/electron.d.ts:4055-4067, 24145-24167, 9640, 16241`;
+https://www.electronjs.org/docs/latest/tutorial/custom-title-bar; source of
+`NativeWindow::IsWindowControlsOverlayEnabled` and `setTitleBarOverlay` at tag v44.5.1).
+
+**Decision:**
+
+- `titleBarStyle: 'hidden'` plus `titleBarOverlay: { color, symbolColor, height: 40 }`.
+  Windows keeps drawing its own minimize, maximize and close buttons (with snap layouts and
+  the right hover states), in the theme's colours. The page draws the rest of the bar.
+  `setTitleBarOverlay` repaints the controls on a theme change. It throws if the window was
+  created without an overlay, which can't happen here because every window gets one.
+- `Menu.setApplicationMenu(null)` removes the menu and its accelerators app-wide. Hiding it
+  (`autoHideMenuBar`) would let Alt bring it back.
+- **CSS:** `.titlebar` sets `app-region: drag`, and its buttons set `no-drag`. Its right padding
+  comes from `env(titlebar-area-x/width)`, so nothing sits under the native controls. The e2e
+  test checks that `navigator.windowControlsOverlay.visible` is true.
+- **Shortcuts the menu used to provide** are handled in `before-input-event`
+  (`src/main/shortcuts.ts`): Ctrl+= / Ctrl+- / Ctrl+0 zoom in every build; F12, Ctrl+Shift+I,
+  F5 and Ctrl+R only when not packaged. Copy, paste, cut, select-all and undo need no menu on
+  Windows, because Blink handles them in text fields (`editing_behavior.cc`). The e2e test
+  checks cut and paste.
+
+**Alternatives:**
+
+- `frame: false` with page-drawn window buttons: you lose Windows snap layouts and the native
+  hover and maximize behaviour, and the app has to reimplement them.
+- Keeping a hidden menu just for its roles: the accelerators we need fit in one small module.
+
+**Consequences:**
+
+- Playwright's `press()` is injected into the page, below `before-input-event`, so the zoom
+  e2e test sends native key events with `webContents.sendInputEvent`.
+- No reload or DevTools in packaged builds (neither was reachable before without the menu).
+- `TITLE_BAR_HEIGHT` (main) and `.titlebar { height }` (CSS) must stay equal.

@@ -6,6 +6,8 @@ import { DatasetSidebar } from './components/DatasetSidebar';
 import { ResultsPanel } from './components/ResultsPanel';
 import { SettingsDialog } from './components/SettingsDialog';
 import { TimelineDrawer } from './components/TimelineDrawer';
+import { CompareIcon, SettingsIcon, TimelineIcon } from './components/icons';
+import { TitleBar, TitleBarButton } from './components/TitleBar';
 
 export function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -15,41 +17,35 @@ export function App() {
   const [datasetsRevision, setDatasetsRevision] = useState(0);
 
   return (
-    <div className="flex h-screen flex-col bg-canvas text-fg">
-      <header className="flex items-center justify-between border-b border-line px-4 py-2">
-        <h1 className="text-base font-semibold">DataDesk</h1>
-        <nav className="flex gap-2 text-sm">
-          <button
-            type="button"
-            aria-pressed={comparing}
+    <div className="flex h-screen flex-col text-fg">
+      <TitleBar>
+        <span className="flex-1" />
+        <nav aria-label="App" className="flex items-center gap-1">
+          <TitleBarButton
+            label="Compare"
+            icon={<CompareIcon />}
+            pressed={comparing}
             onClick={() => {
               setComparing((on) => !on);
             }}
-            className="rounded border border-strong px-3 py-1 hover:bg-raised"
-          >
-            Compare
-          </button>
-          <button
-            type="button"
-            aria-pressed={timelineOpen}
+          />
+          <TitleBarButton
+            label="Timeline"
+            icon={<TimelineIcon />}
+            pressed={timelineOpen}
             onClick={() => {
               setTimelineOpen((open) => !open);
             }}
-            className="rounded border border-strong px-3 py-1 hover:bg-raised"
-          >
-            Timeline
-          </button>
-          <button
-            type="button"
+          />
+          <TitleBarButton
+            label="Settings"
+            icon={<SettingsIcon />}
             onClick={() => {
               setSettingsOpen(true);
             }}
-            className="rounded border border-strong px-3 py-1 hover:bg-raised"
-          >
-            Settings
-          </button>
+          />
         </nav>
-      </header>
+      </TitleBar>
 
       <main className="flex min-h-0 flex-1">
         <DatasetSidebar
