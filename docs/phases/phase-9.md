@@ -67,8 +67,8 @@ Built from the prototype on `prototype/ui-polish`. You picked layout A (Chat-fir
 
 ## How it was verified
 
-- **Unit/integration: 795 passed** (710 at the end of Phase 8).
-- **E2E: 35 passed** (28 before), with the normal TEMP and with the 8.3 short TEMP that CI uses.
+- **Unit/integration: 796 passed** (710 at the end of Phase 8).
+- **E2E: 36 passed** (28 before), with the normal TEMP and with the 8.3 short TEMP that CI uses.
   New e2e checks:
   - every theme × both layouts with zero CSP console violations;
   - splitters by mouse drag and keyboard, kept across a reload;
@@ -95,6 +95,11 @@ The `code-reviewer` agent approved with **no blockers**.
   `1c2bd5d`, with a regression test that fails without the fix.
 - Unhandled rejections in the copy buttons and in chart re-fitting (`1c2bd5d`).
 - Two hand-written types now come from the zod contract (`c924f93`).
+
+**Found after review (by you):** bar charts with a quantitative x, i.e. horizontal bars,
+showed axes but no bars. Zoom's clip combined with the rounded bar ends to clip every bar away.
+Fixed in `ba0dfc3`: zoom applies only to lines, areas and points (D-028's intent). There's a
+regression test at each level, and the e2e test now hit-tests each bar instead of counting paths.
 
 **Not changed, on purpose:**
 

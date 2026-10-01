@@ -1166,6 +1166,12 @@ One question in the Results-first layout, from Enter to a saved PNG:
   from its content, and Vega measured that and stayed at 300 px. It also only re-measures on
   _window_ resize, and panels resize without one. The fix was `display: block` plus a
   ResizeObserver that sets Vega's `width` signal.
+- **Zoom made bar charts blank.** Zoom needs `clip: true`, and the theme's rounded bar ends
+  (`cornerRadiusEnd`) make Vega-Lite draw each bar inside a group with no width. Clipping that
+  group clipped every bar to nothing, so you got axes and no bars. Tests missed it twice: unit
+  tests only looked at the spec, and the e2e test counted bar `<path>`s, which still exist when
+  clipped. Zoom is now limited to lines, areas and points. The e2e test hit-tests each bar's
+  centre with `elementFromPoint`, which respects `clip-path`.
 - **Vega line opacity is the `opacity` attribute**, not `stroke-opacity`. The e2e legend check
   first looked at the wrong one. Also, legend symbols are covered by a transparent hit area, so
   the test clicks the label's coordinates the way a user would.
