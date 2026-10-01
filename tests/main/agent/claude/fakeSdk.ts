@@ -8,6 +8,7 @@ import type { QueryFn, QueryLike } from '../../../../src/main/agent/claude/claud
 const msg = (m: Record<string, unknown>) => m as unknown as SDKMessage;
 
 export const WORKSPACE = 'C:/Users/me/AppData/Roaming/DataDesk/agent-workspace';
+export const PLUGIN_DIR = 'C:/Program Files/DataDesk/resources/agent-plugin';
 
 export const sdk = {
   init: (over: Record<string, unknown> = {}) =>
@@ -20,8 +21,18 @@ export const sdk = {
       permissionMode: 'default',
       apiKeySource: 'ANTHROPIC_API_KEY',
       agents: [],
-      skills: ['doctor'],
+      skills: [
+        'datadesk:chart-style',
+        'datadesk:eda-checklist',
+        'datadesk:report-format',
+        'doctor',
+      ],
+      plugins: [
+        { name: 'datadesk', path: PLUGIN_DIR },
+        { name: 'cc-plugin-agents-md', path: 'builtin' },
+      ],
       tools: [
+        'Skill',
         'mcp__datadesk__list_datasets',
         'mcp__datadesk__get_schema',
         'mcp__datadesk__sample_rows',

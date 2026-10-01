@@ -1,3 +1,4 @@
+import { dirname, join } from 'node:path';
 import { z } from 'zod';
 
 /**
@@ -6,6 +7,8 @@ import { z } from 'zod';
  */
 const EnvSchema = z.object({
   DATADESK_CATALOG_PATH: z.string().min(1),
+  /** Charts and reports. Defaults to an "artifacts" folder next to the catalog. */
+  DATADESK_ARTIFACTS_DIR: z.string().min(1).optional(),
   /** Directories whose files may never be registered (e.g. the app's own userData). `;`-separated. */
   DATADESK_DENY_DIRS: z.string().default(''),
   DATADESK_MAX_ROWS: z.coerce.number().int().min(1).max(10_000).default(500),
@@ -28,6 +31,7 @@ const EnvSchema = z.object({
 
 export interface ServerConfig {
   catalogPath: string;
+  artifactsDir: string;
   denyDirs: string[];
   maxRows: number;
   queryTimeoutMs: number;
@@ -42,6 +46,8 @@ export function loadConfig(env: NodeJS.ProcessEnv): ServerConfig {
   const parsed = EnvSchema.parse(env);
   return {
     catalogPath: parsed.DATADESK_CATALOG_PATH,
+    artifactsDir:
+      parsed.DATADESK_ARTIFACTS_DIR ?? join(dirname(parsed.DATADESK_CATALOG_PATH), 'artifacts'),
     denyDirs: parsed.DATADESK_DENY_DIRS.split(';')
       .map((d) => d.trim())
       .filter(Boolean),

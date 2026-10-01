@@ -56,8 +56,17 @@ export interface AgentState {
   timeline: TimelineItem[];
   /** Oldest first; the dialog shows the first one. */
   pendingApprovals: PendingApproval[];
+  /** Charts and reports created in this conversation, oldest first. */
+  artifacts: ArtifactRef[];
   sessionCostUsd: number;
   lastSeq: number;
+}
+
+export interface ArtifactRef {
+  kind: 'chart' | 'report';
+  id: string;
+  title: string;
+  at: number;
 }
 
 export const initialAgentState: AgentState = {
@@ -66,6 +75,7 @@ export const initialAgentState: AgentState = {
   messages: [],
   timeline: [],
   pendingApprovals: [],
+  artifacts: [],
   sessionCostUsd: 0,
   lastSeq: -1,
 };
@@ -222,6 +232,16 @@ export function agentReducer(state: AgentState, action: AgentAction): AgentState
             ? []
             : [{ kind: 'reset', id: `reset-${String(e.seq)}`, at: e.at, reason: e.reason }],
       };
+    case 'artifact':
+      return s.artifacts.some((a) => a.id === e.id)
+        ? s
+        : {
+            ...s,
+            artifacts: [
+              ...s.artifacts,
+              { kind: e.artifactKind, id: e.id, title: e.title, at: e.at },
+            ],
+          };
     case 'error':
       return {
         ...s,

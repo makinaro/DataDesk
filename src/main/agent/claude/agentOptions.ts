@@ -5,20 +5,36 @@ export const DATADESK_SERVER = 'datadesk';
 
 const tool = (name: string) => `mcp__${DATADESK_SERVER}__${name}`;
 
-/** Read-only tools: auto-approved. */
+/**
+ * Auto-approved: read-only tools, plus chart/report tools that only write DataDesk artifacts
+ * (no data leaves the app; chart data never returns to the model).
+ */
 export const AUTO_APPROVED_TOOLS = [
   tool('list_datasets'),
   tool('get_schema'),
   tool('sample_rows'),
   tool('profile_column'),
   tool('run_sql'),
+  tool('create_chart'),
+  tool('save_report'),
 ] as const;
 
 /** Tools that exist but always ask the user first (DECISIONS D-010). */
 export const APPROVAL_TOOLS = [tool('register_dataset')] as const;
 
+/** The plugin shipped in resources/agent-plugin (its plugin.json name). */
+export const PLUGIN_NAME = 'datadesk';
+
+/** Runtime Agent Skills; plugin skills are namespaced <plugin>:<skill>. */
+export const SKILL_NAMES = [
+  'datadesk:eda-checklist',
+  'datadesk:chart-style',
+  'datadesk:report-format',
+] as const;
+
 /** Every tool the analyst may see. The init guard aborts the session on anything else. */
 export const EXPECTED_TOOLS: ReadonlySet<string> = new Set([
+  'Skill',
   ...AUTO_APPROVED_TOOLS,
   ...APPROVAL_TOOLS,
 ]);
@@ -37,7 +53,6 @@ export const FORBIDDEN_BUILTINS = [
   'WebSearch',
   'Agent',
   'Task',
-  'Skill',
   'ToolSearch',
   'Workflow',
 ] as const;
@@ -59,6 +74,8 @@ export interface AgentOptionsInput {
   mcpServer: { command: string; args: string[]; env: Record<string, string> };
   canUseTool: CanUseTool;
   abortController: AbortController;
+  /** resources/agent-plugin (dev) or resources/agent-plugin next to app.asar (packaged). */
+  pluginDir: string;
   pathToClaudeCodeExecutable?: string | undefined;
   stderr?: (data: string) => void;
 }
@@ -77,17 +94,22 @@ export function buildAgentOptions(input: AgentOptionsInput): Options {
     mcpServers: {
       [DATADESK_SERVER]: { type: 'stdio', ...input.mcpServer },
     },
-    // No built-in tools at all (Skill arrives in Phase 3, Agent in Phase 4).
-    tools: [],
-    skills: [],
+    // The only built-in tool is Skill (Agent arrives in Phase 4).
+    tools: ['Skill'],
+    // Our runtime skills from the bundled plugin; listing them also auto-approves exactly these
+    // Skill calls. The model can't invoke any other (bundled) skill.
+    plugins: [{ type: 'local', path: input.pluginDir, skipMcpDiscovery: true }],
+    skills: [...SKILL_NAMES],
+    // No shell-injection in skills; drop Claude Code's bundled skills.
+    settings: { disableSkillShellExecution: true, disableBundledSkills: true },
     disallowedTools: [...FORBIDDEN_BUILTINS],
     // Explicit: when omitted the CLI may choose `auto`. In `default` mode every non-allowlisted
     // tool call reaches canUseTool (where approvals and the deny-by-default live).
     permissionMode: 'default',
     allowedTools: [...AUTO_APPROVED_TOOLS],
     canUseTool: input.canUseTool,
-    // A chat box, not a CLI: typing "/doctor" must not dispatch Claude Code commands.
-    extraArgs: { 'disable-slash-commands': null },
+    // Slash commands stay enabled because skills depend on them (D-015); InputQueue neutralizes
+    // user messages starting with '/' so the chat box never dispatches Claude Code commands.
     systemPrompt: ANALYST_SYSTEM_PROMPT,
     model: input.settings.model,
     maxTurns: input.settings.maxTurns,

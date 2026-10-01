@@ -29,6 +29,8 @@ export interface SessionSetup {
   options: Options;
   /** The agent workspace; the init guard checks the CLI really runs there. */
   workspaceDir: string;
+  /** The skills plugin; the init guard checks exactly this plugin loaded. */
+  pluginDir: string;
 }
 
 export interface ClaudeOrchestratorDeps {
@@ -175,7 +177,7 @@ export class ClaudeOrchestrator implements Orchestrator {
 
   private async start(generation: number): Promise<Session> {
     const abortController = new AbortController();
-    const { options, workspaceDir } = await this.deps.createSession({
+    const { options, workspaceDir, pluginDir } = await this.deps.createSession({
       abortController,
       canUseTool: this.canUseToolFor(generation),
     });
@@ -191,11 +193,14 @@ export class ClaudeOrchestrator implements Orchestrator {
       done: Promise.resolve(),
     };
     this.live = session;
-    session.done = this.consume(session, workspaceDir);
+    session.done = this.consume(session, { cwd: workspaceDir, pluginDir });
     return session;
   }
 
-  private async consume(session: Session, workspaceDir: string): Promise<void> {
+  private async consume(
+    session: Session,
+    expected: { cwd: string; pluginDir: string },
+  ): Promise<void> {
     const map = createSdkMapper();
     // Only this session's events, and only until it starts ending.
     const emit: EmitAgentEvent = (event) => {
@@ -212,7 +217,7 @@ export class ClaudeOrchestrator implements Orchestrator {
       for await (const message of session.query) {
         if (session.ending) break;
         if (message.type === 'system' && message.subtype === 'init') {
-          const problems = checkInit(message, { cwd: workspaceDir });
+          const problems = checkInit(message, expected);
           if (problems.length > 0) {
             abort(
               `Stopped for safety: the agent session had capabilities DataDesk did not grant (${problems.join('; ')}).`,

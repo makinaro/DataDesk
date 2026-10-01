@@ -1,1 +1,126 @@
 @import 'tailwindcss';
+
+/*
+ * Vega renders with defaultStyle:false and tooltip.disableDefaultStyle:true because the CSP
+ * forbids injected <style> elements (DECISIONS D-016), so the equivalent rules live here.
+ */
+.vega-embed {
+  position: relative;
+  display: inline-block;
+  box-sizing: border-box;
+  max-width: 100%;
+}
+
+#vg-tooltip-element {
+  visibility: hidden;
+  position: fixed;
+  z-index: 1000;
+  padding: 8px;
+  border: 1px solid #d9d9d9;
+  border-radius: 3px;
+  background-color: rgb(255 255 255 / 0.95);
+  box-shadow: 2px 2px 4px rgb(0 0 0 / 0.1);
+  color: black;
+  font-family: sans-serif;
+  font-size: 11px;
+  white-space: pre-line;
+}
+#vg-tooltip-element.visible {
+  visibility: visible;
+}
+#vg-tooltip-element h2 {
+  margin: 0 0 10px;
+  font-size: 13px;
+}
+#vg-tooltip-element table {
+  border-spacing: 0;
+}
+#vg-tooltip-element td {
+  padding: 2px 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: text-top;
+}
+#vg-tooltip-element td.key {
+  max-width: 150px;
+  padding-right: 4px;
+  color: #808080;
+  text-align: right;
+}
+#vg-tooltip-element td.value {
+  display: block;
+  max-width: 300px;
+  max-height: 7em;
+  text-align: left;
+}
+
+/* Minimal typography for rendered reports (no typography plugin). */
+.report-prose {
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+.report-prose > * + * {
+  margin-top: 0.75rem;
+}
+.report-prose h1 {
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+.report-prose h2 {
+  margin-top: 1.25rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+.report-prose h3 {
+  font-weight: 600;
+}
+.report-prose p + p,
+.report-prose ul,
+.report-prose ol,
+.report-prose table,
+.report-prose pre {
+  margin-top: 0.5rem;
+}
+.report-prose ul {
+  padding-left: 1.25rem;
+  list-style: disc;
+}
+.report-prose ol {
+  padding-left: 1.25rem;
+  list-style: decimal;
+}
+.report-prose a {
+  color: var(--color-sky-300);
+  text-decoration: underline;
+}
+.report-prose code {
+  border-radius: 0.25rem;
+  background: var(--color-slate-800);
+  padding: 0 0.25rem;
+  font-size: 0.8em;
+}
+.report-prose pre {
+  overflow: auto;
+  border-radius: 0.25rem;
+  background: var(--color-slate-900);
+  padding: 0.5rem;
+}
+.report-prose pre code {
+  background: none;
+  padding: 0;
+}
+.report-prose table {
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+.report-prose th,
+.report-prose td {
+  border: 1px solid var(--color-slate-700);
+  padding: 0.25rem 0.5rem;
+  text-align: left;
+}
+.report-prose blockquote {
+  border-left: 3px solid var(--color-slate-600);
+  padding-left: 0.75rem;
+  color: var(--color-slate-400);
+}

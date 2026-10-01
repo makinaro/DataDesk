@@ -70,6 +70,11 @@ const api: DatadeskApi = {
     getAgent: () => invoke(IpcChannels.settingsGetAgent),
     setAgent: (settings) => invoke(IpcChannels.settingsSetAgent, settings),
   },
+  artifacts: {
+    getChart: (id) => invoke(IpcChannels.artifactsGetChart, { id }),
+    getReport: (id) => invoke(IpcChannels.artifactsGetReport, { id }),
+    exportReport: (request) => invoke(IpcChannels.artifactsExportReport, request),
+  },
 };
 
 contextBridge.exposeInMainWorld('datadesk', api);

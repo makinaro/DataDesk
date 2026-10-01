@@ -86,9 +86,18 @@ try {
     const session = events.find((e) => e.kind === 'session');
     check('Claude binary spawned from app.asar.unpacked', session !== undefined);
     check(
-      'agent sees exactly the 6 datadesk tools',
-      session?.tools.length === 6 && session.tools.every((t) => t.startsWith('mcp__datadesk__')),
+      'agent sees exactly the 8 datadesk tools',
+      session?.tools.filter((t) => t.startsWith('mcp__datadesk__')).length === 8,
       session?.tools.join(', '),
+    );
+    check('agent has the Skill tool', session?.tools.includes('Skill') === true);
+    const guardError = events.find(
+      (e) => e.kind === 'error' && e.message.startsWith('Stopped for safety'),
+    );
+    check(
+      'init guard passed (bundled skills plugin loaded from resources/agent-plugin)',
+      session !== undefined && guardError === undefined,
+      guardError?.message,
     );
     check(
       'datadesk MCP server connected for the agent',

@@ -8,6 +8,8 @@ export interface ServerPaths {
   mainDir: string;
   /** Pre-fetched DuckDB extensions, if present. */
   extensionDir: string | undefined;
+  /** The analyst's skills plugin (resources/agent-plugin). */
+  agentPluginDir: string;
 }
 
 /**
@@ -36,6 +38,7 @@ export function buildServerEnv(
   const env: Record<string, string> = {
     ELECTRON_RUN_AS_NODE: '1',
     DATADESK_CATALOG_PATH: join(paths.userData, 'catalog.json'),
+    DATADESK_ARTIFACTS_DIR: join(paths.userData, 'artifacts'),
     // Nothing inside DataDesk's own profile (secrets, catalog, logs) may be registered as data.
     DATADESK_DENY_DIRS: paths.userData,
     DATADESK_TEMP_DIR: join(paths.userData, 'duckdb-tmp', purpose),

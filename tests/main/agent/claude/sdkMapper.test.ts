@@ -116,4 +116,57 @@ describe('createSdkMapper', () => {
     const auth = map(sdk.result(0.05, { is_error: true, result: 'Failed to authenticate. 401' }));
     expect(auth[1]).toEqual({ kind: 'error', message: 'Failed to authenticate. 401' });
   });
+
+  it('announces charts and reports from successful create_chart/save_report results', () => {
+    const map = createSdkMapper();
+    const chartId = '11111111-1111-4111-8111-111111111111';
+    map(
+      sdk.assistant('msg_1', [
+        { type: 'tool_use', id: 'toolu_c', name: 'mcp__datadesk__create_chart', input: {} },
+        { type: 'tool_use', id: 'toolu_r', name: 'mcp__datadesk__save_report', input: {} },
+        { type: 'tool_use', id: 'toolu_s', name: 'mcp__datadesk__run_sql', input: {} },
+      ]),
+    );
+    const chart = map(
+      sdk.toolResult('toolu_c', `Chart saved.\n${JSON.stringify({ chartId, title: 'Units' })}`),
+    );
+    expect(chart.map((e) => e.kind)).toEqual(['tool_result', 'artifact']);
+    expect(chart[1]).toEqual({
+      kind: 'artifact',
+      artifactKind: 'chart',
+      id: chartId,
+      title: 'Units',
+    });
+
+    const report = map(
+      sdk.toolResult(
+        'toolu_r',
+        `Report saved.\n${JSON.stringify({ reportId: chartId, title: 'R' })}`,
+      ),
+    );
+    expect(report[1]).toMatchObject({ kind: 'artifact', artifactKind: 'report', title: 'R' });
+
+    // Other tools, errors and unparseable text never produce an artifact.
+    const sql = map(sdk.toolResult('toolu_s', `ok\n${JSON.stringify({ chartId, title: 'x' })}`));
+    expect(sql.map((e) => e.kind)).toEqual(['tool_result']);
+    expect(map(sdk.toolResult('toolu_c', 'Chart saved.\n{"chartId"', false))).toHaveLength(1);
+    expect(
+      map(sdk.toolResult('toolu_c', `x\n${JSON.stringify({ chartId, title: 'e' })}`, true)),
+    ).toHaveLength(1);
+  });
+
+  it('still finds the artifact when the title in the summary line contains a newline', () => {
+    const map = createSdkMapper();
+    const chartId = '11111111-1111-4111-8111-111111111111';
+    map(
+      sdk.assistant('m', [
+        { type: 'tool_use', id: 't', name: 'mcp__datadesk__create_chart', input: {} },
+      ]),
+    );
+    const title = 'Sales\nby region';
+    const events = map(
+      sdk.toolResult('t', `Chart "${title}" created.\n${JSON.stringify({ chartId, title })}`),
+    );
+    expect(events[1]).toEqual({ kind: 'artifact', artifactKind: 'chart', id: chartId, title });
+  });
 });

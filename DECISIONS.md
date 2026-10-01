@@ -243,3 +243,84 @@ child _received_.
 **Consequences:** Anything that must reach the server needs a `DATADESK_` name. The lesson for
 future phases: verify what a child process _actually_ receives with a probe, not only what we
 pass.
+
+## D-015: Runtime skills ship as a bundled local plugin; slash commands stay on (2026-10-01)
+
+**Context:** Phase 3 gives the in-app analyst Agent Skills. The agent runs with
+`settingSources: []`, so it can't discover skills from `.claude/skills` (that's also how we keep
+this repo's dev skills out). Probes against `@anthropic-ai/claude-agent-sdk` 0.3.286 found:
+
+- a `plugins: [{ type: 'local', path }]` entry loads its skills even with `settingSources: []`;
+- the skills are namespaced `datadesk:<skill>`;
+- `--disable-slash-commands`, which we passed in Phase 2, **also disables skills and the Skill
+  tool**;
+- a message starting with a space is not dispatched as a slash command.
+
+**Decision:**
+
+- Skills live in `resources/agent-plugin` (plugin `datadesk`). Packaged builds copy it to
+  `resources/agent-plugin` via `extraResources`.
+- Options: `tools: ['Skill']` plus the MCP tools; `plugins` (with `skipMcpDiscovery`);
+  `skills: SKILL_NAMES`; and `settings: { disableSkillShellExecution, disableBundledSkills }`.
+  No skill declares `allowed-tools`, hooks or `!` commands.
+- The init guard now checks the plugins (only built-ins or exactly ours, at our path), that
+  `plugin_errors` is empty, and that our skills are listed (this replaces D-013's "ignore
+  `init.skills`").
+- Slash commands stay enabled. `InputQueue` prefixes a leading `/` with a space, so `/cost` or
+  `/compact` typed in chat reach the model as text.
+
+**Alternatives:**
+
+- Put skills in the system prompt: always paid for, no progressive disclosure, and nothing to
+  learn about skills.
+- Use a `.claude/skills` dir in the agent workspace: needs `settingSources: ['project']`,
+  which reopens the CLAUDE.md and settings leak.
+- Keep `--disable-slash-commands`: no skills.
+
+**Consequences:** Skills add the `Skill` tool to the allowlist. If a future CLI dispatches
+commands despite leading whitespace, the neutralizer must change; the probe is in the Phase 3
+learning log. The same probe (SDK 0.3.286, dummy key) showed that the TUI's other prefixes don't
+apply in SDK mode: `!echo …` and `# …` both went to the model (401), so only `/` is neutralized.
+
+## D-016: Artifacts by id, CSP-safe Vega, PDF from a locked-down hidden window (2026-10-01)
+
+**Context:** Charts and reports must reach the UI without file tools, without sending chart data
+back through the model, and without loosening the renderer CSP (`script-src 'self'`,
+`style-src 'self'`, `connect-src 'self'`).
+**Decision:**
+
+- **Artifacts:** `create_chart` runs the guarded SQL (5k rows / 5 MB budget), inlines the rows
+  into a sanitized spec, and writes `userData/artifacts/charts/<uuid>.json`. `save_report`
+  writes `reports/<uuid>.json`. Only ids go back to the model. Reports embed charts with
+  `[[chart:<uuid>]]` lines. Main parses successful tool results into `artifact` events. The
+  renderer loads artifacts by uuid over IPC (`artifacts:getChart|getReport`); paths are never
+  accepted.
+- **Specs:** `sanitizeVegaLiteSpec` (`src/shared/vegaSpec.ts`) allowlists top-level keys and
+  rejects `url`, `href`, `data`, `datasets`, `usermeta` and `loader` anywhere. The renderer
+  re-sanitizes before rendering (`charts/prepareSpec.ts`).
+- **Vega under CSP:**
+  - `ast: true` + `vega-interpreter` (no `Function()`);
+  - `actions: false` (the editor action posts data off-site);
+  - `defaultStyle: false` and `tooltip.disableDefaultStyle` (no injected `<style>`; rules are
+    in `styles.css`);
+  - a loader that rejects every request.
+    The e2e test asserts zero CSP violations and no `<style>` elements.
+- **Export:** Markdown is built entirely in main from stored artifacts: the report text, plus
+  SVGs main renders from the re-sanitized charts with headless Vega (`renderer: 'none'`), written
+  as sibling files. Main never writes renderer-supplied markup to disk. (A regex SVG checker was
+  tried first; review showed it was bypassable with namespace prefixes and entities, and it
+  rejected harmless titles.) For PDF, the renderer builds static HTML with charts as
+  `data:image/svg+xml` `<img>`s (an SVG loaded as an image can't run script). Main wraps it in
+  a document with its own CSP (`default-src 'none'; img-src data:; style-src 'unsafe-inline'`)
+  and prints it with `printToPDF` from a never-shown window: `javascript: false`, sandboxed,
+  its own partition, and a request filter allowing only the temp file and `data:` images.
+
+**Alternatives:**
+
+- Return chart data to the model: costs tokens and risks prompt injection.
+- Add `'unsafe-eval'` to the CSP.
+- Print the main window: it has the app's JS and state.
+- Use a PDF library in main: re-implements layout.
+
+**Consequences:** Vega adds ~2.5 MB to the renderer bundle (fine for a local app; could be
+lazy-loaded later). Artifacts accumulate in userData (no cleanup UI yet).

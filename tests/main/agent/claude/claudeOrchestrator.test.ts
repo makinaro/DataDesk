@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { ApprovalBroker } from '../../../../src/main/agent/approvals';
 import { ClaudeOrchestrator } from '../../../../src/main/agent/claude/claudeOrchestrator';
 import type { AgentEventInput } from '../../../../src/shared/agent';
-import { scriptedQuery, sdk, WORKSPACE } from './fakeSdk';
+import { PLUGIN_DIR, scriptedQuery, sdk, WORKSPACE } from './fakeSdk';
 
 function setup(
   turns: Parameters<typeof scriptedQuery>[0],
@@ -16,7 +16,11 @@ function setup(
   let canUseTool: CanUseTool | undefined;
   const createSession = vi.fn(({ canUseTool: c }: { canUseTool: CanUseTool }) => {
     canUseTool = c;
-    return Promise.resolve({ options: { cwd: WORKSPACE }, workspaceDir: WORKSPACE });
+    return Promise.resolve({
+      options: { cwd: WORKSPACE },
+      workspaceDir: WORKSPACE,
+      pluginDir: PLUGIN_DIR,
+    });
   });
   const orchestrator = new ClaudeOrchestrator({ emit, query: queryFn, approvals, createSession });
   const kinds = () => events.map((e) => e.kind);
@@ -231,7 +235,11 @@ describe('ClaudeOrchestrator lifecycle (review regressions)', () => {
       () =>
         new Promise((resolve) => {
           release = () => {
-            resolve({ options: { cwd: WORKSPACE }, workspaceDir: WORKSPACE });
+            resolve({
+              options: { cwd: WORKSPACE },
+              workspaceDir: WORKSPACE,
+              pluginDir: PLUGIN_DIR,
+            });
           };
         }),
     );

@@ -80,4 +80,30 @@ describe('ipcContract', () => {
     expect(ipcContract[IpcChannels.secretsStatus].request.safeParse({ x: 1 }).success).toBe(false);
     expect(ipcContract[IpcChannels.secretsStatus].request.safeParse(undefined).success).toBe(true);
   });
+
+  describe('artifacts channels', () => {
+    const id = '11111111-1111-4111-8111-111111111111';
+    const getChart = ipcContract[IpcChannels.artifactsGetChart].request;
+    const exportReport = ipcContract[IpcChannels.artifactsExportReport].request;
+
+    it('only accepts uuid ids (no paths)', () => {
+      expect(getChart.safeParse({ id }).success).toBe(true);
+      for (const bad of ['../x', 'C:/secrets.json', '', id.slice(1)]) {
+        expect(getChart.safeParse({ id: bad }).success).toBe(false);
+      }
+      expect(getChart.safeParse({ id, extra: 1 }).success).toBe(false);
+    });
+
+    it('bounds export payloads and takes no renderer SVGs', () => {
+      expect(exportReport.safeParse({ id, format: 'md' }).success).toBe(true);
+      expect(exportReport.safeParse({ id, format: 'pdf', bodyHtml: '<p>x</p>' }).success).toBe(
+        true,
+      );
+      expect(exportReport.safeParse({ id, format: 'docx' }).success).toBe(false);
+      expect(exportReport.safeParse({ id, format: 'md', svgs: {} }).success).toBe(false);
+      expect(
+        exportReport.safeParse({ id, format: 'pdf', bodyHtml: 'x'.repeat(20_000_001) }).success,
+      ).toBe(false);
+    });
+  });
 });

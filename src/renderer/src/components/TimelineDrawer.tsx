@@ -2,8 +2,18 @@ import { useAgent } from '../agent/AgentProvider';
 import type { TimelineItem } from '../agent/agentState';
 import { Panel } from './Panel';
 
-/** mcp__datadesk__run_sql → datadesk · run_sql */
-function toolLabel(name: string): string {
+/** mcp__datadesk__run_sql → datadesk · run_sql; Skill {skill: 'datadesk:eda-checklist'} → skill · eda-checklist */
+function toolLabel(name: string, input: string): string {
+  if (name === 'Skill') {
+    let skill = '?';
+    try {
+      const parsed = JSON.parse(input) as { skill?: unknown };
+      if (typeof parsed.skill === 'string') skill = parsed.skill;
+    } catch {
+      // Truncated preview: keep '?'.
+    }
+    return `skill · ${skill.replace(/^datadesk:/, '')}`;
+  }
   const match = /^mcp__(.+?)__(.+)$/.exec(name);
   return match ? `${match[1] ?? ''} · ${match[2] ?? ''}` : name;
 }
@@ -28,7 +38,7 @@ function Item({ item }: { item: TimelineItem }) {
           <details className="rounded border border-slate-800 bg-slate-900/50">
             <summary className="cursor-pointer px-2 py-1 text-xs">
               <span aria-hidden="true">{state}</span>{' '}
-              <span className="font-mono">{toolLabel(item.name)}</span>{' '}
+              <span className="font-mono">{toolLabel(item.name, item.input)}</span>{' '}
               <span className="text-slate-500">{duration}</span>
             </summary>
             <div className="space-y-1 px-2 pb-2 text-xs">

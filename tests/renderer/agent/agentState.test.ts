@@ -129,4 +129,16 @@ describe('agentReducer', () => {
     expect(r.messages).toEqual([]);
     expect(r.lastSeq).toBe(s.lastSeq);
   });
+
+  it('collects artifacts once each, and a conversation reset clears them', () => {
+    const id = '11111111-1111-4111-8111-111111111111';
+    const s = run([
+      { kind: 'artifact', artifactKind: 'chart', id, title: 'Units by region' },
+      { kind: 'artifact', artifactKind: 'chart', id, title: 'Units by region' },
+    ]);
+    expect(s.artifacts).toEqual([
+      { kind: 'chart', id, title: 'Units by region', at: expect.any(Number) as number },
+    ]);
+    expect(run([{ kind: 'conversation_reset', reason: 'user' }], s).artifacts).toEqual([]);
+  });
 });

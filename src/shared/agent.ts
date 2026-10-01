@@ -83,6 +83,14 @@ export const AgentEventSchema = z.discriminatedUnion('kind', [
     numTurns: z.number().int().nonnegative(),
   }),
   z.object({ ...Base, kind: z.literal('error'), message: z.string().max(2_000) }),
+  /** The analyst created a chart or report (shown in the Charts & report panel). */
+  z.object({
+    ...Base,
+    kind: z.literal('artifact'),
+    artifactKind: z.enum(['chart', 'report']),
+    id: z.uuid(),
+    title: z.string().max(200),
+  }),
   /**
    * Conversation boundary. The renderer clears chat, timeline and approvals; main guarantees
    * no event from the previous conversation follows this one.

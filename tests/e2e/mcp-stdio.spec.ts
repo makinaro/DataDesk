@@ -38,7 +38,7 @@ test('datadesk-mcp runs under Electron-as-Node and serves tools over stdio', asy
     expect(client.getServerVersion()).toMatchObject({ name: 'datadesk' });
 
     const { tools } = await client.listTools();
-    expect(tools).toHaveLength(6);
+    expect(tools).toHaveLength(8);
 
     const reg = (await client.callTool({
       name: 'register_dataset',

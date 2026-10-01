@@ -15,6 +15,34 @@ function toolResultText(block: ToolResultBlock): string {
     .join('\n');
 }
 
+const ARTIFACT_TOOLS: Record<string, 'chart' | 'report'> = {
+  mcp__datadesk__create_chart: 'chart',
+  mcp__datadesk__save_report: 'report',
+};
+
+/**
+ * datadesk-mcp's text result is a summary line followed by the structuredContent JSON
+ * (src/mcp-server/server.ts `ok`). Pull the artifact id and title out of it.
+ */
+function artifactFromResult(
+  toolName: string | undefined,
+  text: string,
+): AgentEventInput | undefined {
+  const artifactKind = toolName === undefined ? undefined : ARTIFACT_TOOLS[toolName];
+  if (!artifactKind) return undefined;
+  // JSON.stringify never emits raw newlines, so the JSON starts after the last one (a title
+  // in the summary line could contain a newline).
+  const json = text.slice(text.lastIndexOf('\n') + 1);
+  try {
+    const parsed = JSON.parse(json) as { chartId?: unknown; reportId?: unknown; title?: unknown };
+    const id = artifactKind === 'chart' ? parsed.chartId : parsed.reportId;
+    if (typeof id !== 'string' || typeof parsed.title !== 'string') return undefined;
+    return { kind: 'artifact', artifactKind, id, title: parsed.title.slice(0, 200) };
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Translates Claude Agent SDK messages into provider-neutral AgentEvents.
  * Stateful: it remembers which message is streaming (for text deltas), which blocks and tool
@@ -23,7 +51,7 @@ function toolResultText(block: ToolResultBlock): string {
 export function createSdkMapper() {
   const streaming = new Map<string, string>(); // parent_tool_use_id ('' = main) → message id
   const textBlocks = new Map<string, string[]>(); // message id → text blocks seen
-  const toolCalls = new Set<string>();
+  const toolCalls = new Map<string, string>(); // tool_use id → tool name
   let lastTotalCostUsd = 0;
   let lastSessionId: string | undefined;
   // Whether the current turn produced any main-thread assistant text (see the result case).
@@ -78,7 +106,7 @@ export function createSdkMapper() {
             changed = true;
           }
           if (block.type === 'tool_use' && !toolCalls.has(block.id)) {
-            toolCalls.add(block.id);
+            toolCalls.set(block.id, block.name);
             out.push({
               kind: 'tool_call',
               toolUseId: block.id,
@@ -104,14 +132,24 @@ export function createSdkMapper() {
       case 'user': {
         const content = m.message.content;
         if (typeof content === 'string') return [];
-        return content
-          .filter((b): b is ToolResultBlock & typeof b => b.type === 'tool_result')
-          .map((b) => ({
-            kind: 'tool_result' as const,
+        const events: AgentEventInput[] = [];
+        for (const block of content) {
+          if (block.type !== 'tool_result') continue;
+          const b = block as ToolResultBlock;
+          const text = toolResultText(b);
+          const isError = b.is_error === true;
+          events.push({
+            kind: 'tool_result',
             toolUseId: b.tool_use_id,
-            isError: b.is_error === true,
-            output: preview(toolResultText(b)),
-          }));
+            isError,
+            output: preview(text),
+          });
+          if (!isError) {
+            const artifact = artifactFromResult(toolCalls.get(b.tool_use_id), text);
+            if (artifact) events.push(artifact);
+          }
+        }
+        return events;
       }
 
       case 'result': {

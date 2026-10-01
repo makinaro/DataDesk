@@ -7,6 +7,7 @@ import {
   RegisteredDatasetSchema,
 } from '../datasets';
 import { AgentSettingsSchema } from '../agent';
+import { ArtifactIdSchema, ChartArtifactSchema, ReportArtifactSchema } from '../artifacts';
 import { IpcChannels, type IpcChannel } from './channels';
 
 export const ProviderSchema = z.enum(['anthropic', 'openai', 'huggingface']);
@@ -92,6 +93,25 @@ export const ipcContract = {
   },
   [IpcChannels.settingsGetAgent]: { request: NoPayload, response: AgentSettingsSchema },
   [IpcChannels.settingsSetAgent]: { request: AgentSettingsSchema, response: AgentSettingsSchema },
+  [IpcChannels.artifactsGetChart]: {
+    request: z.strictObject({ id: ArtifactIdSchema }),
+    response: ChartArtifactSchema,
+  },
+  [IpcChannels.artifactsGetReport]: {
+    request: z.strictObject({ id: ArtifactIdSchema }),
+    response: ReportArtifactSchema,
+  },
+  [IpcChannels.artifactsExportReport]: {
+    request: z.strictObject({
+      id: ArtifactIdSchema,
+      format: z.enum(['md', 'pdf']),
+      // No chart SVGs from the renderer: main renders them from the stored charts (D-016).
+      /** PDF only: the report body as static HTML; main wraps it in its own locked-down page. */
+      bodyHtml: z.string().max(20_000_000).optional(),
+    }),
+    /** saved=false when the user cancelled the save dialog. */
+    response: z.strictObject({ saved: z.boolean(), path: z.string().nullable() }),
+  },
 } as const satisfies Record<IpcChannel, { request: z.ZodType; response: z.ZodType }>;
 
 export type IpcContract = typeof ipcContract;

@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createAgentRuntime } from '../../../src/main/agent/agentRuntime';
 import { IpcUserError } from '../../../src/main/ipc/errors';
 import { DEFAULT_AGENT_SETTINGS, type AgentEvent } from '../../../src/shared/agent';
-import { scriptedQuery, sdk } from './claude/fakeSdk';
+import { PLUGIN_DIR, scriptedQuery, sdk } from './claude/fakeSdk';
 
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({ query: vi.fn() }));
 
@@ -32,7 +32,12 @@ function runtime(opts: { hasKey?: boolean } = {}) {
       getKey: () => Promise.resolve(hasKey ? KEY : undefined),
     },
     settings: { getAgent: () => Promise.resolve({ ...DEFAULT_AGENT_SETTINGS, model: 'haiku' }) },
-    paths: { userData, mainDir: 'C:/app/out/main', extensionDir: undefined },
+    paths: {
+      userData,
+      mainDir: 'C:/app/out/main',
+      extensionDir: undefined,
+      agentPluginDir: PLUGIN_DIR,
+    },
     deliver: (e) => delivered.push(e),
     app: { isPackaged: false, version: '0.1.0', resourcesPath: 'C:/app/resources' },
     log: () => undefined,

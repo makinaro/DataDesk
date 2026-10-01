@@ -5,13 +5,17 @@ import {
   AUTO_APPROVED_TOOLS,
   buildAgentOptions,
   FORBIDDEN_BUILTINS,
+  SKILL_NAMES,
 } from '../../../../src/main/agent/claude/agentOptions';
 import { checkInit } from '../../../../src/main/agent/claude/initGuard';
+import { neutralizeSlashCommand } from '../../../../src/main/agent/claude/inputQueue';
 import { DEFAULT_AGENT_SETTINGS } from '../../../../src/shared/agent';
 
 const KEY = 'sk-ant-test-key-0123456789';
 const USER_DATA = 'C:/Users/me/AppData/Roaming/DataDesk';
 const WORKSPACE = `${USER_DATA}/agent-workspace`;
+const PLUGIN = 'C:/Program Files/DataDesk/resources/agent-plugin';
+const expected = { cwd: WORKSPACE, pluginDir: PLUGIN };
 
 function options() {
   return buildAgentOptions({
@@ -21,6 +25,7 @@ function options() {
     mcpServer: { command: 'electron.exe', args: ['mcp-server.js'], env: { X: '1' } },
     canUseTool: () => Promise.resolve({ behavior: 'deny', message: 'no' }),
     abortController: new AbortController(),
+    pluginDir: PLUGIN,
   });
 }
 
@@ -33,13 +38,20 @@ describe('buildAgentOptions (the whole capability surface of the in-app agent)',
     expect(o.cwd).toBe(WORKSPACE);
   });
 
-  it('grants no built-in tools and denies the dangerous ones explicitly', () => {
+  it('grants only the Skill built-in and denies the dangerous ones explicitly', () => {
     const o = options();
-    expect(o.tools).toEqual([]);
-    expect(o.skills).toEqual([]);
-    for (const t of ['Bash', 'Read', 'Write', 'Edit', 'WebFetch', 'WebSearch', 'Agent', 'Skill']) {
+    expect(o.tools).toEqual(['Skill']);
+    expect(o.disallowedTools).not.toContain('Skill');
+    for (const t of ['Bash', 'Read', 'Write', 'Edit', 'WebFetch', 'WebSearch', 'Agent']) {
       expect(o.disallowedTools).toContain(t);
     }
+  });
+
+  it('loads only our plugin and allows only our three skills, without shell injection', () => {
+    const o = options();
+    expect(o.plugins).toEqual([{ type: 'local', path: PLUGIN, skipMcpDiscovery: true }]);
+    expect(o.skills).toEqual([...SKILL_NAMES]);
+    expect(o.settings).toEqual({ disableSkillShellExecution: true, disableBundledSkills: true });
   });
 
   it('auto-approves only read-only datadesk tools; register_dataset must ask', () => {
@@ -49,9 +61,9 @@ describe('buildAgentOptions (the whole capability surface of the in-app agent)',
     expect(o.permissionMode).toBe('default');
   });
 
-  it('disables slash-command dispatch and applies the budget/turn caps', () => {
+  it('applies the budget/turn caps (slash commands stay on for skills; see InputQueue)', () => {
     const o = options();
-    expect(o.extraArgs).toEqual({ 'disable-slash-commands': null });
+    expect(o.extraArgs).toBeUndefined();
     expect(o.maxBudgetUsd).toBe(DEFAULT_AGENT_SETTINGS.maxBudgetUsd);
     expect(o.maxTurns).toBe(DEFAULT_AGENT_SETTINGS.maxTurns);
     expect(o.persistSession).toBe(false);
@@ -94,7 +106,13 @@ describe('buildAgentEnv', () => {
 
 describe('checkInit (runtime tripwire)', () => {
   const good = {
-    tools: [...AUTO_APPROVED_TOOLS, ...APPROVAL_TOOLS],
+    tools: ['Skill', ...AUTO_APPROVED_TOOLS, ...APPROVAL_TOOLS],
+    skills: [...SKILL_NAMES, 'doctor'],
+    plugins: [
+      // The CLI reports Windows-style paths; the guard compares paths separator-insensitively.
+      { name: 'datadesk', path: PLUGIN.split('/').join('\\') },
+      { name: 'cc-plugin-agents-md', path: 'builtin' },
+    ],
     mcp_servers: [{ name: 'datadesk', status: 'pending' }],
     agents: [],
     permissionMode: 'default' as const,
@@ -103,8 +121,8 @@ describe('checkInit (runtime tripwire)', () => {
   };
 
   it('accepts exactly what we granted (MCP server may still be pending)', () => {
-    expect(checkInit(good, { cwd: WORKSPACE })).toEqual([]);
-    expect(checkInit({ ...good, tools: [] }, { cwd: WORKSPACE })).toEqual([]);
+    expect(checkInit(good, expected)).toEqual([]);
+    expect(checkInit({ ...good, tools: [] }, expected)).toEqual([]);
   });
 
   it.each([
@@ -118,13 +136,28 @@ describe('checkInit (runtime tripwire)', () => {
     [{ permissionMode: 'bypassPermissions' as const }, /permission mode/],
     [{ apiKeySource: '/login managed key' as const }, /credentials/],
     [{ cwd: 'C:/github_projects/data-analysis-assistant' }, /working directory/],
+    [{ plugins: [...good.plugins, { name: 'evil', path: 'C:/evil' }] }, /unexpected plugins: evil/],
+    [{ plugins: [{ name: 'datadesk', path: 'C:/elsewhere' }] }, /unexpected plugins: datadesk/],
+    [
+      { plugin_errors: [{ plugin: 'datadesk', type: 'x', message: 'bad manifest' }] },
+      /plugin errors/,
+    ],
+    [{ skills: ['doctor'] }, /DataDesk skills did not load/],
   ])('flags %j', (override, message) => {
-    expect(checkInit({ ...good, ...override }, { cwd: WORKSPACE }).join('\n')).toMatch(message);
+    expect(checkInit({ ...good, ...override }, expected).join('\n')).toMatch(message);
   });
 
   it('knows every built-in we forbid is outside the expected set', () => {
     for (const t of FORBIDDEN_BUILTINS) {
-      expect(checkInit({ ...good, tools: [t] }, { cwd: WORKSPACE })).not.toEqual([]);
+      expect(checkInit({ ...good, tools: [t] }, expected)).not.toEqual([]);
     }
+  });
+});
+
+describe('neutralizeSlashCommand', () => {
+  it('stops Claude Code from dispatching chat messages as /commands (probe: a leading space)', () => {
+    expect(neutralizeSlashCommand('/cost')).toBe(' /cost');
+    expect(neutralizeSlashCommand('/datadesk:eda-checklist')).toBe(' /datadesk:eda-checklist');
+    expect(neutralizeSlashCommand('What does /cost mean?')).toBe('What does /cost mean?');
   });
 });
