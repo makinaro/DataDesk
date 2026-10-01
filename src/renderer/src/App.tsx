@@ -66,7 +66,7 @@ export function App() {
           <CompareView />
         ) : (
           <ResultsFocusProvider onFocus={focusArtifact}>
-            <ChatPanel />
+            <ChatPanel className="flex-1" />
             <ResultsPanel dataset={selectedDataset} revision={datasetsRevision} focus={focus} />
           </ResultsFocusProvider>
         )}

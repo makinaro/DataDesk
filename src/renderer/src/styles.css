@@ -313,6 +313,27 @@
   color: var(--dd-muted);
 }
 
+/* The streaming caret after an answer that is still arriving. */
+.caret {
+  display: inline-block;
+  width: 7px;
+  height: 15px;
+  margin-left: 2px;
+  background: var(--dd-fg);
+  vertical-align: -2px;
+  animation: caret-blink 1s steps(2) infinite;
+}
+@keyframes caret-blink {
+  50% {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .caret {
+    animation: none;
+  }
+}
+
 /* Analyst answers in the chat (ChatMarkdown). */
 .chat-prose {
   line-height: 1.6;

@@ -140,7 +140,7 @@ layouts A (Chat-first) and C (Results-first, default); charts stay Vega-Lite.
 - [x] Appearance settings (theme incl. System, layout) persisted in main, separate from agent settings
 - [x] Integrated title bar: no menu bar, native window controls follow the theme
 - [x] Markdown in chat: tables, bold, lists, highlighted code blocks, chart chips; streaming-safe
-- [ ] Claude-style chat: no answer bubbles, compact user messages, composer card
+- [x] Claude-style chat: no answer bubbles, compact user messages, composer card
 - [ ] Resizable panels with keyboard-accessible handles; sizes remembered per layout
 - [ ] Layouts: Results-first (default) and Chat-first, with inline tool steps in Results-first
 - [ ] Interactive, theme-aware charts: tooltips, zoom/pan, legend filter, reset, save PNG/SVG

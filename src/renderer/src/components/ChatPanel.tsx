@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { useAgent } from '../agent/AgentProvider';
+import type { ChatMessage } from '../agent/agentState';
+import { useApi } from '../api';
 import { ChatMarkdown } from './ChatMarkdown';
-import { Panel } from './Panel';
+import { CopyIcon, SendIcon, StopIcon } from './icons';
 
 const BUSY = new Set(['starting', 'running', 'stopping']);
 
-export function ChatPanel() {
+export function ChatPanel({ className = '' }: { className?: string }) {
   const { state, send, stop, reset } = useAgent();
   const [draft, setDraft] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -31,52 +33,35 @@ export function ChatPanel() {
   }
 
   return (
-    <Panel title="Chat" className="min-w-0 flex-1">
-      <div className="flex h-full flex-col gap-3">
-        <div className="flex items-center justify-between text-xs text-faint">
-          <span data-testid="agent-status">
-            {state.model ? `${state.model} · ` : ''}
-            {state.status}
-            {state.sessionCostUsd > 0 ? ` · $${state.sessionCostUsd.toFixed(4)}` : ''}
-          </span>
-          <button
-            type="button"
-            onClick={reset}
-            disabled={state.messages.length === 0}
-            className="rounded px-2 py-0.5 hover:bg-raised disabled:opacity-40"
-          >
-            New conversation
-          </button>
-        </div>
-
-        <ol aria-label="Conversation" className="flex-1 space-y-3 overflow-auto">
+    <section aria-label="Chat" className={`flex min-h-0 min-w-0 flex-col ${className}`}>
+      <div className="min-h-0 flex-1 overflow-auto">
+        <ol aria-label="Conversation" className="mx-auto max-w-[760px] px-6 pt-6 pb-2">
           {state.messages.length === 0 && (
-            <li className="rounded-lg border border-dashed border-strong p-4 text-sm text-faint">
+            <li className="mt-[12vh] text-center text-sm text-faint">
               Ask a question about your datasets, e.g. “Which region sold the most units?”
             </li>
           )}
-          {state.messages.map((m) => (
-            <li
-              key={m.id}
-              className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${
-                m.role === 'user' ? 'ml-auto bg-bubble whitespace-pre-wrap' : 'bg-surface'
-              }`}
-            >
-              <span className="sr-only">{m.role === 'user' ? 'You: ' : 'Analyst: '}</span>
-              {m.role === 'user' ? m.text : <ChatMarkdown text={m.text} />}
-              {m.streaming && <span className="ml-1 animate-pulse text-faint">▍</span>}
-            </li>
-          ))}
-          <div ref={endRef} />
+          {state.messages.map((m) =>
+            m.role === 'user' ? (
+              <UserMessage key={m.id} message={m} />
+            ) : (
+              <Answer key={m.id} message={m} />
+            ),
+          )}
         </ol>
+        <div ref={endRef} />
+      </div>
 
+      <div className="px-6 pt-2 pb-4">
         {error && (
-          <p role="alert" className="rounded bg-danger-soft px-3 py-2 text-sm text-danger">
+          <p
+            role="alert"
+            className="mx-auto mb-2 max-w-[760px] rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger"
+          >
             {error}
           </p>
         )}
-
-        <div className="flex gap-2">
+        <div className="mx-auto max-w-[760px] rounded-[14px] border border-line bg-surface py-2 pr-2 pl-3.5 focus-within:border-faint">
           <textarea
             aria-label="Message"
             value={draft}
@@ -84,29 +69,99 @@ export function ChatPanel() {
               setDraft(e.target.value);
             }}
             onKeyDown={onKeyDown}
-            placeholder="Ask about your data… (Enter to send, Shift+Enter for a new line)"
-            className="h-20 flex-1 resize-none rounded-lg border border-line bg-surface p-3 text-sm"
+            placeholder="Ask about your data…"
+            className="block h-11 w-full resize-none bg-transparent text-sm outline-none"
           />
-          {busy ? (
+          <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={stop}
-              className="rounded-lg border border-danger px-4 text-sm text-danger hover:bg-danger-soft"
+              onClick={reset}
+              disabled={state.messages.length === 0}
+              className="rounded-md px-2 py-0.5 text-xs text-faint hover:bg-raised hover:text-fg disabled:opacity-40"
             >
-              Stop
+              New conversation
             </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => void submit()}
-              disabled={!draft.trim()}
-              className="rounded-lg bg-accent px-4 text-sm text-on-accent hover:bg-accent-hover disabled:opacity-40"
-            >
-              Send
-            </button>
-          )}
+            <span data-testid="agent-status" className="min-w-0 flex-1 truncate text-xs text-faint">
+              {state.model ? `${state.model} · ` : ''}
+              {state.status}
+              {state.sessionCostUsd > 0 ? ` · $${state.sessionCostUsd.toFixed(4)}` : ''}
+            </span>
+            {busy ? (
+              <button
+                type="button"
+                aria-label="Stop"
+                onClick={stop}
+                className="grid h-8 w-8 place-items-center rounded-lg border border-danger text-danger hover:bg-danger-soft"
+              >
+                <StopIcon />
+              </button>
+            ) : (
+              <button
+                type="button"
+                aria-label="Send"
+                onClick={() => void submit()}
+                disabled={!draft.trim()}
+                className="grid h-8 w-8 place-items-center rounded-lg bg-accent text-on-accent hover:bg-accent-hover disabled:opacity-40"
+              >
+                <SendIcon />
+              </button>
+            )}
+          </div>
         </div>
       </div>
-    </Panel>
+    </section>
+  );
+}
+
+function UserMessage({ message }: { message: ChatMessage }) {
+  return (
+    <li className="my-4 flex justify-end">
+      <div className="max-w-[80%] rounded-2xl bg-bubble px-3.5 py-2 text-sm whitespace-pre-wrap">
+        <span className="sr-only">You: </span>
+        {message.text}
+      </div>
+    </li>
+  );
+}
+
+/** An analyst answer: no bubble, full width, like a document. */
+function Answer({ message }: { message: ChatMessage }) {
+  const api = useApi();
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => {
+      setCopied(false);
+    }, 1500);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [copied]);
+
+  async function copy() {
+    const result = await api.clipboard.writeText(message.text);
+    if (result.ok) setCopied(true);
+  }
+
+  return (
+    <li className="group mb-2 text-sm">
+      <span className="sr-only">Analyst: </span>
+      <ChatMarkdown text={message.text} />
+      {message.streaming ? (
+        <span aria-hidden="true" className="caret" />
+      ) : (
+        <div className="-ml-1.5 flex opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+          <button
+            type="button"
+            aria-label={copied ? 'Copied' : 'Copy answer'}
+            onClick={() => void copy()}
+            className="grid h-7 w-7 place-items-center rounded-md text-faint hover:bg-raised hover:text-fg"
+          >
+            <CopyIcon />
+          </button>
+        </div>
+      )}
+    </li>
   );
 }
