@@ -713,3 +713,114 @@ Two model techniques come in:
    `units * unit_price * (1 - discount)`.
 3. **Remove the key.** Clear the OpenAI key in Settings. _Expect_ a "New conversation (key
    changed)" line, and the next session's timeline header showing "10 tools" instead of "12 tools" (Task and Skill plus 8 datadesk tools, versus 10). Check with `npm run smoke:packaged -- --agent --openai` vs. without `--openai`.
+
+## Phase 6: Hugging Face: a remote MCP server, human approval, untrusted content (2026-10-01)
+
+### Concept
+
+Until now every tool the analyst used ran on this machine. Phase 6 adds a **remote MCP server**:
+Hugging Face hosts one at `https://huggingface.co/mcp`, and the Claude Code CLI talks to it over
+streamable HTTP with your token as a bearer header. To the model, `mcp__hf__hub_repo_search` looks
+just like `mcp__datadesk__run_sql`. What changes is everything around it:
+
+- **Auth to someone else's server:** a token has to travel with every request without leaking
+  (command lines, logs, error messages, other hosts).
+- **You don't control its tool list:** HF decides what tools exist, and a signed-in account gets
+  write, compute and Gradio tools by default. So the tool set is _discovered at runtime_ and cut
+  down to an allowlist.
+- **Human in the loop:** downloading data from the internet into the app is the user's call. The
+  analyst asks, a dialog shows exactly what will happen, and only an explicit "allow" proceeds.
+- **Prompt-injection surfaces:** dataset cards and READMEs are written by strangers and land in
+  the model's context. Anything they say is data, never instructions. The design keeps that text
+  away from the user's own rows and away from any tool that can act.
+
+### Where it lives
+
+- Server config with the token placeholder: [agentOptions.ts:159](../src/main/agent/claude/agentOptions.ts#L159)
+  (`alwaysLoad` at [:161](../src/main/agent/claude/agentOptions.ts#L161)); the token in the CLI
+  env: [agentEnv.ts:87](../src/main/agent/claude/agentEnv.ts#L87)
+- Allowlist and `hf_fs` verbs: [hfTools.ts:27](../src/main/agent/claude/hfTools.ts#L27),
+  [hfTools.ts:37](../src/main/agent/claude/hfTools.ts#L37), [hfTools.ts:54](../src/main/agent/claude/hfTools.ts#L54)
+- Discovery before a session: [toolDiscovery.ts:20](../src/main/mcp/toolDiscovery.ts#L20),
+  used at [agentRuntime.ts:67](../src/main/agent/agentRuntime.ts#L67)
+- Guard: [initGuard.ts:49](../src/main/agent/claude/initGuard.ts#L49). Scope hook (Hub tools only
+  in dataset-scout): [scopeHook.ts:30](../src/main/agent/claude/scopeHook.ts#L30)
+- Approval: [claudeOrchestrator.ts:118](../src/main/agent/claude/claudeOrchestrator.ts#L118),
+  shared input schema [hf.ts:79](../src/shared/hf.ts#L79)
+- Download: [loadHfDataset.ts:129](../src/mcp-server/hf/loadHfDataset.ts#L129) (redirects),
+  [loadHfDataset.ts:164](../src/mcp-server/hf/loadHfDataset.ts#L164) (capped save),
+  [loadHfDataset.ts:65](../src/mcp-server/hf/loadHfDataset.ts#L65) (local path); registration
+  exception [fileAccess.ts:119](../src/mcp-server/fileAccess.ts#L119)
+- Scout: [subagents.ts:35](../src/main/agent/claude/subagents.ts#L35); skill
+  [evaluating-datasets/SKILL.md](../resources/agent-plugin/skills/evaluating-datasets/SKILL.md)
+
+### How it works
+
+"Find me public data on Iris flowers and tell me the average sepal length per species":
+
+1. You saved an HF token in Settings, which reset the conversation. On your message, main reads
+   the token and **lists the HF server's tools itself** (MCP client, bearer header, no OAuth). It
+   gets `hf_whoami, hub_repo_search, hub_repo_details, hf_fs, create_repo, …`.
+2. Main builds the session: the `hf` server with `Authorization: Bearer ${DATADESK_HF_TOKEN}`
+   (literally that text; the CLI expands it from its env), `disallowedTools` with
+   `mcp__hf__hf_whoami`, `mcp__hf__create_repo`, …, and the `dataset-scout` sub-agent. The token
+   goes in the CLI's env only.
+3. The CLI connects to HF before init (`alwaysLoad`), so the init message lists the three HF tools.
+   The guard checks there is nothing else.
+4. The analyst can't search the Hub itself (the hook denies it on the main thread), so it delegates
+   to `dataset-scout` with the question. The scout preloads the evaluating-datasets checklist,
+   runs `hub_repo_search`, `hub_repo_details` and `hf_fs ls` (the hook checks the verb), and
+   returns `scikit-learn/iris, file Iris.csv, 5.1 KB, CC0`.
+5. The analyst calls `load_hf_dataset({repo_id: 'scikit-learn/iris', path: 'Iris.csv'})`. It isn't
+   auto-approved, so the CLI asks `canUseTool`. Main validates the input strictly and shows the
+   dialog: dataset, URL, file, revision, the name `hf_iris`, the 500 MB limit.
+6. You click Allow. datadesk-mcp requests `…/resolve/main/Iris.csv` with the token, gets a
+   relative 307 to `/api/resolve-cache/…`, follows it by hand, and streams the body into a `.part`
+   file under `userData/datasets/hf/scikit-learn/iris/main-<hash>/`, counting bytes. It renames
+   the file and registers it with the one-off `allowDirs` exception.
+7. The analyst runs `SELECT Species, avg(SepalLengthCm) FROM hf_iris GROUP BY 1` as usual.
+
+### Gotchas
+
+- **`${VAR}` in MCP headers works through the SDK, but only a probe says so.** The docs promise
+  env expansion for `.mcp.json`. A fake local MCP server that printed the `Authorization` header
+  showed it also works for the SDK's `mcpServers` (which reach the CLI as `--mcp-config`). It is
+  observed behaviour, so a test pins the config shape and D-019 records what happens if it
+  changes.
+- **The per-server `tools` policy filters nothing; `disallowedTools` does.** The obvious knob was
+  a no-op in the probe. Verify filters by reading `init.tools`, not the option's name.
+- **A rejected header doesn't start OAuth.** With an explicit `Authorization`, a 401 marks the
+  server `failed` and no browser opens. Don't add `?login` to the URL.
+- **Tool lists are per account.** Anonymous `tools/list` showed 4 tools; HF's source says a
+  signed-in default adds write, compute and Gradio tools. An allowlist from an anonymous probe
+  would have been wrong for real users. Hence discovery with the user's token.
+- **Redirects are where tokens leak.** HF serves big files from a CDN on another host. Following
+  redirects by hand lets us send the token to `huggingface.co` only, and only follow https HF
+  hosts. Small files get a _relative_ redirect, which `new URL(location, base)` handles.
+- **Headers lie; count bytes.** `Content-Length` can be absent (it was for Iris) or wrong. The cap
+  is checked on `X-Linked-Size` and `Content-Length` first, then enforced on the actual stream.
+- **A stalled read ignores your abort flag.** Checking `signal.aborted` between reads never
+  fires while `reader.read()` hangs. Cancel the reader on abort, then re-check the signal before
+  keeping the file, or a cancelled download looks complete. A test with a stalling body caught it.
+- **Safe names collide.** Replacing odd characters with `_` plus case-insensitive NTFS mapped
+  `a b.csv` and `a_b.csv` (or `Data/` and `data/`) to one file, so a new download could silently
+  replace another dataset's data. A hash of the exact input fixed it (review finding).
+- **What the user sees must be what runs.** The approval schema is strict (unknown keys are
+  denied) and shared with the tool. Pull-request revisions are refused (anyone can write one),
+  and bidi or control characters in a path are rejected because they could make the dialog lie.
+- **Isolation is about contexts, not tools.** Giving the main analyst Hub search next to the
+  user's rows would let local values slip into search words, and put Hub text where
+  `second_opinion` and `save_report` live. The review moved Hub reading into `dataset-scout` only.
+
+### Experiments
+
+1. **See the placeholder, not the token.** With a token saved, start a conversation and open Task
+   Manager → Details → `claude.exe` → add the "Command line" column. You should find
+   `--mcp-config` with `Bearer ${DATADESK_HF_TOKEN}` in it, and not your `hf_…` token.
+2. **Watch discovery fail closed.** In Settings, replace the token with `hf_wrong` and ask
+   something. The chat should show "Hugging Face rejected your token…", the timeline's session
+   event should list only the `datadesk` server, and the analyst should still answer from local
+   data.
+3. **Trip the cap.** Ask the analyst to load a Parquet file over 500 MB (e.g. one shard of
+   `HuggingFaceFW/fineweb`) and approve it. Expect a "larger than the 500.0 MB download limit"
+   error before any bytes are written, and nothing new under `%APPDATA%/DataDesk/datasets/hf`.
