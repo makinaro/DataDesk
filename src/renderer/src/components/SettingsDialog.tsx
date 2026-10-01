@@ -6,7 +6,11 @@ import { AnalystSettingsForm } from './AnalystSettingsForm';
 
 const PROVIDERS: { id: Provider; label: string; hint: string }[] = [
   { id: 'anthropic', label: 'Anthropic', hint: 'Runs the analyst agent.' },
-  { id: 'openai', label: 'OpenAI', hint: 'Column search and second-opinion tools.' },
+  {
+    id: 'openai',
+    label: 'OpenAI',
+    hint: 'Enables column search and second-opinion tools. When the analyst uses them, column names, a few sample values, SQL and small result previews are sent to OpenAI.',
+  },
   { id: 'huggingface', label: 'Hugging Face', hint: 'Dataset discovery and downloads.' },
 ];
 

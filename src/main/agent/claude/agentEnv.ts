@@ -29,6 +29,8 @@ function lookup(env: NodeJS.ProcessEnv, key: string): string | undefined {
 
 export interface AgentEnvInput {
   apiKey: string;
+  /** Optional: enables datadesk-mcp's OpenAI tools (D-018). */
+  openaiApiKey?: string | undefined;
   userData: string;
   appVersion: string;
   parentEnv: NodeJS.ProcessEnv;
@@ -59,6 +61,7 @@ export const SUBAGENT_LIMITS = {
  */
 export function buildAgentEnv({
   apiKey,
+  openaiApiKey,
   userData,
   appVersion,
   parentEnv,
@@ -71,6 +74,9 @@ export function buildAgentEnv({
   return {
     ...env,
     ANTHROPIC_API_KEY: apiKey,
+    // For datadesk-mcp, which the CLI spawns with the CLI's own env. Passing it in the server's
+    // `env` config instead would put it on the CLI's command line (--mcp-config JSON; D-018).
+    ...(openaiApiKey ? { DATADESK_OPENAI_API_KEY: openaiApiKey } : {}),
     // Isolation (DECISIONS D-004): own config dir, no auto memory, no claude.ai connectors.
     CLAUDE_CONFIG_DIR: join(userData, 'claude-config'),
     CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1',

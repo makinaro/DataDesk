@@ -32,6 +32,8 @@ export interface SessionSetup {
   workspaceDir: string;
   /** The skills plugin; the init guard checks exactly this plugin loaded. */
   pluginDir: string;
+  /** Whether this session's datadesk-mcp exposes the OpenAI tools (the guard expects them). */
+  openaiTools: boolean;
 }
 
 export interface ClaudeOrchestratorDeps {
@@ -200,7 +202,7 @@ export class ClaudeOrchestrator implements Orchestrator {
 
   private async start(generation: number): Promise<Session> {
     const abortController = new AbortController();
-    const { options, workspaceDir, pluginDir } = await this.deps.createSession({
+    const { options, workspaceDir, pluginDir, openaiTools } = await this.deps.createSession({
       abortController,
       canUseTool: this.canUseToolFor(generation),
     });
@@ -216,13 +218,13 @@ export class ClaudeOrchestrator implements Orchestrator {
       done: Promise.resolve(),
     };
     this.live = session;
-    session.done = this.consume(session, { cwd: workspaceDir, pluginDir });
+    session.done = this.consume(session, { cwd: workspaceDir, pluginDir, openaiTools });
     return session;
   }
 
   private async consume(
     session: Session,
-    expected: { cwd: string; pluginDir: string },
+    expected: { cwd: string; pluginDir: string; openaiTools: boolean },
   ): Promise<void> {
     const map = createSdkMapper();
     // Only this session's events, and only until it starts ending.

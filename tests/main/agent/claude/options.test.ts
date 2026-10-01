@@ -16,11 +16,12 @@ const KEY = 'sk-ant-test-key-0123456789';
 const USER_DATA = 'C:/Users/me/AppData/Roaming/DataDesk';
 const WORKSPACE = `${USER_DATA}/agent-workspace`;
 const PLUGIN = 'C:/Program Files/DataDesk/resources/agent-plugin';
-const expected = { cwd: WORKSPACE, pluginDir: PLUGIN };
+const expected = { cwd: WORKSPACE, pluginDir: PLUGIN, openaiTools: false };
 
-function options() {
+function options(openaiTools = false) {
   return buildAgentOptions({
     settings: DEFAULT_AGENT_SETTINGS,
+    openaiTools,
     workspaceDir: WORKSPACE,
     env: { ANTHROPIC_API_KEY: KEY },
     mcpServer: { command: 'electron.exe', args: ['mcp-server.js'], env: { X: '1' } },
@@ -181,5 +182,43 @@ describe('neutralizeSlashCommand', () => {
     expect(neutralizeSlashCommand('/cost')).toBe(' /cost');
     expect(neutralizeSlashCommand('/datadesk:eda-checklist')).toBe(' /datadesk:eda-checklist');
     expect(neutralizeSlashCommand('What does /cost mean?')).toBe('What does /cost mean?');
+  });
+});
+
+describe('OpenAI tools (only with a key)', () => {
+  const OPENAI = ['mcp__datadesk__search_columns', 'mcp__datadesk__second_opinion'];
+
+  it('are auto-approved, described in the prompt, and given to the right sub-agents', () => {
+    const o = options(true);
+    expect(o.allowedTools).toEqual(expect.arrayContaining(OPENAI));
+    expect(o.systemPrompt).toContain('second_opinion');
+    expect(o.agents?.profiler?.tools).toContain('mcp__datadesk__search_columns');
+    expect(o.agents?.profiler?.tools).not.toContain('mcp__datadesk__second_opinion');
+    expect(o.agents?.['sql-analyst']?.tools).toEqual(expect.arrayContaining(OPENAI));
+    expect(o.agents?.['report-writer']?.tools).toEqual(['mcp__datadesk__save_report']);
+  });
+
+  it('are absent everywhere without a key', () => {
+    const o = options(false);
+    for (const t of OPENAI) {
+      expect(o.allowedTools).not.toContain(t);
+      for (const def of Object.values(o.agents ?? {})) expect(def.tools).not.toContain(t);
+    }
+    expect(o.systemPrompt).not.toContain('second_opinion');
+  });
+
+  it('the guard expects them only when a key was set', () => {
+    const init = {
+      tools: ['Task', 'Skill', ...AUTO_APPROVED_TOOLS, ...APPROVAL_TOOLS, ...OPENAI],
+      skills: [...SKILL_NAMES],
+      plugins: [{ name: 'datadesk', path: PLUGIN }],
+      mcp_servers: [{ name: 'datadesk', status: 'connected' }],
+      agents: ['profiler', 'sql-analyst', 'report-writer'],
+      permissionMode: 'default' as const,
+      apiKeySource: 'ANTHROPIC_API_KEY' as const,
+      cwd: WORKSPACE,
+    };
+    expect(checkInit(init, { ...expected, openaiTools: true })).toEqual([]);
+    expect(checkInit(init, expected).join('\n')).toMatch(/unexpected tools: .*search_columns/);
   });
 });

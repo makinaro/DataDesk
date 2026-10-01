@@ -1,5 +1,5 @@
 import type { SDKSystemMessage } from '@anthropic-ai/claude-agent-sdk';
-import { DATADESK_SERVER, EXPECTED_TOOLS, PLUGIN_NAME, SKILL_NAMES } from './agentOptions';
+import { DATADESK_SERVER, expectedTools, PLUGIN_NAME, SKILL_NAMES } from './agentOptions';
 import { isSubagentName, SUBAGENT_NAMES } from './subagents';
 
 export type InitMessage = Pick<
@@ -31,10 +31,11 @@ function samePath(a: string, b: string): boolean {
  */
 export function checkInit(
   init: InitMessage,
-  expected: { cwd: string; pluginDir: string },
+  expected: { cwd: string; pluginDir: string; openaiTools: boolean },
 ): string[] {
   const problems: string[] = [];
-  const unexpectedTools = init.tools.filter((t) => !EXPECTED_TOOLS.has(t));
+  const allowed = expectedTools(expected.openaiTools);
+  const unexpectedTools = init.tools.filter((t) => !allowed.has(t));
   if (unexpectedTools.length > 0) problems.push(`unexpected tools: ${unexpectedTools.join(', ')}`);
 
   const servers = init.mcp_servers.map((s) => s.name).filter((n) => n !== DATADESK_SERVER);

@@ -20,6 +20,7 @@ function setup(
       options: { cwd: WORKSPACE },
       workspaceDir: WORKSPACE,
       pluginDir: PLUGIN_DIR,
+      openaiTools: false,
     });
   });
   const orchestrator = new ClaudeOrchestrator({ emit, query: queryFn, approvals, createSession });
@@ -289,6 +290,7 @@ describe('ClaudeOrchestrator lifecycle (review regressions)', () => {
               options: { cwd: WORKSPACE },
               workspaceDir: WORKSPACE,
               pluginDir: PLUGIN_DIR,
+              openaiTools: false,
             });
           };
         }),

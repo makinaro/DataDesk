@@ -9,7 +9,7 @@ import {
 const t = (name: string) => `mcp__datadesk__${name}`;
 
 describe('sub-agent definitions (the scope table)', () => {
-  const agents = buildSubagents();
+  const agents = buildSubagents({ openaiTools: false });
 
   it('gives each sub-agent exactly its tools', () => {
     expect(agents.profiler.tools).toEqual([

@@ -19,7 +19,7 @@ afterEach(() => {
   rmSync(userData, { recursive: true, force: true });
 });
 
-function runtime(opts: { hasKey?: boolean } = {}) {
+function runtime(opts: { hasKey?: boolean; openaiKey?: string } = {}) {
   const hasKey = opts.hasKey ?? true;
   const delivered: AgentEvent[] = [];
   const workspace = join(userData, 'agent-workspace');
@@ -29,7 +29,16 @@ function runtime(opts: { hasKey?: boolean } = {}) {
   const rt = createAgentRuntime({
     keyStore: {
       status: () => Promise.resolve({ anthropic: hasKey, openai: false, huggingface: false }),
-      getKey: () => Promise.resolve(hasKey ? KEY : undefined),
+      getKey: (provider: string) =>
+        Promise.resolve(
+          provider === 'anthropic'
+            ? hasKey
+              ? KEY
+              : undefined
+            : provider === 'openai'
+              ? opts.openaiKey
+              : undefined,
+        ),
     },
     settings: { getAgent: () => Promise.resolve({ ...DEFAULT_AGENT_SETTINGS, model: 'haiku' }) },
     paths: {
@@ -89,5 +98,32 @@ describe('createAgentRuntime', () => {
     });
     await rt.onKeyChanged();
     expect(calls.closed).toBe(true);
+  });
+
+  it('passes the OpenAI key via the CLI env, never in the MCP server config (command line)', async () => {
+    const openaiKey = 'sk-openai-test-0123456789';
+    const { rt, calls, delivered } = runtime({ openaiKey });
+    (await rt.get()).send('hello');
+    await vi.waitFor(() => {
+      expect(delivered.some((e) => e.kind === 'turn_complete')).toBe(true);
+    });
+    const options = calls.options as Options;
+    expect(options.env?.DATADESK_OPENAI_API_KEY).toBe(openaiKey);
+    // mcpServers becomes the CLI's --mcp-config argument: the key must not be in it.
+    expect(JSON.stringify(options.mcpServers)).not.toContain(openaiKey);
+    expect(options.allowedTools).toEqual(
+      expect.arrayContaining(['mcp__datadesk__search_columns', 'mcp__datadesk__second_opinion']),
+    );
+  });
+
+  it('without an OpenAI key the session has no OpenAI tools and no key variable', async () => {
+    const { rt, calls, delivered } = runtime();
+    (await rt.get()).send('hello');
+    await vi.waitFor(() => {
+      expect(delivered.some((e) => e.kind === 'turn_complete')).toBe(true);
+    });
+    const options = calls.options as Options;
+    expect(options.env).not.toHaveProperty('DATADESK_OPENAI_API_KEY');
+    expect(options.allowedTools).not.toContain('mcp__datadesk__search_columns');
   });
 });

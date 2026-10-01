@@ -22,6 +22,14 @@ import {
   SavedReportSchema,
 } from './charts';
 import type { ArtifactStore } from '../node-shared/artifactStore';
+import { OpenAIUnavailableError, type OpenAIClient } from './openai/client';
+import type { EmbeddingCache } from './openai/embeddingCache';
+import { searchColumns, SearchColumnsResultSchema } from './openai/searchColumns';
+import {
+  CRITIQUE_MAX_ROWS,
+  secondOpinion,
+  SecondOpinionResultSchema,
+} from './openai/secondOpinion';
 
 export const SERVER_NAME = 'datadesk';
 export const SERVER_VERSION = '0.1.0';
@@ -37,10 +45,15 @@ export const TOOL_NAMES = [
   'save_report',
 ] as const;
 
+/** Registered only when an OpenAI key was provided (DECISIONS D-018). */
+export const OPENAI_TOOL_NAMES = ['search_columns', 'second_opinion'] as const;
+
 export interface ServerDeps {
   db: DatasetDb;
   importPolicy: ImportPolicy;
   artifacts: ArtifactStore;
+  /** Present only when the user set an OpenAI key; otherwise the OpenAI tools don't exist. */
+  openai?: { client: OpenAIClient; cache: EmbeddingCache } | undefined;
 }
 
 // Output schemas come from src/shared/datasets.ts, the single source of truth for these shapes
@@ -68,7 +81,8 @@ function fail(error: unknown): CallToolResult {
     error instanceof QueryTimeoutError ||
     error instanceof DatasetUnavailableError ||
     error instanceof ImportPathError ||
-    error instanceof ArtifactInputError
+    error instanceof ArtifactInputError ||
+    error instanceof OpenAIUnavailableError
   ) {
     message = error.message;
   } else {
@@ -94,7 +108,7 @@ const READ_ONLY = {
 } as const;
 
 /** Builds the datadesk MCP server. Transport-agnostic: stdio in production, in-memory in tests. */
-export function buildServer({ db, importPolicy, artifacts }: ServerDeps): McpServer {
+export function buildServer({ db, importPolicy, artifacts, openai }: ServerDeps): McpServer {
   const server = new McpServer(
     { name: SERVER_NAME, version: SERVER_VERSION },
     {
@@ -318,5 +332,92 @@ export function buildServer({ db, importPolicy, artifacts }: ServerDeps): McpSer
       }),
   );
 
+  if (openai) registerOpenAITools(server, db, openai);
   return server;
+}
+
+/** Both tools send data to OpenAI, which the annotations and descriptions say plainly. */
+const SENDS_TO_OPENAI = {
+  readOnlyHint: true,
+  destructiveHint: false,
+  idempotentHint: true,
+  openWorldHint: true,
+} as const;
+
+function registerOpenAITools(
+  server: McpServer,
+  db: DatasetDb,
+  openai: { client: OpenAIClient; cache: EmbeddingCache },
+): void {
+  server.registerTool(
+    'search_columns',
+    {
+      title: 'Search columns (OpenAI embeddings)',
+      description:
+        'Find columns by meaning across datasets, e.g. "customer revenue" or "date of signup", when ' +
+        'names are unclear or there are many columns. Ranks columns by embedding similarity of their ' +
+        'name, type and a few sample values. Sends column names, types and up to 3 short sample ' +
+        'values per column to OpenAI (cached afterwards). Returns the best matches with scores.',
+      inputSchema: {
+        query: z.string().min(1).max(500).describe('What you are looking for, in plain words.'),
+        datasets: z
+          .array(DatasetNameSchema)
+          .min(1)
+          .max(50)
+          .optional()
+          .describe('Only search these datasets (default: all).'),
+        limit: z.number().int().min(1).max(25).default(8),
+      },
+      outputSchema: SearchColumnsResultSchema.shape,
+      annotations: SENDS_TO_OPENAI,
+    },
+    ({ query, datasets, limit }, extra) =>
+      attempt(async () => {
+        const result = await searchColumns(
+          { db, openai: openai.client, cache: openai.cache },
+          { query, datasets, limit },
+          extra.signal,
+        );
+        const top = result.matches
+          .slice(0, 3)
+          .map((m) => `${m.dataset}.${m.column} (${m.score.toFixed(2)})`)
+          .join(', ');
+        return ok(
+          { ...result },
+          `Searched ${String(result.columnsSearched)} columns. Best: ${top || 'none'}.`,
+        );
+      }),
+  );
+
+  server.registerTool(
+    'second_opinion',
+    {
+      title: 'Second opinion (OpenAI critic)',
+      description:
+        'Ask a second model to critique an analysis step before you rely on it: does this SQL answer ' +
+        'the question, and does the result support the draft answer? Re-runs the SQL (read-only, ' +
+        `first ${String(CRITIQUE_MAX_ROWS)} rows) and sends the question, SQL, that result preview and ` +
+        'the draft answer to OpenAI. Returns a verdict, issues and optionally corrected SQL. Treat it ' +
+        'as advice: check any suggested SQL yourself.',
+      inputSchema: {
+        question: z.string().min(1).max(2_000).describe("The user's question."),
+        sql: z.string().min(1).max(MAX_SQL_LENGTH).describe('The SELECT you used to answer it.'),
+        answer: z.string().max(4_000).optional().describe('Your draft answer, if you have one.'),
+      },
+      outputSchema: SecondOpinionResultSchema.shape,
+      annotations: SENDS_TO_OPENAI,
+    },
+    ({ question, sql, answer }, extra) =>
+      attempt(async () => {
+        const result = await secondOpinion(
+          { db, openai: openai.client },
+          { question, sql, answer },
+          extra.signal,
+        );
+        return ok(
+          { ...result },
+          `Critic verdict: ${result.verdict} (${String(result.issues.length)} issue(s)).`,
+        );
+      }),
+  );
 }

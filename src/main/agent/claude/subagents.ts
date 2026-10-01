@@ -1,6 +1,6 @@
 import type { AgentDefinition } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
-import { datadeskTool as tool } from './datadeskTools';
+import { datadeskTool as tool, OPENAI_TOOLS } from './datadeskTools';
 
 /**
  * The scope table: which DataDesk tools each sub-agent may call. It feeds both the
@@ -18,6 +18,7 @@ export const SUBAGENT_TOOLS = {
     tool('sample_rows'),
     tool('profile_column'),
     tool('run_sql'),
+    tool('search_columns'),
   ],
   'sql-analyst': [
     tool('list_datasets'),
@@ -25,6 +26,8 @@ export const SUBAGENT_TOOLS = {
     tool('sample_rows'),
     tool('run_sql'),
     tool('create_chart'),
+    tool('search_columns'),
+    tool('second_opinion'),
   ],
   'report-writer': [tool('save_report')],
 } as const satisfies Record<string, readonly string[]>;
@@ -72,13 +75,19 @@ Embed charts with a line containing only [[chart:<chartId>]], using only chartId
 };
 
 /** The AgentDefinitions passed to the SDK (`agents` option). */
-export function buildSubagents(): Record<SubagentName, AgentDefinition> {
+export function buildSubagents({
+  openaiTools,
+}: {
+  openaiTools: boolean;
+}): Record<SubagentName, AgentDefinition> {
+  // OpenAI tools only exist when a key is set; the scope hook allows them per row regardless.
+  const available = (t: string) => openaiTools || !(OPENAI_TOOLS as readonly string[]).includes(t);
   return Object.fromEntries(
     SUBAGENT_NAMES.map((name) => [
       name,
       {
         ...PROMPTS[name],
-        tools: [...SUBAGENT_TOOLS[name]],
+        tools: SUBAGENT_TOOLS[name].filter(available),
         // Belt and braces with `tools`: never nest, never ask the user, no runtime skill calls
         // (their skills are preloaded instead).
         disallowedTools: ['Agent', 'Task', 'Skill', tool('register_dataset')],

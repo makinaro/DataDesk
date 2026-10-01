@@ -92,7 +92,7 @@ report-writer. Manually, "analyze and write a report" shows three sub-agent lane
 - [x] Injectable `OpenAIClient` interface (mockable)
 - [x] `search_columns`: embeddings over column name/type/samples, content-hash cache, cosine ranking
 - [x] `second_opinion`: structured critique of question + SQL + result
-- [ ] Key passed to datadesk-mcp via explicit env; tools hidden when no key
+- [x] Key passed to datadesk-mcp via explicit env; tools hidden when no key
 
 **Done when:** mocked tests cover ranking, caching and critique parsing, and the tools are absent
 without a key.
