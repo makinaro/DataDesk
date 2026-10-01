@@ -26,6 +26,7 @@ export const IpcChannels = {
   artifactsGetChart: 'artifacts:getChart',
   artifactsGetReport: 'artifacts:getReport',
   artifactsExportReport: 'artifacts:exportReport',
+  artifactsExportChart: 'artifacts:exportChart',
   clipboardWriteText: 'clipboard:writeText',
 } as const;
 

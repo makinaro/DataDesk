@@ -59,9 +59,61 @@ function wire(overrides: Partial<ArtifactHandlerDeps> = {}) {
   return { call, deps, writes, channels: [...listeners.keys()] };
 }
 
+const PNG = Buffer.concat([
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+  Buffer.from('rest'),
+]).toString('base64');
+
+describe('artifacts:exportChart', () => {
+  it('writes the PNG the renderer drew, named after the chart', async () => {
+    const { call, deps, writes } = wire();
+    await expect(
+      call('artifacts:exportChart', { id: CHART_ID, format: 'png', pngBase64: PNG }),
+    ).resolves.toEqual({ ok: true, data: { saved: true, path: 'C:\\out\\Units.png' } });
+    expect(deps.pickSavePath).toHaveBeenCalledWith('Units.png', 'png');
+    expect(writes).toEqual([['C:\\out\\Units.png', Buffer.from(PNG, 'base64')]]);
+  });
+
+  it('refuses bytes that are not a PNG', async () => {
+    const { call, writes, deps } = wire();
+    const notPng = Buffer.from('<svg onload="x()"/>').toString('base64');
+    await expect(
+      call('artifacts:exportChart', { id: CHART_ID, format: 'png', pngBase64: notPng }),
+    ).resolves.toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
+    expect(deps.pickSavePath).not.toHaveBeenCalled();
+    expect(writes).toEqual([]);
+  });
+
+  it('renders SVG in main, in the requested theme, and never takes markup from the page', async () => {
+    const { call, deps, writes } = wire();
+    await call('artifacts:exportChart', { id: CHART_ID, format: 'svg', theme: 'slate' });
+    expect(deps.renderSvg).toHaveBeenCalledWith(chart, 'slate');
+    expect(writes).toEqual([['C:\\out\\Units.svg', SVG]]);
+    await expect(
+      call('artifacts:exportChart', { id: CHART_ID, format: 'svg', theme: 'slate', svg: SVG }),
+    ).resolves.toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
+  });
+
+  it('writes nothing when the dialog is cancelled or the chart is gone', async () => {
+    const { call, writes } = wire({ pickSavePath: vi.fn(() => Promise.resolve(null)) });
+    await expect(
+      call('artifacts:exportChart', { id: CHART_ID, format: 'svg', theme: 'dark' }),
+    ).resolves.toEqual({ ok: true, data: { saved: false, path: null } });
+    await expect(
+      call('artifacts:exportChart', {
+        id: '99999999-9999-4999-8999-999999999999',
+        format: 'svg',
+        theme: 'dark',
+      }),
+    ).resolves.toMatchObject({ ok: false, error: { code: 'REJECTED' } });
+    expect(writes).toEqual([]);
+  });
+});
+
 describe('artifact IPC handlers', () => {
   it('registers get/export channels only', () => {
     expect(wire().channels.sort()).toEqual([
+      'artifacts:exportChart',
       'artifacts:exportReport',
       'artifacts:getChart',
       'artifacts:getReport',

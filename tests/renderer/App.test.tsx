@@ -8,7 +8,7 @@ import { renderWithProviders } from './renderApp';
 
 // Vega needs a real layout engine; charts render for real in the e2e tests.
 vi.mock('../../src/renderer/src/charts/vega', () => ({
-  renderChart: vi.fn(() => Promise.resolve(vi.fn())),
+  renderChart: vi.fn(() => Promise.resolve({ dispose: vi.fn(), toPngBase64: vi.fn() })),
   chartToSvg: vi.fn(() => Promise.resolve('<svg/>')),
 }));
 

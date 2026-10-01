@@ -93,6 +93,7 @@ const api: DatadeskApi = {
     getChart: (id) => invoke(IpcChannels.artifactsGetChart, { id }),
     getReport: (id) => invoke(IpcChannels.artifactsGetReport, { id }),
     exportReport: (request) => invoke(IpcChannels.artifactsExportReport, request),
+    exportChart: (request) => invoke(IpcChannels.artifactsExportChart, request),
   },
 };
 

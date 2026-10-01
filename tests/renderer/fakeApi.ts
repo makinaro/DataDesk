@@ -188,6 +188,12 @@ export function createFakeApi(
       exportReport: vi.fn((_request: { id: string; format: 'md' | 'pdf'; bodyHtml?: string }) =>
         ok<{ saved: boolean; path: string | null }>({ saved: true, path: 'C:/out/report' }),
       ),
+      exportChart: vi.fn((request: { id: string; format: 'png' | 'svg' }) =>
+        ok<{ saved: boolean; path: string | null }>({
+          saved: true,
+          path: `C:/out/chart.${request.format}`,
+        }),
+      ),
     },
   } satisfies DatadeskApi;
 

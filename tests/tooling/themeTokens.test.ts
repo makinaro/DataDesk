@@ -2,6 +2,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { THEME_CHROME } from '../../src/shared/appearance';
+import { CHART_INK } from '../../src/shared/chartTheme';
 
 const SRC = resolve('src/renderer/src');
 const css = readFileSync(join(SRC, 'styles.css'), 'utf8');
@@ -57,6 +58,18 @@ describe('theme tokens', () => {
     expect(referenced.length).toBeGreaterThan(15);
     for (const name of referenced) expect(dark).toContain(name);
   });
+
+  it.each(Object.entries(CHART_INK))(
+    'charts in the %s theme use its stylesheet ink',
+    (theme, ink) => {
+      expect(ink.canvas).toBe(themeValue(theme, '--dd-canvas'));
+      expect(ink.fg).toBe(themeValue(theme, '--dd-fg'));
+      expect(ink.muted).toBe(themeValue(theme, '--dd-muted'));
+      expect(ink.faint).toBe(themeValue(theme, '--dd-faint'));
+      expect(ink.line).toBe(themeValue(theme, '--dd-line'));
+      expect(new Set(ink.category).size).toBe(8);
+    },
+  );
 
   it.each(Object.entries(THEME_CHROME))(
     'main paints the %s theme in the same colours as the stylesheet',

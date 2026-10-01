@@ -7,7 +7,7 @@ import {
   RegisteredDatasetSchema,
 } from '../datasets';
 import { AgentSettingsSchema } from '../agent';
-import { AppearanceSchema } from '../appearance';
+import { AppearanceSchema, ResolvedThemeSchema } from '../appearance';
 import { ArtifactIdSchema, ChartArtifactSchema, ReportArtifactSchema } from '../artifacts';
 import { IpcChannels, type IpcChannel } from './channels';
 
@@ -125,6 +125,28 @@ export const ipcContract = {
       bodyHtml: z.string().max(20_000_000).optional(),
     }),
     /** saved=false when the user cancelled the save dialog. */
+    response: z.strictObject({ saved: z.boolean(), path: z.string().nullable() }),
+  },
+  [IpcChannels.artifactsExportChart]: {
+    request: z.discriminatedUnion('format', [
+      // SVG is markup, so main renders it itself from the stored chart, in the user's theme
+      // (same rule as report exports, D-016).
+      z.strictObject({
+        id: ArtifactIdSchema,
+        format: z.literal('svg'),
+        theme: ResolvedThemeSchema,
+      }),
+      // PNG is pixels: the renderer sends what is on screen (zoom, legend filter included) and
+      // main checks the PNG signature before writing.
+      z.strictObject({
+        id: ArtifactIdSchema,
+        format: z.literal('png'),
+        pngBase64: z
+          .string()
+          .max(20_000_000)
+          .regex(/^[A-Za-z0-9+/]+={0,2}$/),
+      }),
+    ]),
     response: z.strictObject({ saved: z.boolean(), path: z.string().nullable() }),
   },
   [IpcChannels.clipboardWriteText]: {

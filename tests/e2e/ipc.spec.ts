@@ -10,7 +10,7 @@ test('bridge exposes only whitelisted methods', async ({ page }) => {
   expect(shape).toEqual({
     agent: ['approve', 'onEvent', 'reset', 'send', 'stop'],
     app: ['info'],
-    artifacts: ['exportReport', 'getChart', 'getReport'],
+    artifacts: ['exportChart', 'exportReport', 'getChart', 'getReport'],
     clipboard: ['writeText'],
     compare: ['onEvent', 'reset', 'run', 'stop'],
     datasets: ['list', 'pick', 'preview', 'registerFile', 'schema'],

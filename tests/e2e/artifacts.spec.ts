@@ -56,6 +56,7 @@ async function announce(
   kind: 'chart' | 'report',
   id: string,
   seq: number,
+  title = kind === 'chart' ? chart.title : report.title,
 ) {
   await app.evaluate(
     ({ BrowserWindow }, payload) => {
@@ -65,7 +66,7 @@ async function announce(
       kind: 'artifact',
       artifactKind: kind,
       id,
-      title: kind === 'chart' ? chart.title : report.title,
+      title,
       seq,
       at: Date.now(),
     },
@@ -124,4 +125,107 @@ test('exports a report to Markdown (with SVG files) and to PDF', async ({ electr
   expect(pdf.length).toBeGreaterThan(2000);
   // The print window's temp file was cleaned up.
   expect(readdirSync(outDir).sort()).toEqual(['sales-chart-1.svg', 'sales.md', 'sales.pdf']);
+});
+
+const LINE_ID = '33333333-3333-4333-8333-333333333333';
+const lineChart = {
+  ...chart,
+  id: LINE_ID,
+  title: 'Units over time',
+  spec: {
+    mark: 'line',
+    encoding: {
+      x: { field: 'day', type: 'temporal' },
+      y: { field: 'units', type: 'quantitative' },
+      color: { field: 'region', type: 'nominal' },
+    },
+    data: {
+      values: ['South', 'East'].flatMap((region, r) =>
+        [1, 2, 3, 4].map((d) => ({ region, day: `2026-01-0${String(d)}`, units: d * (r + 2) })),
+      ),
+    },
+  },
+};
+
+test('charts follow the theme, zoom, filter by legend and save as PNG and SVG', async ({
+  electronApp,
+  page,
+}) => {
+  const violations: string[] = [];
+  page.on('console', (msg) => {
+    if (/Content Security Policy|Refused to/i.test(msg.text())) violations.push(msg.text());
+  });
+  const userData = await seedArtifacts(electronApp);
+  writeFileSync(
+    join(userData, 'artifacts', 'charts', `${LINE_ID}.json`),
+    JSON.stringify(lineChart),
+  );
+  await announce(electronApp, 'chart', LINE_ID, 1000, lineChart.title);
+
+  const figure = page.getByRole('figure', { name: 'Chart: Units over time' });
+  const svg = figure.locator('.vega-embed svg');
+  await expect(svg).toBeVisible();
+  // Dark theme background, not Vega's white.
+  expect(await svg.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgb(14, 14, 14)');
+
+  // Fills the panel, and follows it when a splitter makes the panel narrower.
+  const chartWidth = () => svg.evaluate((el) => el.getBoundingClientRect().width);
+  const panelWidth = await page
+    .getByRole('region', { name: 'Charts & report' })
+    .evaluate((el) => el.getBoundingClientRect().width);
+  expect(await chartWidth()).toBeGreaterThan(panelWidth * 0.8);
+  const wide = await chartWidth();
+  await page.getByRole('separator', { name: 'Resize chat' }).focus();
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('ArrowLeft');
+  await expect.poll(chartWidth).toBeLessThan(wide - 60);
+
+  const lines = figure.locator('.mark-line path');
+  await expect(lines).toHaveCount(2);
+
+  // Zoom: the wheel changes the x axis labels.
+  const axisText = () => figure.locator('.mark-text.role-axis-label text').allTextContents();
+  const before = await axisText();
+  const box = await svg.boundingBox();
+  if (!box) throw new Error('chart not visible');
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.wheel(0, -400);
+  await expect.poll(axisText).not.toEqual(before);
+
+  // Legend filter: clicking "East" fades the South line.
+  const label = await figure.locator('.role-legend-label text').first().boundingBox();
+  if (!label) throw new Error('legend not visible');
+  await page.mouse.click(label.x + label.width / 2, label.y + label.height / 2);
+  await expect
+    .poll(() =>
+      lines.evaluateAll((paths) =>
+        paths.map((p) => p.getAttribute('opacity') ?? p.getAttribute('stroke-opacity') ?? '1'),
+      ),
+    )
+    .toContain('0.15');
+
+  // Reset view re-renders from the spec: zoom and filter are gone.
+  await figure.getByRole('button', { name: 'Reset view' }).click();
+  await expect.poll(axisText).toEqual(before);
+
+  const outDir = join(userData, 'exports');
+  mkdirSync(outDir, { recursive: true });
+  await stubSaveDialog(electronApp, join(outDir, 'units.png'));
+  await figure.getByRole('button', { name: 'Save PNG' }).click();
+  await expect(figure.getByRole('status')).toContainText('units.png');
+  const png = readFileSync(join(outDir, 'units.png'));
+  expect(png.subarray(1, 4).toString()).toBe('PNG');
+  expect(png.length).toBeGreaterThan(2000);
+
+  await stubSaveDialog(electronApp, join(outDir, 'units.svg'));
+  await figure.getByRole('button', { name: 'Save SVG' }).click();
+  await expect(figure.getByRole('status')).toContainText('units.svg');
+  const saved = readFileSync(join(outDir, 'units.svg'), 'utf8');
+  expect(saved).toMatch(/^<svg[\s\S]*<\/svg>$/);
+  expect(saved).toContain('#0e0e0e');
+  expect(saved).not.toMatch(/<script/i);
+
+  expect(violations).toEqual([]);
 });

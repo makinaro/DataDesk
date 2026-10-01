@@ -223,15 +223,9 @@
  * Vega renders with defaultStyle:false and tooltip.disableDefaultStyle:true because the CSP
  * forbids injected <style> elements (DECISIONS D-016), so the equivalent rules live here.
  */
-/* Vega's default config is drawn for a light background in every theme. */
-.chart-surface {
-  background-color: #ffffff;
-  color-scheme: light;
-}
-
 .vega-embed {
   position: relative;
-  display: inline-block;
+  display: block;
   box-sizing: border-box;
   max-width: 100%;
 }

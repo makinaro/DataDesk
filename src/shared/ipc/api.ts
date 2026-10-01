@@ -67,5 +67,9 @@ export interface DatadeskApi {
     exportReport(
       request: IpcRequest<typeof IpcChannels.artifactsExportReport>,
     ): Promise<IpcResult<IpcResponse<typeof IpcChannels.artifactsExportReport>>>;
+    /** Opens a save dialog in main and writes the chart as PNG or SVG. */
+    exportChart(
+      request: IpcRequest<typeof IpcChannels.artifactsExportChart>,
+    ): Promise<IpcResult<IpcResponse<typeof IpcChannels.artifactsExportChart>>>;
   };
 }

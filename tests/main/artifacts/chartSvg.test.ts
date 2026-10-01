@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { renderChartSvg } from '../../../src/main/artifacts/chartSvg';
 import type { ChartArtifact } from '../../../src/shared/artifacts';
+import { CHART_INK } from '../../../src/shared/chartTheme';
 
 const chart = (spec: Record<string, unknown>): ChartArtifact => ({
   id: '11111111-1111-4111-8111-111111111111',
@@ -36,6 +37,22 @@ describe('renderChartSvg (headless Vega in main)', () => {
     expect(svg).toContain('JavaScript: usage');
     expect(svg).not.toContain('<script');
     expect(svg).toContain('&lt;script&gt;');
+  });
+
+  it('renders in the requested theme: its background and series colours', async () => {
+    const spec = {
+      mark: 'bar',
+      encoding: {
+        x: { field: 'region', type: 'nominal' },
+        y: { field: 'units', type: 'quantitative' },
+      },
+      data: { values },
+    };
+    const slate = await renderChartSvg(chart(spec), 'slate');
+    expect(slate).toContain(CHART_INK.slate.canvas);
+    expect(slate).toContain(CHART_INK.slate.category[0]);
+    const plain = await renderChartSvg(chart(spec));
+    expect(plain).not.toContain(CHART_INK.slate.canvas);
   });
 
   it('refuses tampered or broken artifacts instead of throwing', async () => {

@@ -170,13 +170,16 @@ function start(): void {
       registerArtifactHandlers(handle, {
         store: new ArtifactStore(join(app.getPath('userData'), 'artifacts')),
         pickSavePath: async (defaultName, format) => {
+          const filters = {
+            md: { name: 'Markdown', extensions: ['md'] },
+            pdf: { name: 'PDF', extensions: ['pdf'] },
+            png: { name: 'PNG image', extensions: ['png'] },
+            svg: { name: 'SVG image', extensions: ['svg'] },
+          };
           const options: Electron.SaveDialogOptions = {
-            title: 'Export report',
+            title: format === 'png' || format === 'svg' ? 'Save chart' : 'Export report',
             defaultPath: defaultName,
-            filters:
-              format === 'pdf'
-                ? [{ name: 'PDF', extensions: ['pdf'] }]
-                : [{ name: 'Markdown', extensions: ['md'] }],
+            filters: [filters[format]],
           };
           const owner = BrowserWindow.getFocusedWindow();
           const result = owner

@@ -143,7 +143,7 @@ layouts A (Chat-first) and C (Results-first, default); charts stay Vega-Lite.
 - [x] Claude-style chat: no answer bubbles, compact user messages, composer card
 - [x] Resizable panels with keyboard-accessible handles; sizes remembered per layout
 - [x] Layouts: Results-first (default) and Chat-first, with inline tool steps in Results-first
-- [ ] Interactive, theme-aware charts: tooltips, zoom/pan, legend filter, reset, save PNG/SVG
+- [x] Interactive, theme-aware charts: tooltips, zoom/pan, legend filter, reset, save PNG/SVG
 
 **Done when:** every theme and both layouts work in the dev and packaged app with zero CSP
 violations; chat renders GFM markdown (including partial streams) with no raw HTML or navigating

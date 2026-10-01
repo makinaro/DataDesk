@@ -120,6 +120,23 @@ describe('ipcContract', () => {
     });
   });
 
+  describe('chart export channel', () => {
+    const req = ipcContract[IpcChannels.artifactsExportChart].request;
+    const id = '11111111-1111-4111-8111-111111111111';
+
+    it('takes PNG pixels or an SVG theme, never SVG markup', () => {
+      expect(req.safeParse({ id, format: 'png', pngBase64: 'iVBORw0KGgo=' }).success).toBe(true);
+      expect(req.safeParse({ id, format: 'svg', theme: 'light' }).success).toBe(true);
+      expect(req.safeParse({ id, format: 'svg', theme: 'system' }).success).toBe(false);
+      expect(req.safeParse({ id, format: 'svg', theme: 'dark', svg: '<svg/>' }).success).toBe(
+        false,
+      );
+      expect(req.safeParse({ id, format: 'png', pngBase64: '<svg/>' }).success).toBe(false);
+      expect(req.safeParse({ id, format: 'pdf', theme: 'dark' }).success).toBe(false);
+      expect(req.safeParse({ id: '../x', format: 'svg', theme: 'dark' }).success).toBe(false);
+    });
+  });
+
   describe('clipboard channel', () => {
     it('is write-only: no channel can read the clipboard', () => {
       const clipboardChannels = Object.values(IpcChannels).filter((c) =>

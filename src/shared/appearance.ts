@@ -3,7 +3,8 @@ import { z } from 'zod';
 export const ThemeSchema = z.enum(['dark', 'light', 'slate', 'system']);
 export type Theme = z.infer<typeof ThemeSchema>;
 /** A theme with `system` resolved: the value of `<html data-theme>`. */
-export type ResolvedTheme = Exclude<Theme, 'system'>;
+export const ResolvedThemeSchema = ThemeSchema.exclude(['system']);
+export type ResolvedTheme = z.infer<typeof ResolvedThemeSchema>;
 
 export const LayoutSchema = z.enum(['results-first', 'chat-first']);
 export type Layout = z.infer<typeof LayoutSchema>;

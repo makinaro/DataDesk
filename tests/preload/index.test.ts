@@ -41,7 +41,12 @@ describe('preload bridge', () => {
       'secrets',
       'settings',
     ]);
-    expect(Object.keys(api.artifacts).sort()).toEqual(['exportReport', 'getChart', 'getReport']);
+    expect(Object.keys(api.artifacts).sort()).toEqual([
+      'exportChart',
+      'exportReport',
+      'getChart',
+      'getReport',
+    ]);
     expect(Object.keys(api.agent).sort()).toEqual(['approve', 'onEvent', 'reset', 'send', 'stop']);
     expect(Object.keys(api.settings).sort()).toEqual([
       'getAgent',
@@ -124,6 +129,7 @@ describe('preload bridge', () => {
     await api.artifacts.getChart(CHART);
     await api.artifacts.getReport(REPORT);
     await api.artifacts.exportReport({ id: REPORT, format: 'md' });
+    await api.artifacts.exportChart({ id: CHART, format: 'svg', theme: 'dark' });
     await api.compare.run('Which region?');
     await api.compare.stop();
     await api.compare.reset();
@@ -143,6 +149,7 @@ describe('preload bridge', () => {
       ['artifacts:getChart', { id: CHART }],
       ['artifacts:getReport', { id: REPORT }],
       ['artifacts:exportReport', { id: REPORT, format: 'md' }],
+      ['artifacts:exportChart', { id: CHART, format: 'svg', theme: 'dark' }],
       ['compare:run', { text: 'Which region?' }],
       ['compare:stop', undefined],
       ['compare:reset', undefined],

@@ -992,3 +992,52 @@ and the roadmap asks for keyboard access and sizes remembered per layout.
 - Sizes live in `userData/Local Storage`. Clearing site data resets them, which is harmless.
 - `PANEL_LIMITS` holds fixed px limits. On a very small window the growing area can get
   narrow, but every panel keeps `min-w-0` and scrolls.
+
+## D-028: Theme-aware, interactive charts and chart export (2026-10-02)
+
+**Context:** Charts sat on a white card in every theme (D-024 left this for later) and were
+static. The roadmap asks for tooltips, zoom/pan, a legend filter, reset, and saving as PNG or
+SVG. Verified 2026-10-02 against the installed **vega 6.4.0**, **vega-lite 6.4.3**,
+**vega-embed 7.3.0**: `EmbedOptions.config`, `View.toImageURL(type, scale)` and `View.signal`
+(`node_modules/vega-embed/build/embed.d.ts`, `node_modules/vega-typings/types/runtime/index.d.ts`);
+`width: "container"` compiles to a `width` signal fed by `containerSize()` on `window:resize`,
+with `autosize: fit-x` (checked by compiling a spec with the installed vega-lite). Sources:
+https://vega.github.io/vega-lite/docs/size.html, https://vega.github.io/vega-lite/docs/bind.html.
+
+**Decision:**
+
+- **Theme:** `src/shared/chartTheme.ts` builds a Vega-Lite config per resolved theme. Ink colours
+  equal the stylesheet tokens (a tooling test checks), the grid and axes stay quiet, and tooltips
+  are on for every mark. The categorical palette is the dataviz skill's reference palette.
+  `validate_palette.js` passes every check against the Dark, Light and Slate canvases. On white,
+  three hues fall under 3:1 contrast; tooltips, the legend and the data preview are the required
+  relief.
+- **Interaction** (`charts/interactive.ts`, renderer only): single-view specs without their own
+  `params` get wheel zoom and drag pan (`bind: "scales"`) when x is continuous, and a legend
+  filter (`bind: "legend"`, other series fade to 0.15) when colour is categorical. They also get
+  `width: "container"`. A ResizeObserver sets the `width` signal, because Vega only re-measures
+  on window resize and the splitters resize panels without one. Composite specs are left alone.
+- **Reset** re-renders from the stored spec instead of resetting signals one by one.
+- **Export** goes through a new `artifacts:exportChart` channel. **SVG** is rendered by main
+  from the stored chart, in the theme the renderer names: SVG is markup and can carry script,
+  so D-016 applies. **PNG** comes from the renderer (exactly what's on screen, zoom included).
+  Main accepts only base64 that decodes to bytes starting with the PNG signature, then writes
+  it through a native save dialog.
+
+**Alternatives:**
+
+- Taking the SVG from the renderer, like the PNG: simpler, but it would reopen the hole D-016
+  closed.
+- vega-themes' `dark` theme: it doesn't match our tokens, and its categorical palette isn't
+  validated for colour-vision deficiency.
+- Interactivity written by the model in each spec: inconsistent from chart to chart, and every
+  prompt would pay for the instructions.
+
+**Consequences:**
+
+- Report exports (Markdown and PDF) keep Vega's light look, which suits paper. Only "Save SVG"
+  is themed.
+- A spec with its own `params` gets no added zoom or legend filter, so we never clash with the
+  model's selections.
+- `.vega-embed` is now `display: block`. An inline-block container measures its own content,
+  so container-width charts would never grow.
