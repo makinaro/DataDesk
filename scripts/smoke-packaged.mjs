@@ -90,6 +90,15 @@ try {
       session?.tools.filter((t) => t.startsWith('mcp__datadesk__')).length === 8,
       session?.tools.join(', '),
     );
+    check('agent has the Skill tool', session?.tools.includes('Skill') === true);
+    const guardError = events.find(
+      (e) => e.kind === 'error' && e.message.startsWith('Stopped for safety'),
+    );
+    check(
+      'init guard passed (bundled skills plugin loaded from resources/agent-plugin)',
+      session !== undefined && guardError === undefined,
+      guardError?.message,
+    );
     check(
       'datadesk MCP server connected for the agent',
       session?.mcpServers.some((s) => s.name === 'datadesk' && s.status === 'connected') === true,
