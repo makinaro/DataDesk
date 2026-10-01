@@ -49,6 +49,38 @@ describe('App shell', () => {
     expect(screen.getByRole('region', { name: 'Agent timeline' })).toBeInTheDocument();
   });
 
+  it('a chart chip reopens a chart whose tab was closed', async () => {
+    const { api, user } = renderWithProviders(<App />);
+    act(() => {
+      api.emit({ kind: 'artifact', artifactKind: 'chart', id: CHART_ID, title: 'Units by region' });
+      api.emit({
+        kind: 'assistant_message',
+        messageId: 'm1',
+        text: `See [[chart:${CHART_ID}]].`,
+        parentToolUseId: null,
+      });
+    });
+    await user.click(screen.getByRole('button', { name: 'Close Units by region' }));
+    expect(screen.queryByRole('tab', { name: /Units by region/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Show chart: Units by region' }));
+    expect(screen.getByRole('tab', { name: /Units by region/ })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+  });
+
+  it('closed tabs stay closed after a trip to compare mode', async () => {
+    const { api, user } = renderWithProviders(<App />);
+    act(() => {
+      api.emit({ kind: 'artifact', artifactKind: 'chart', id: CHART_ID, title: 'Units by region' });
+    });
+    await user.click(screen.getByRole('button', { name: 'Close Units by region' }));
+    await user.click(screen.getByRole('button', { name: 'Compare' }));
+    await user.click(screen.getByRole('button', { name: 'Compare', pressed: true }));
+    expect(screen.getByRole('tab', { name: 'Data preview' })).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /Units by region/ })).not.toBeInTheDocument();
+  });
+
   it('toggles the timeline drawer per layout', async () => {
     const user = renderApp();
     const toggle = screen.getByRole('button', { name: 'Timeline' });

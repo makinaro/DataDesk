@@ -268,3 +268,27 @@ test('horizontal bars are actually drawn, not clipped away', async ({ electronAp
   );
   expect(hits).toEqual([true, true, true]);
 });
+
+test('result tabs close by button and middle-click, like VS Code', async ({
+  electronApp,
+  page,
+}) => {
+  await seedArtifacts(electronApp);
+  await announce(electronApp, 'chart', CHART_ID, 1000);
+  await announce(electronApp, 'report', REPORT_ID, 1001);
+  const tabs = page.getByRole('tab');
+  await expect(tabs).toHaveText([
+    'Data preview',
+    'Chart · Units by region',
+    'Report · Sales summary',
+  ]);
+
+  await page.getByRole('button', { name: 'Close Sales summary' }).click();
+  await expect(tabs).toHaveText(['Data preview', 'Chart · Units by region']);
+  await expect(page.getByRole('tab', { name: /Units by region/ })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await page.getByRole('tab', { name: 'Data preview' }).click({ button: 'middle' });
+  await expect(tabs).toHaveText(['Chart · Units by region']);
+});

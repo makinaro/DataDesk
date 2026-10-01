@@ -45,6 +45,12 @@ export const ChartIcon = ({ size }: { size?: number }) => (
   </Icon>
 );
 
+export const CloseIcon = () => (
+  <Icon size={12}>
+    <path d="M6 6l12 12M18 6 6 18" />
+  </Icon>
+);
+
 export const PlusIcon = () => (
   <Icon>
     <path d="M12 5v14M5 12h14" />

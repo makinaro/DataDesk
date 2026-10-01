@@ -5,7 +5,7 @@ import { ApprovalDialog } from './components/ApprovalDialog';
 import { ChatPanel } from './components/ChatPanel';
 import { CompareView } from './components/CompareView';
 import { DatasetSidebar } from './components/DatasetSidebar';
-import { ResultsPanel, type FocusRequest } from './components/ResultsPanel';
+import { ResultsPanel } from './components/ResultsPanel';
 import { SettingsDialog } from './components/SettingsDialog';
 import { TimelineDrawer } from './components/TimelineDrawer';
 import { CompareIcon, SettingsIcon, TimelineIcon } from './components/icons';
@@ -15,6 +15,7 @@ import { useAppearance } from './appearance/AppearanceProvider';
 import { PANEL_LIMITS, usePanelSizes, type PanelKey } from './layout/panelSizes';
 import { Splitter } from './layout/Splitter';
 import { ResultsFocusProvider } from './results/ResultsFocus';
+import { useResultTabs, type FocusRequest } from './results/useResultTabs';
 
 export function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -42,6 +43,7 @@ export function App() {
     setSeenCatalogChanges(catalogChanges);
     if (catalogChanges > seenCatalogChanges) setDatasetsRevision((r) => r + 1);
   }
+  const [tabs, setTabs] = useResultTabs(agent.artifacts, selectedDataset, focus);
   const { appearance } = useAppearance();
   const layout = appearance.layout;
   const timelineOpen = timelineByLayout[layout];
@@ -66,7 +68,8 @@ export function App() {
     <ResultsPanel
       dataset={selectedDataset}
       revision={datasetsRevision}
-      focus={focus}
+      tabs={tabs}
+      setTabs={setTabs}
       className={className}
       style={width === undefined ? undefined : { width }}
     />
