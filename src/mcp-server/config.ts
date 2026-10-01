@@ -73,3 +73,13 @@ export function loadConfig(env: NodeJS.ProcessEnv): ServerConfig {
     cacheDir: parsed.DATADESK_CACHE_DIR ?? join(dirname(parsed.DATADESK_CATALOG_PATH), 'cache'),
   };
 }
+
+/**
+ * Reads the config, then removes the OpenAI key from the environment: from here on it lives
+ * only in the returned config, so nothing else in this process (or a child it spawned) sees it.
+ */
+export function loadConfigAndTakeSecrets(env: NodeJS.ProcessEnv): ServerConfig {
+  const config = loadConfig(env);
+  Reflect.deleteProperty(env, 'DATADESK_OPENAI_API_KEY');
+  return config;
+}

@@ -9,7 +9,7 @@ const PROVIDERS: { id: Provider; label: string; hint: string }[] = [
   {
     id: 'openai',
     label: 'OpenAI',
-    hint: 'Enables column search and second-opinion tools. When the analyst uses them, column names, a few sample values, SQL and small result previews are sent to OpenAI.',
+    hint: 'Enables column search and second-opinion tools. When the analyst uses them, OpenAI receives column names and types, a few sample values, the search wording, and for second opinions the question, the SQL, a preview of up to 50 result rows and the draft answer. Critiques are requested with storage off; OpenAI’s API data policy still applies. Changing this key starts a new conversation.',
   },
   { id: 'huggingface', label: 'Hugging Face', hint: 'Dataset discovery and downloads.' },
 ];

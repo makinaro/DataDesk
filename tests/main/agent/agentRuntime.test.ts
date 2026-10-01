@@ -19,7 +19,7 @@ afterEach(() => {
   rmSync(userData, { recursive: true, force: true });
 });
 
-function runtime(opts: { hasKey?: boolean; openaiKey?: string } = {}) {
+function runtime(opts: { hasKey?: boolean; openaiKey?: string; openaiUnreadable?: boolean } = {}) {
   const hasKey = opts.hasKey ?? true;
   const delivered: AgentEvent[] = [];
   const workspace = join(userData, 'agent-workspace');
@@ -35,9 +35,11 @@ function runtime(opts: { hasKey?: boolean; openaiKey?: string } = {}) {
             ? hasKey
               ? KEY
               : undefined
-            : provider === 'openai'
-              ? opts.openaiKey
-              : undefined,
+            : provider === 'openai' && opts.openaiUnreadable
+              ? Promise.reject(new Error('Error while decrypting the ciphertext provided'))
+              : provider === 'openai'
+                ? opts.openaiKey
+                : undefined,
         ),
     },
     settings: { getAgent: () => Promise.resolve({ ...DEFAULT_AGENT_SETTINGS, model: 'haiku' }) },
@@ -118,6 +120,17 @@ describe('createAgentRuntime', () => {
 
   it('without an OpenAI key the session has no OpenAI tools and no key variable', async () => {
     const { rt, calls, delivered } = runtime();
+    (await rt.get()).send('hello');
+    await vi.waitFor(() => {
+      expect(delivered.some((e) => e.kind === 'turn_complete')).toBe(true);
+    });
+    const options = calls.options as Options;
+    expect(options.env).not.toHaveProperty('DATADESK_OPENAI_API_KEY');
+    expect(options.allowedTools).not.toContain('mcp__datadesk__search_columns');
+  });
+
+  it('starts without the OpenAI tools when the OpenAI key cannot be read', async () => {
+    const { rt, calls, delivered } = runtime({ openaiUnreadable: true });
     (await rt.get()).send('hello');
     await vi.waitFor(() => {
       expect(delivered.some((e) => e.kind === 'turn_complete')).toBe(true);

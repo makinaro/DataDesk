@@ -41,7 +41,12 @@ export function createAgentRuntime(deps: AgentRuntimeDeps) {
       createSession: async ({ abortController, canUseTool }) => {
         const apiKey = await deps.keyStore.getKey('anthropic');
         if (!apiKey) throw new Error('Add your Anthropic API key in Settings.');
-        const openaiApiKey = await deps.keyStore.getKey('openai');
+        // Optional: an unreadable OpenAI key (e.g. encrypted under another Windows profile)
+        // must not stop the analyst. Start without the OpenAI tools instead.
+        const openaiApiKey = await deps.keyStore.getKey('openai').catch(() => {
+          deps.log('OpenAI key could not be read; starting without the OpenAI tools.');
+          return undefined;
+        });
         const settings = await deps.settings.getAgent();
         mkdirSync(workspaceDir, { recursive: true });
         const options = buildAgentOptions({

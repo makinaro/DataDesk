@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { ArtifactStore } from '../node-shared/artifactStore';
 import { Catalog } from './catalog';
-import { loadConfig } from './config';
+import { loadConfigAndTakeSecrets } from './config';
 import { DatasetDb } from './db/datasetDb';
 import { createOpenAIClient } from './openai/client';
 import { EmbeddingCache } from './openai/embeddingCache';
@@ -26,9 +26,7 @@ async function main(): Promise<void> {
   const scrubbed = scrubSecrets(process.env);
   if (scrubbed.length > 0) log(`removed inherited secrets from env: ${scrubbed.join(', ')}`);
 
-  const config = loadConfig(process.env);
-  // The key now lives only in config; nothing else in this process needs it in the environment.
-  Reflect.deleteProperty(process.env, 'DATADESK_OPENAI_API_KEY');
+  const config = loadConfigAndTakeSecrets(process.env);
   const db = new DatasetDb(new Catalog(config.catalogPath), {
     maxRows: config.maxRows,
     queryTimeoutMs: config.queryTimeoutMs,

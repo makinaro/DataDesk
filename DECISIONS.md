@@ -411,13 +411,32 @@ installed `.d.ts` and are exercised by tests that run the real SDK over an injec
 
 - **Injectable `OpenAIClient`** (`embed`, `critique`) in `src/mcp-server/openai/client.ts`.
   Tools depend on it, never on the SDK, so tests inject a fake.
-- **`search_columns`:** embeds `dataset.column (TYPE): e.g. v1, v2, v3` (at most 3 distinct
-  sample values, 40 chars each) and the query, at 512 dimensions. Vectors are cached by
-  `sha256(model, dimensions, text)` in a bounded, persisted JSON file (`<userData>/cache`), so a
-  column is embedded once across sessions. Results are ranked by cosine similarity.
-- **`second_opinion`:** re-runs the SQL itself through the read-only guard (50 rows) and sends
-  the question, SQL, an 8 KB result preview and the draft answer. The strict structured critique
-  comes back bounded.
+- **`search_columns`:** embeds the query and `dataset.column (TYPE): e.g. v1, v2, v3` at 512
+  dimensions. The name is clipped to 200 characters, the type to 120, and there are at most 3
+  distinct sample values of 40 characters each. At most 2 000 columns are searched, and a
+  `truncated` flag says so.
+  - Column vectors are cached by `sha256(model, dimensions, text)`, as base64 Float32 in a
+    persisted file (`<userData>/cache`, 5 000 entries, least-recently-used), so a column is
+    embedded once across sessions. Query vectors stay in memory.
+  - Ranking (cosine similarity) uses the current search's own vectors, so eviction can't affect
+    results.
+  - The file loads once, even when calls race. A failed save only logs a warning.
+- **`second_opinion`:** re-runs the SQL itself through the read-only guard (50 rows) and renders
+  an 8 KB preview, escaping newlines and `|` in cells. It sends question, SQL, preview and draft
+  answer as **one JSON object**, so data can't forge another field.
+  - The request sets `store: false`. The Responses API otherwise keeps requests for 30+ days.
+  - It also sets `max_output_tokens: 4000` and `reasoning.effort: 'low'`, since reasoning tokens
+    are billed even when the text is clipped.
+  - An `incomplete` or refused response becomes a readable error. The bounded critique is
+    labelled to the analyst as untrusted advice.
+- **Per-conversation caps:** 30 `search_columns` and 15 `second_opinion` calls per datadesk-mcp
+  process, which means per agent session. This bounds how much data an eager or
+  prompt-injected analyst can send, for example paging through a table with repeated critiques.
+- **Robustness:**
+  - An unreadable OpenAI key (DPAPI data from another profile) doesn't block the analyst. The
+    session starts without the OpenAI tools.
+  - The SDK client pins `baseURL` and nulls `organization`/`project`, so `OPENAI_*` variables
+    can't redirect it.
 - **Key route:** `DATADESK_OPENAI_API_KEY` goes into the agent CLI's explicitly built env. The
   CLI passes its env to datadesk-mcp (D-014), `scrubSecrets` keeps `DATADESK_*`, and the server
   drops it from `process.env` after reading. **It is not put in the server's `env` config**: the
@@ -426,8 +445,10 @@ installed `.d.ts` and are exercised by tests that run the real SDK over an injec
 - **Opt-in and visibility:**
   - No key: the tools aren't registered. Allowed tools, guard expectations and sub-agent tools
     follow the key.
-  - Setting the key is the opt-in. Settings explains what is sent, the tool descriptions say it,
-    and both tools are annotated `openWorldHint: true`.
+  - Setting the key is the opt-in. Settings lists exactly what is sent (including the question,
+    search wording and draft answer, the storage-off setting, and that changing the key starts a
+    new conversation), the tool descriptions say it, and both tools are annotated
+    `openWorldHint: true`. Keys saved before Phase 5 opt in on upgrade; the phase notes say so.
   - Changing the key resets the session.
 - **Scope:** profiler gets `search_columns`, sql-analyst gets both, report-writer neither.
 - **Tests:** child processes in tests never get a key, so they have no OpenAI code path. The one

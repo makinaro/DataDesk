@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   boundCritique,
   createOpenAIClient,
+  CRITIC_MAX_OUTPUT_TOKENS,
   CRITIC_MODEL,
   EMBEDDING_DIMENSIONS,
   EMBEDDING_MODEL,
@@ -117,7 +118,67 @@ describe('createOpenAIClient (adapter over the official SDK, fetch injected)', (
     expect(requests[0]?.body.model).toBe(CRITIC_MODEL);
     const format = (requests[0]?.body.text as { format: { type: string; strict: boolean } }).format;
     expect(format).toMatchObject({ type: 'json_schema', strict: true });
-    expect(String(requests[0]?.body.input)).toContain('Question:\nSales in 2026?');
+    // Not retained by OpenAI, and the critic's cost is capped at the source.
+    expect(requests[0]?.body).toMatchObject({
+      store: false,
+      max_output_tokens: CRITIC_MAX_OUTPUT_TOKENS,
+      reasoning: { effort: 'low' },
+    });
+    // The fields travel as one JSON object, so data can't forge another section.
+    expect(JSON.parse(String(requests[0]?.body.input))).toEqual({
+      question: 'Sales in 2026?',
+      sql: 'SELECT 1',
+      result_preview: '1 row',
+    });
+  });
+
+  it('fails readably when the critic is cut off, refuses, or returns malformed output', async () => {
+    const incomplete = responsesReply('{"verdict":"wro');
+    (incomplete.json as Record<string, unknown>).status = 'incomplete';
+    const refusal = responsesReply('');
+    (refusal.json as { output: { content: unknown[] }[] }).output = [
+      {
+        type: 'message',
+        id: 'msg_1',
+        role: 'assistant',
+        status: 'completed',
+        content: [{ type: 'refusal', refusal: 'I cannot help with that.' }],
+      } as unknown as { content: unknown[] },
+    ];
+    for (const [reply, message] of [
+      [incomplete, /ran out of its output budget/],
+      [refusal, /no usable critique/],
+      [responsesReply('not json at all'), /OpenAI request failed/],
+    ] as const) {
+      const { fetch } = fakeFetch(() => reply);
+      const client = createOpenAIClient(KEY, { fetch });
+      await expect(client.critique({ question: 'q', sql: 's', result: 'r' })).rejects.toThrow(
+        message,
+      );
+    }
+  });
+
+  it('maps network failures, user aborts and incomplete embedding responses', async () => {
+    const offline = createOpenAIClient(KEY, {
+      fetch: () => Promise.reject(new TypeError('fetch failed')),
+    });
+    await expect(offline.embed(['x'])).rejects.toThrow(/Could not reach OpenAI/);
+
+    const { fetch } = fakeFetch(embeddingsReply);
+    const controller = new AbortController();
+    controller.abort();
+    await expect(
+      createOpenAIClient(KEY, { fetch }).embed(['x'], controller.signal),
+    ).rejects.toThrow(/cancelled/);
+
+    const partial = fakeFetch((req) => {
+      const reply = embeddingsReply(req);
+      (reply.json as { data: unknown[] }).data.pop(); // one vector missing
+      return reply;
+    });
+    await expect(
+      createOpenAIClient(KEY, { fetch: partial.fetch }).embed(['a', 'b']),
+    ).rejects.toThrow(/incomplete embeddings response/);
   });
 
   it.each([

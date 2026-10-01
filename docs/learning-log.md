@@ -612,3 +612,104 @@ Compared with the other two Phase 3/4 ideas:
    `CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS`, run `npm run dev`, and send anything (a dummy key
    is enough). _Expect_ "Stopped for safety: … unexpected agents: claude, Explore,
    general-purpose, Plan, statusline-setup" before any model call. Revert afterwards.
+
+## Phase 5: OpenAI tools inside our MCP server (2026-10-01)
+
+### Concept
+
+An MCP server is just a process that offers tools. Nothing says a tool must be "local". This
+phase puts two **OpenAI-backed** tools inside datadesk-mcp, so the Claude analyst uses another
+vendor's models through the same protocol it uses for DuckDB. From the analyst's side,
+`search_columns` and `run_sql` look identical. That's MCP's main promise: the client doesn't
+care what is behind a tool.
+
+Two model techniques come in:
+
+- **Embeddings** turn text into vectors. Similar meaning gives nearby vectors, so "customer
+  revenue" lands near `orders.amount_usd` even though no word matches. Ranking is cosine
+  similarity, the angle between vectors.
+- **LLM-as-critic** asks a second, independent model to review the first model's work. It is
+  most useful on the steps where models fail silently: wrong denominators, missing filters,
+  double counting.
+
+### Where it lives
+
+- Injectable client: [client.ts:10](../src/mcp-server/openai/client.ts#L10) (interface),
+  [client.ts:121](../src/mcp-server/openai/client.ts#L121) (adapter over `openai`)
+- Cache: [embeddingCache.ts:23](../src/mcp-server/openai/embeddingCache.ts#L23). Search:
+  [searchColumns.ts:58](../src/mcp-server/openai/searchColumns.ts#L58) (what is sent),
+  [searchColumns.ts:106](../src/mcp-server/openai/searchColumns.ts#L106)
+- Critic: [secondOpinion.ts:47](../src/mcp-server/openai/secondOpinion.ts#L47). Registration:
+  [server.ts:347](../src/mcp-server/server.ts#L347) (only with a key)
+- Key route: [agentEnv.ts:79](../src/main/agent/claude/agentEnv.ts#L79)
+
+### How it works
+
+1. You save an OpenAI key in Settings. It goes into KeyStore (`safeStorage`) like the others.
+   The change resets the session, because its tool set changes.
+2. On the next message, main builds the agent CLI's env with `DATADESK_OPENAI_API_KEY`. The CLI
+   spawns datadesk-mcp and passes its own env down (the D-014 behaviour, now used on purpose).
+   The server keeps `DATADESK_*` through `scrubSecrets`, reads the key into config, deletes it
+   from `process.env`, and registers the two tools. The options grant them, the guard expects
+   them, profiler gets `search_columns`, and sql-analyst gets both.
+3. **`search_columns({ query: 'customer revenue' })`:**
+   - for each dataset, read the schema plus 20 rows, and build one line per column:
+     `sales.unit_price (DOUBLE): e.g. 8.7, 12.5, 3.2`;
+   - hash `model + dimensions + text` and look it up in the cache;
+   - embed only the misses (plus the query) in one batched request, and save the cache;
+   - rank columns by cosine similarity to the query and return the top N with scores.
+
+   The second time you search, only the query is new.
+
+4. **`second_opinion({ question, sql, answer })`:**
+   - the server re-runs the SQL itself through the read-only guard, at most 50 rows;
+   - it renders an 8 KB text preview and sends question, SQL, preview and draft answer to
+     `gpt-5.4-mini` with a strict JSON schema (`responses.parse` + `zodTextFormat`);
+   - it validates and clips the critique: verdict, summary, up to 8 issues, optional SQL.
+5. The analyst reads the verdict like any tool result. It is advice, so the prompt says to
+   check any suggested SQL itself.
+
+### Gotchas
+
+- **Command lines leak; environments leak less.** The SDK sends `mcpServers` to the CLI as
+  `--mcp-config <JSON>` on the command line. A key in the server's `env` config would show in
+  Task Manager and crash reports. It goes in the CLI env instead, which the CLI already passes
+  on. Read the SDK's spawn code before deciding where a secret goes.
+- **Re-run, don't trust.** If `second_opinion` took the result as model input, the critic would
+  review whatever the analyst claimed. Re-running the SQL makes the critique about the data,
+  and it also caps exactly what leaves the machine.
+- **Strict structured outputs want every key required.** Express optional values as
+  `.nullable()`. Bounds are enforced after parsing (clip, don't reject), so a slightly long
+  summary doesn't waste a paid call.
+- **Cache keys must include everything that changes the vector**: model, dimensions and exact
+  text. A cache keyed only on column name would serve stale vectors after the data changed.
+- **Check the vendor's defaults, not just your inputs.** The Responses API _stores_ requests for
+  30+ days unless you pass `store: false`. Our first version leaked every critique's real result
+  rows into the user's OpenAI account history, and the review caught it. The same goes for
+  cost: clipping the critique text afterwards doesn't un-bill the reasoning tokens, so
+  `max_output_tokens` caps them at the source.
+- **A cache must never change results.** The first version read vectors back from the cache
+  after inserting new ones. With a full cache, inserts evicted the current search's own hits, and
+  those columns silently scored 0. Ranking now uses a local map of this search's vectors.
+- **`[].some()` skips holes.** `new Array(n)` plus `.some(v => !v)` never sees the missing slots,
+  so the "incomplete response" check could never fire. Iterate by index.
+- **The key is the opt-in, so say what it opts into.** Settings, tool descriptions and
+  `openWorldHint` all say data goes to OpenAI.
+- **Testing a vendor SDK without a network:** fake the _interface_ for tool tests, and run the
+  _real SDK_ over an injected `fetch` for adapter tests. That catches request-shape mistakes
+  without a single real call.
+
+### Experiments
+
+1. **Semantic search vs. names** (needs both keys; costs a fraction of a cent). Add
+   `sales.csv` and `events.ndjson`, then ask "Which column tells me how much money each order
+   made?". _Expect_ `datadesk · search_columns` in the timeline, with `unit_price`/`units` near
+   the top. Ask again with a different wording. _Expect_ `newlyEmbedded: 1` in the result: only
+   the new query was embedded, and the cache file `%APPDATA%\DataDesk\cache\embeddings.json`
+   didn't grow by more than one entry.
+2. **Catch a wrong answer.** Ask "What's the total revenue by region? Get a second opinion
+   before answering." The analyst may sum `units`. _Expect_ a `second_opinion` call whose
+   verdict flags that units are not revenue, followed by a corrected query using
+   `units * unit_price * (1 - discount)`.
+3. **Remove the key.** Clear the OpenAI key in Settings. _Expect_ a "New conversation (key
+   changed)" line, and the next session's timeline header showing "10 tools" instead of "12 tools" (Task and Skill plus 8 datadesk tools, versus 10). Check with `npm run smoke:packaged -- --agent --openai` vs. without `--openai`.

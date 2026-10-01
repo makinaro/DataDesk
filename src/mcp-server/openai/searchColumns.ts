@@ -5,10 +5,15 @@ import type { OpenAIClient } from './client';
 import { EMBEDDING_DIMENSIONS, EMBEDDING_MODEL } from './client';
 import { contentHash, type EmbeddingCache } from './embeddingCache';
 
-/** What leaves the machine per column: its name, type and a few short sample values. */
+/**
+ * What leaves the machine per column: its (clipped) name and type and a few short sample
+ * values. Every part is bounded, so one description can't exceed the embedding input limit.
+ */
 const SAMPLE_ROWS = 20;
 const SAMPLE_VALUES = 3;
 const SAMPLE_CHARS = 40;
+const NAME_CHARS = 200;
+const TYPE_CHARS = 120;
 const MAX_COLUMNS = 2_000;
 
 export const ColumnMatchSchema = z.object({
@@ -22,6 +27,8 @@ export type ColumnMatch = z.infer<typeof ColumnMatchSchema>;
 export const SearchColumnsResultSchema = z.object({
   matches: z.array(ColumnMatchSchema),
   columnsSearched: z.number().int(),
+  /** More columns existed than the search cap; narrow with `datasets`. */
+  truncated: z.boolean(),
   newlyEmbedded: z.number().int(),
 });
 export type SearchColumnsResult = z.infer<typeof SearchColumnsResultSchema>;
@@ -54,6 +61,9 @@ export function rank<T extends { vector: readonly number[] }>(
     .map(({ i: _i, ...rest }) => rest as T & { score: number });
 }
 
+const clip = (text: string, max: number) =>
+  text.length > max ? `${text.slice(0, max - 1)}…` : text;
+
 /** The text embedded for a column, e.g. `sales.region (VARCHAR): e.g. South, East, West`. */
 export function describeColumn(
   dataset: string,
@@ -64,12 +74,15 @@ export function describeColumn(
   const values: string[] = [];
   for (const v of samples) {
     if (v === null || v === undefined) continue;
-    const text = (typeof v === 'string' ? v : JSON.stringify(v)).replace(/\s+/g, ' ').trim();
-    const clipped = text.length > SAMPLE_CHARS ? `${text.slice(0, SAMPLE_CHARS - 1)}…` : text;
-    if (clipped && !values.includes(clipped)) values.push(clipped);
+    const text = clip(
+      (typeof v === 'string' ? v : JSON.stringify(v)).replace(/\s+/g, ' ').trim(),
+      SAMPLE_CHARS,
+    );
+    if (text && !values.includes(text)) values.push(text);
     if (values.length === SAMPLE_VALUES) break;
   }
-  return `${dataset}.${column} (${type})${values.length ? `: e.g. ${values.join(', ')}` : ''}`;
+  const head = `${dataset}.${clip(column, NAME_CHARS)} (${clip(type, TYPE_CHARS)})`;
+  return values.length ? `${head}: e.g. ${values.join(', ')}` : head;
 }
 
 interface ColumnDoc {
@@ -79,12 +92,17 @@ interface ColumnDoc {
   text: string;
 }
 
-async function collectColumns(db: DatasetDb, datasets: readonly string[]): Promise<ColumnDoc[]> {
+async function collectColumns(
+  db: DatasetDb,
+  datasets: readonly string[],
+): Promise<{ docs: ColumnDoc[]; truncated: boolean }> {
   const docs: ColumnDoc[] = [];
   for (const dataset of datasets) {
+    if (docs.length >= MAX_COLUMNS) return { docs, truncated: true };
     const columns = await getSchema(db, dataset);
     const sample = await sampleRows(db, dataset, SAMPLE_ROWS, 'head');
-    columns.forEach((c) => {
+    for (const c of columns) {
+      if (docs.length >= MAX_COLUMNS) return { docs, truncated: true };
       const index = sample.columns.findIndex((s) => s.name === c.name);
       const values = index < 0 ? [] : sample.rows.map((row) => row[index]);
       docs.push({
@@ -93,15 +111,15 @@ async function collectColumns(db: DatasetDb, datasets: readonly string[]): Promi
         type: c.type,
         text: describeColumn(dataset, c.name, c.type, values),
       });
-    });
-    if (docs.length > MAX_COLUMNS) break;
+    }
   }
-  return docs.slice(0, MAX_COLUMNS);
+  return { docs, truncated: false };
 }
 
 /**
  * Semantic column search: embeds each column's description (cached by content hash, so only new
- * or changed columns cost a request) and the query, then ranks by cosine similarity.
+ * or changed columns cost a request) and the query, then ranks by cosine similarity. Ranking
+ * uses this search's own vectors, so cache eviction can never zero a score.
  */
 export async function searchColumns(
   deps: { db: DatasetDb; openai: OpenAIClient; cache: EmbeddingCache },
@@ -113,25 +131,34 @@ export async function searchColumns(
   const names =
     input.datasets ??
     (await db.datasets()).filter((d) => d.error === undefined).map((d) => d.entry.name);
-  const docs = await collectColumns(db, names);
-  if (docs.length === 0) return { matches: [], columnsSearched: 0, newlyEmbedded: 0 };
+  const { docs, truncated } = await collectColumns(db, names);
+  if (docs.length === 0) {
+    return { matches: [], columnsSearched: 0, truncated: false, newlyEmbedded: 0 };
+  }
 
   const key = (text: string) => contentHash(text, EMBEDDING_MODEL, EMBEDDING_DIMENSIONS);
-  const texts = [input.query, ...docs.map((d) => d.text)];
-  const missing = [...new Set(texts.filter((t) => cache.get(key(t)) === undefined))];
+  const vectors = new Map<string, number[]>();
+  const missing: string[] = [];
+  for (const text of new Set([input.query, ...docs.map((d) => d.text)])) {
+    const hit = cache.get(key(text));
+    if (hit) vectors.set(text, hit);
+    else missing.push(text);
+  }
   if (missing.length > 0) {
-    const vectors = await openai.embed(missing, signal);
+    const fresh = await openai.embed(missing, signal);
     missing.forEach((text, i) => {
-      const vector = vectors[i];
-      if (vector) cache.set(key(text), vector);
+      const vector = fresh[i];
+      if (!vector) return;
+      vectors.set(text, vector);
+      // Column descriptions are reused across sessions; queries are one-offs (memory only).
+      cache.set(key(text), vector, { persist: text !== input.query });
     });
     await cache.save();
   }
 
-  const vectorOf = (text: string): number[] => cache.get(key(text)) ?? [];
   const ranked = rank(
-    vectorOf(input.query),
-    docs.map((d) => ({ ...d, vector: vectorOf(d.text) })),
+    vectors.get(input.query) ?? [],
+    docs.map((d) => ({ ...d, vector: vectors.get(d.text) ?? [] })),
     input.limit,
   );
   return {
@@ -142,6 +169,7 @@ export async function searchColumns(
       score: Math.round(r.score * 1000) / 1000,
     })),
     columnsSearched: docs.length,
+    truncated,
     newlyEmbedded: missing.length,
   };
 }

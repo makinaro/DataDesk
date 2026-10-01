@@ -3,10 +3,15 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { loadConfig } from '../../src/mcp-server/config';
+import { loadConfig, loadConfigAndTakeSecrets } from '../../src/mcp-server/config';
 import { OpenAIUnavailableError } from '../../src/mcp-server/openai/client';
 import { EmbeddingCache } from '../../src/mcp-server/openai/embeddingCache';
-import { buildServer, OPENAI_TOOL_NAMES, TOOL_NAMES } from '../../src/mcp-server/server';
+import {
+  buildServer,
+  OPENAI_CALL_LIMITS,
+  OPENAI_TOOL_NAMES,
+  TOOL_NAMES,
+} from '../../src/mcp-server/server';
 import { createWorkspace } from './fixtures';
 import { createFakeOpenAI } from './openai/fakeOpenAI';
 
@@ -102,5 +107,27 @@ describe('server config', () => {
 
   it('keeps the embedding cache next to the catalog by default', () => {
     expect(loadConfig(base).cacheDir).toBe(join('C:', 'u', 'cache'));
+  });
+
+  it('removes the OpenAI key from the environment once it is in the config', () => {
+    const env: NodeJS.ProcessEnv = { ...base, DATADESK_OPENAI_API_KEY: 'sk-take-me' };
+    expect(loadConfigAndTakeSecrets(env).openaiApiKey).toBe('sk-take-me');
+    expect(env).not.toHaveProperty('DATADESK_OPENAI_API_KEY');
+    expect(env.DATADESK_CATALOG_PATH).toBe(base.DATADESK_CATALOG_PATH);
+  });
+});
+
+describe('per-conversation caps on OpenAI calls', () => {
+  it('refuses second_opinion beyond its limit without contacting OpenAI', async () => {
+    const openai = createFakeOpenAI();
+    const { call } = await connect(openai);
+    const args = { question: 'q', sql: 'SELECT 1' };
+    for (let i = 0; i < OPENAI_CALL_LIMITS.second_opinion; i++) {
+      expect((await call('second_opinion', args)).isError).toBeFalsy();
+    }
+    const over = await call('second_opinion', args);
+    expect(over.isError).toBe(true);
+    expect(JSON.stringify(over.content)).toMatch(/reached its limit/);
+    expect(openai.critique).toHaveBeenCalledTimes(OPENAI_CALL_LIMITS.second_opinion);
   });
 });

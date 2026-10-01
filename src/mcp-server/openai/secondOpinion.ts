@@ -13,8 +13,13 @@ export function renderResult(result: {
   rowCount: number;
   truncated: boolean;
 }): string {
+  // Escape newlines and the column separator, so a cell can't break the table or forge rows.
   const cell = (v: unknown) =>
-    v === null || v === undefined ? 'NULL' : typeof v === 'string' ? v : JSON.stringify(v);
+    (v === null || v === undefined ? 'NULL' : typeof v === 'string' ? v : JSON.stringify(v))
+      .replaceAll('\\', '\\\\')
+      .replaceAll('\r', '\\r')
+      .replaceAll('\n', '\\n')
+      .replaceAll('|', '\\|');
   const lines = [
     result.columns.map((c) => c.name).join(' | '),
     ...result.rows.map((row) => row.map(cell).join(' | ')),
