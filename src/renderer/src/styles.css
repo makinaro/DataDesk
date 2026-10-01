@@ -164,6 +164,43 @@
   app-region: no-drag;
 }
 
+/*
+ * Resizable panel splitters: a 1 px line with a wider invisible grab area, highlighted on
+ * hover, drag and keyboard focus.
+ */
+.splitter {
+  position: relative;
+  z-index: 2;
+  flex-shrink: 0;
+  background: var(--dd-line);
+  touch-action: none;
+}
+.splitter-v {
+  width: 1px;
+  cursor: col-resize;
+}
+.splitter-h {
+  height: 1px;
+  cursor: row-resize;
+}
+.splitter::after {
+  content: '';
+  position: absolute;
+}
+.splitter-v::after {
+  inset: 0 -3px;
+}
+.splitter-h::after {
+  inset: -3px 0;
+}
+.splitter:hover,
+.splitter:focus-visible,
+.splitter:active {
+  outline: none;
+  background: var(--dd-muted);
+  box-shadow: 0 0 0 1px var(--dd-muted);
+}
+
 /* Thin rounded scrollbars in the theme's colours (Chromium). */
 ::-webkit-scrollbar {
   width: 10px;

@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useState, type CSSProperties } from 'react';
 import type { Cell } from '../../../shared/datasets';
 import { useAgent } from '../agent/AgentProvider';
 import type { ArtifactRef } from '../agent/agentState';
@@ -46,10 +46,14 @@ export function ResultsPanel({
   dataset,
   revision,
   focus = null,
+  className = '',
+  style,
 }: {
   dataset: string | null;
   revision: number;
   focus?: FocusRequest | null;
+  className?: string;
+  style?: CSSProperties;
 }) {
   const { state } = useAgent();
   const artifacts = state.artifacts;
@@ -74,7 +78,7 @@ export function ResultsPanel({
   };
 
   return (
-    <Panel title="Charts & report" className="w-[520px] shrink-0 border-l border-line">
+    <Panel title="Charts & report" style={style} className={`min-w-0 ${className}`}>
       <div role="tablist" aria-label="Results" className="mb-3 flex flex-wrap gap-1 text-xs">
         <TabButton
           selected={tab === PREVIEW}

@@ -962,3 +962,33 @@ https://github.com/remarkjs/react-markdown, https://github.com/rehypejs/rehype-h
   added.
 - A new language needs one import in `ChatMarkdown.tsx`. If the token colours look off for it,
   extend the `.hljs-*` rules in `styles.css`.
+
+## D-027: Resizable panels as ARIA window splitters, sizes in localStorage (2026-10-02)
+
+**Context:** The panels had fixed widths. The owner wanted to drag them, like the prototype,
+and the roadmap asks for keyboard access and sizes remembered per layout.
+
+**Decision:**
+
+- A small `Splitter` component follows the WAI-ARIA window-splitter pattern:
+  `role="separator"`, focusable, `aria-valuenow/min/max`, arrow keys move it 24 px, Home/End
+  jump to the limits. Pointer drag uses pointer capture, so a fast drag doesn't lose the 1 px
+  line. No library: the whole thing is about 80 lines.
+- Sizes are plain px values, applied through React's `style` prop. React writes them through
+  the CSSOM, which `style-src 'self'` allows (the CSP only blocks style attributes in markup and
+  `<style>` elements). The e2e test drags in the real app to prove it.
+- Sizes are kept per layout in the renderer's `localStorage` (`datadesk.panelSizes.v1`), read
+  through a zod schema and clamped, so a corrupt entry falls back to the defaults.
+
+**Alternatives:**
+
+- Saving in main next to the appearance settings: main needs the theme before the first paint
+  (D-024), but it never needs panel sizes, and a drag would mean a stream of IPC writes.
+- `react-resizable-panels`: works in percentages and brings its own layout model. Fixed-px
+  side panels with one growing area is what the prototype does.
+
+**Consequences:**
+
+- Sizes live in `userData/Local Storage`. Clearing site data resets them, which is harmless.
+- `PANEL_LIMITS` holds fixed px limits. On a very small window the growing area can get
+  narrow, but every panel keeps `min-w-0` and scrolls.

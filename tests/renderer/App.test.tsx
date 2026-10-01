@@ -1,7 +1,7 @@
-import { act, screen, within } from '@testing-library/react';
+import { act, cleanup, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { App } from '../../src/renderer/src/App';
-import { CHART_ID } from './fakeApi';
+import { CHART_ID, createFakeApi } from './fakeApi';
 import { renderWithProviders } from './renderApp';
 
 // Vega needs a real layout engine; charts render for real in the e2e tests.
@@ -41,6 +41,21 @@ describe('App shell', () => {
     const chat = screen.getByRole('list', { name: 'Conversation' });
     await user.click(within(chat).getByRole('button', { name: 'Show chart: Units by region' }));
     expect(chartTab).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('resizes panels from the keyboard and remembers the sizes', async () => {
+    const { user } = renderWithProviders(<App />);
+    const results = screen.getByRole('region', { name: 'Charts & report' });
+    const before = parseInt(results.style.width, 10);
+    screen.getByRole('separator', { name: 'Resize results' }).focus();
+    await user.keyboard('{ArrowLeft}{ArrowLeft}');
+    expect(parseInt(results.style.width, 10)).toBe(before + 48);
+
+    cleanup();
+    renderWithProviders(<App />, createFakeApi());
+    expect(parseInt(screen.getByRole('region', { name: 'Charts & report' }).style.width, 10)).toBe(
+      before + 48,
+    );
   });
 
   it('toggles the timeline drawer', async () => {

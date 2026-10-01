@@ -1,4 +1,4 @@
-import { useCallback, useState, type DragEvent } from 'react';
+import { useCallback, useState, type CSSProperties, type DragEvent } from 'react';
 import { useApi } from '../api';
 import { useIpcQuery } from '../useIpcQuery';
 import { Panel } from './Panel';
@@ -9,6 +9,7 @@ interface Props {
   /** Bumped by the parent whenever datasets change; part of every query key. */
   revision: number;
   onChanged: () => void;
+  style?: CSSProperties;
 }
 
 /** Query key for "this dataset at this revision", so re-registering refreshes its views. */
@@ -23,7 +24,7 @@ function formatBytes(n: number): string {
   return `${(n / 1024 ** 3).toFixed(2)} GB`;
 }
 
-export function DatasetSidebar({ selected, onSelect, revision, onChanged }: Props) {
+export function DatasetSidebar({ selected, onSelect, revision, onChanged, style }: Props) {
   const api = useApi();
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -91,7 +92,7 @@ export function DatasetSidebar({ selected, onSelect, revision, onChanged }: Prop
   }
 
   return (
-    <Panel title="Datasets" className="w-72 shrink-0 border-r border-line">
+    <Panel title="Datasets" style={style} className="shrink-0 bg-surface">
       <div
         data-testid="dataset-dropzone"
         onDragOver={onDragOver}

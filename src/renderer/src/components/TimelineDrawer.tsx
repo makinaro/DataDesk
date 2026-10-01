@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, type CSSProperties } from 'react';
 import { isSubagentTool as isSubagentCall } from '../../../shared/agent';
 import { useAgent } from '../agent/AgentProvider';
 import type { TimelineItem, ToolCallItem } from '../agent/agentState';
@@ -188,11 +188,11 @@ export function laneTree(timeline: readonly TimelineItem[]): {
   return { top, childrenOf };
 }
 
-export function TimelineDrawer() {
+export function TimelineDrawer({ style }: { style?: CSSProperties }) {
   const { state } = useAgent();
   const { top, childrenOf } = useMemo(() => laneTree(state.timeline), [state.timeline]);
   return (
-    <Panel title="Agent timeline" className="h-56 shrink-0 border-t border-line">
+    <Panel title="Agent timeline" style={style} className="shrink-0">
       {state.timeline.length === 0 ? (
         <p className="text-sm text-faint">
           Every tool call the analyst makes shows up here, live, with inputs, results, timing and

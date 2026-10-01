@@ -1,14 +1,16 @@
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 
 interface PanelProps {
   title: string;
   className?: string;
+  /** Sizes from the resizable layout (set through the CSSOM, so the CSP allows them). */
+  style?: CSSProperties;
   children: ReactNode;
 }
 
-export function Panel({ title, className = '', children }: PanelProps) {
+export function Panel({ title, className = '', style, children }: PanelProps) {
   return (
-    <section aria-label={title} className={`flex min-h-0 flex-col ${className}`}>
+    <section aria-label={title} style={style} className={`flex min-h-0 flex-col ${className}`}>
       <h2 className="border-b border-line px-4 py-2 text-xs font-semibold tracking-wide text-muted uppercase">
         {title}
       </h2>
