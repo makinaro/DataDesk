@@ -1,9 +1,13 @@
-# Packaging spike (Phase 2). Phase 8 finalizes installer, icons, compression and signing.
+# Windows x64 installer (Phase 8, DECISIONS D-023). Verified against electron-builder 26.15.3's
+# own schema (node_modules/app-builder-lib/scheme.json).
 appId: dev.datadesk.app
 productName: DataDesk
+copyright: Copyright © 2026 DataDesk contributors
 directories:
   output: release
   buildResources: build
+# Only the built app and the runtime dependencies (package.json "dependencies"). React, Vega Embed
+# and Markdown are bundled into out/renderer by Vite, so they are devDependencies.
 files:
   - out/**/*
   - package.json
@@ -12,11 +16,13 @@ asar: true
 # Native code can't run from inside app.asar:
 # - DuckDB's Node-API binding (loaded by datadesk-mcp)
 # - the Claude Code binary the Agent SDK spawns (DECISIONS D-013)
+# The MCP bundle (out/main/mcp-server.js) stays inside app.asar: datadesk-mcp runs under the
+# Electron binary in Node mode, which reads asar archives (verified by the packaged smoke).
 asarUnpack:
   - '**/node_modules/@duckdb/**'
   - '**/node_modules/@anthropic-ai/claude-agent-sdk-*/**'
-# Pre-fetched DuckDB extensions (Excel); read from process.resourcesPath at runtime.
 extraResources:
+  # Pre-fetched DuckDB extensions (Excel); read from process.resourcesPath at runtime.
   - from: resources/duckdb-extensions
     to: duckdb-extensions
   # The analyst's skills plugin; the Claude Code CLI reads it from disk (it can't read app.asar).
@@ -24,8 +30,25 @@ extraResources:
     to: agent-plugin
 # DuckDB ships Node-API prebuilt binaries (ABI-stable), so no rebuild against Electron is needed.
 npmRebuild: false
-compression: store
+# The NSIS installer is compressed; the 234 MB Claude binary dominates either way.
+compression: normal
+# Never upload anywhere from a local build.
+publish: null
 win:
+  icon: build/icon.ico
   target:
     - target: nsis
       arch: [x64]
+nsis:
+  # Assisted, per-user: no admin rights, installs to %LOCALAPPDATA%\Programs\DataDesk unless the
+  # user picks another folder.
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  runAfterFinish: true
+  artifactName: ${productName}-Setup-${version}-x64.${ext}
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  uninstallDisplayName: ${productName}
