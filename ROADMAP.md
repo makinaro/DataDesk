@@ -123,7 +123,7 @@ works manually.
 ## Phase 8: Packaging
 
 - [x] `electron-builder.yml`: NSIS x64, `asarUnpack` (DuckDB, Claude binary, MCP bundle), `extraResources` (agent-plugin, DuckDB extensions)
-- [ ] Packaged path resolution (`pathToClaudeCodeExecutable`, resources)
+- [x] Packaged path resolution (`pathToClaudeCodeExecutable`, resources)
 - [ ] Playwright smoke against the built app
 - [ ] README install notes (unsigned build, SmartScreen)
 

@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { QueryFn, QueryLike } from '../../../../src/main/agent/claude/claudeOrchestrator';
 
@@ -8,7 +9,8 @@ import type { QueryFn, QueryLike } from '../../../../src/main/agent/claude/claud
 const msg = (m: Record<string, unknown>) => m as unknown as SDKMessage;
 
 export const WORKSPACE = 'C:/Users/me/AppData/Roaming/DataDesk/agent-workspace';
-export const PLUGIN_DIR = 'C:/Program Files/DataDesk/resources/agent-plugin';
+/** The real bundled plugin: sessions check it exists before starting (D-023). */
+export const PLUGIN_DIR = join(process.cwd(), 'resources', 'agent-plugin');
 
 export const sdk = {
   init: (over: Record<string, unknown> = {}) =>
