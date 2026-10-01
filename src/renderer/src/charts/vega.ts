@@ -59,7 +59,12 @@ export async function renderChart(
     },
     fit: (width) => {
       // The compiled `width` signal is the container's full width (autosize fit-x, padding).
-      if (fitsContainer && width > 0) void result.view.signal('width', width).runAsync();
+      if (!fitsContainer || width <= 0) return;
+      // A resize can land while the view is being finalized; there is nothing left to fit then.
+      result.view
+        .signal('width', width)
+        .runAsync()
+        .catch(() => undefined);
     },
     toPngBase64: async () => {
       const url = await result.view.toImageURL('png', 2);

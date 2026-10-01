@@ -81,7 +81,12 @@ export function ChatPanel({ className = '', style, docked = false }: ChatPanelPr
             m.role === 'user' ? (
               <Fragment key={m.id}>
                 <UserMessage message={m} />
-                {docked && <TurnSteps items={stepsByTurn.get(m.id) ?? []} running={busy} />}
+                {docked && (
+                  <TurnSteps
+                    items={stepsByTurn.get(m.id) ?? []}
+                    running={busy && m.id === state.turnId}
+                  />
+                )}
               </Fragment>
             ) : (
               <Answer key={m.id} message={m} />
@@ -183,8 +188,12 @@ function Answer({ message }: { message: ChatMessage }) {
   }, [copied]);
 
   async function copy() {
-    const result = await api.clipboard.writeText(message.text);
-    if (result.ok) setCopied(true);
+    try {
+      const result = await api.clipboard.writeText(message.text);
+      if (result.ok) setCopied(true);
+    } catch {
+      // No handler (e.g. a broken bridge): the button just doesn't confirm.
+    }
   }
 
   return (

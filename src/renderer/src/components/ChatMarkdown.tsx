@@ -126,8 +126,12 @@ function CodeBlock({ node, children, ...props }: ComponentProps<'pre'> & ExtraPr
   async function copy() {
     // mdast-util-to-hast adds a trailing newline to every code block.
     const raw = code ? textOf(code).replace(/\n$/, '') : '';
-    const result = await api.clipboard.writeText(raw);
-    if (result.ok) setCopied(true);
+    try {
+      const result = await api.clipboard.writeText(raw);
+      if (result.ok) setCopied(true);
+    } catch {
+      // No handler (e.g. a broken bridge): the button just doesn't confirm.
+    }
   }
 
   return (

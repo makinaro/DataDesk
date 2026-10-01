@@ -83,6 +83,31 @@ describe('App shell', () => {
     expect(within(chat).getByRole('list', { name: 'Steps' })).toHaveTextContent('1 row');
   });
 
+  it('shows only the running turn as working, not an older stopped one', async () => {
+    const { api, user } = renderWithProviders(<App />);
+    const call = (id: string) => ({
+      kind: 'tool_call' as const,
+      toolUseId: id,
+      name: 'mcp__datadesk__run_sql',
+      input: '{}',
+      parentToolUseId: null,
+    });
+    await user.type(screen.getByLabelText('Message'), 'first{Enter}');
+    act(() => {
+      api.emit({ kind: 'status', status: 'running' });
+      api.emit(call('t1'));
+      api.emit({ kind: 'status', status: 'idle' }); // stopped before t1 finished
+    });
+    await user.type(screen.getByLabelText('Message'), 'second{Enter}');
+    act(() => {
+      api.emit({ kind: 'status', status: 'running' });
+      api.emit(call('t2'));
+    });
+    const chat = screen.getByRole('list', { name: 'Conversation' });
+    expect(within(chat).getByText(/^■ 1 step/)).toBeInTheDocument();
+    expect(within(chat).getAllByText(/^● Working/)).toHaveLength(1);
+  });
+
   it('resizes panels from the keyboard and remembers the sizes per layout', async () => {
     const { user } = renderWithProviders(<App />);
     const chat = screen.getByRole('region', { name: 'Chat' });
