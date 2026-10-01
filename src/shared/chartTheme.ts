@@ -84,5 +84,9 @@ export function chartConfig(theme: ResolvedTheme): Config {
     bar: { cornerRadiusEnd: 4 },
     line: { strokeWidth: 2 },
     point: { size: 64 },
+    // Vega-Lite draws rules, boxplot whiskers and error bars black, which vanishes on dark.
+    rule: { color: ink.muted },
+    boxplot: { rule: { color: ink.muted }, ticks: { color: ink.muted } },
+    errorbar: { rule: { color: ink.muted }, ticks: { color: ink.muted } },
   };
 }

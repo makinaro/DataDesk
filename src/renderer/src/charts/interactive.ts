@@ -35,6 +35,25 @@ const ZOOMABLE = new Set(['line', 'area', 'point', 'circle', 'square', 'trail'])
 const markType = (mark: unknown): unknown => (isObject(mark) ? mark.type : mark);
 
 /**
+ * Composite marks (boxplot, errorbar, errorband) expand into several layers, and a selection
+ * param on them breaks the chart ('Unrecognized signal name'). Only primitive marks get params.
+ */
+const PRIMITIVE = new Set([
+  'arc',
+  'area',
+  'bar',
+  'circle',
+  'line',
+  'point',
+  'rect',
+  'rule',
+  'square',
+  'text',
+  'tick',
+  'trail',
+]);
+
+/**
  * Adds interaction to a single-view chart the model wrote: drag to pan and wheel to zoom when x
  * is continuous on a line, area or point chart, and a clickable
  * legend that fades the other series. Composite specs and specs with their own params are left
@@ -42,7 +61,12 @@ const markType = (mark: unknown): unknown => (isObject(mark) ? mark.type : mark)
  */
 export function addInteractivity(spec: TopLevelSpec): TopLevelSpec {
   const s = spec as unknown as Json;
-  if (COMPOSITE.some((k) => k in s) || 'params' in s || !isObject(s.encoding) || !('mark' in s)) {
+  if (
+    COMPOSITE.some((k) => k in s) ||
+    'params' in s ||
+    !isObject(s.encoding) ||
+    !PRIMITIVE.has(String(markType(s.mark)))
+  ) {
     return spec;
   }
   const encoding: Json = { ...s.encoding };

@@ -65,6 +65,26 @@ describe('addInteractivity', () => {
     }
   });
 
+  it('leaves composite marks (boxplot, error bars) alone', () => {
+    // Regression: a legend param on a boxplot failed with 'Unrecognized signal name: "legend"'.
+    for (const mark of [
+      'boxplot',
+      { type: 'boxplot', extent: 'min-max' },
+      'errorbar',
+      'errorband',
+    ]) {
+      const input = spec({
+        mark,
+        encoding: {
+          x: { field: 'year', type: 'quantitative' },
+          y: { field: 'price', type: 'quantitative' },
+          color: { field: 'make', type: 'nominal' },
+        },
+      });
+      expect(addInteractivity(input)).toBe(input);
+    }
+  });
+
   it('makes a categorical legend a filter that fades the other series', () => {
     const out = json(
       addInteractivity(
@@ -106,5 +126,50 @@ describe('addInteractivity', () => {
       addInteractivity(spec({ ...line, encoding: { ...line.encoding, opacity: { value: 0.5 } } })),
     );
     expect((withOpacity.params as { name: string }[]).map((p) => p.name)).toEqual(['zoom']);
+  });
+});
+
+describe('every prepared chart actually runs in Vega', () => {
+  const values = [
+    { make: 'BMW', year: 2019, price: 30, n: 3 },
+    { make: 'BMW', year: 2020, price: 34, n: 5 },
+    { make: 'Audi', year: 2019, price: 28, n: 4 },
+    { make: 'Audi', year: 2020, price: 31, n: 2 },
+  ];
+  const nominal = (field: string) => ({ field, type: 'nominal' });
+  const quant = (field: string) => ({ field, type: 'quantitative' });
+  const cases: Record<string, Record<string, unknown>> = {
+    'vertical bars': { mark: 'bar', encoding: { x: nominal('make'), y: quant('price') } },
+    'horizontal bars': { mark: 'bar', encoding: { y: nominal('make'), x: quant('price') } },
+    'stacked bars': {
+      mark: 'bar',
+      encoding: { x: nominal('year'), y: quant('n'), color: nominal('make') },
+    },
+    'line with points': {
+      mark: { type: 'line', point: true },
+      encoding: { x: quant('year'), y: quant('price'), color: nominal('make') },
+    },
+    area: { mark: 'area', encoding: { x: quant('year'), y: quant('n'), color: nominal('make') } },
+    scatter: {
+      mark: 'point',
+      encoding: { x: quant('n'), y: quant('price'), color: nominal('make') },
+    },
+    boxplot: {
+      mark: 'boxplot',
+      encoding: { x: nominal('make'), y: quant('price'), color: nominal('make') },
+    },
+    errorbar: { mark: 'errorbar', encoding: { x: nominal('make'), y: quant('price') } },
+    arc: { mark: 'arc', encoding: { theta: quant('n'), color: nominal('make') } },
+  };
+
+  it.each(Object.entries(cases))('%s', async (_name, body) => {
+    const { compile } = await import('vega-lite');
+    const { parse, View } = await import('vega');
+    const { chartConfig } = await import('../../../src/shared/chartTheme');
+    const prepared = addInteractivity(fillWidth(spec({ ...body, data: { values } })));
+    const vg = compile(prepared, { config: chartConfig('dark') }).spec;
+    const view = new View(parse(vg), { renderer: 'none' });
+    await expect(view.runAsync()).resolves.toBe(view);
+    view.finalize();
   });
 });
