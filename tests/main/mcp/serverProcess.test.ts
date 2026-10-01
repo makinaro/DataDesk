@@ -7,6 +7,7 @@ const paths = {
   userData: 'C:/Users/me/AppData/Roaming/DataDesk',
   mainDir: 'C:/app/out/main',
   extensionDir: 'C:/app/resources/duckdb-extensions',
+  agentPluginDir: 'C:/app/resources/agent-plugin',
 };
 
 describe('buildServerEnv', () => {

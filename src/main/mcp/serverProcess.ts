@@ -8,6 +8,8 @@ export interface ServerPaths {
   mainDir: string;
   /** Pre-fetched DuckDB extensions, if present. */
   extensionDir: string | undefined;
+  /** The analyst's skills plugin (resources/agent-plugin). */
+  agentPluginDir: string;
 }
 
 /**

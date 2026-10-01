@@ -59,6 +59,7 @@ export function createAgentRuntime(deps: AgentRuntimeDeps) {
           },
           canUseTool,
           abortController,
+          pluginDir: deps.paths.agentPluginDir,
           pathToClaudeCodeExecutable: claudeExecutablePath({
             isPackaged: deps.app.isPackaged,
             resourcesPath: deps.app.resourcesPath,
@@ -73,7 +74,7 @@ export function createAgentRuntime(deps: AgentRuntimeDeps) {
                 },
               }),
         });
-        return { options, workspaceDir };
+        return { options, workspaceDir, pluginDir: deps.paths.agentPluginDir };
       },
     });
 

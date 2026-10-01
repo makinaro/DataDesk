@@ -19,6 +19,9 @@ asarUnpack:
 extraResources:
   - from: resources/duckdb-extensions
     to: duckdb-extensions
+  # The analyst's skills plugin; the Claude Code CLI reads it from disk (it can't read app.asar).
+  - from: resources/agent-plugin
+    to: agent-plugin
 # DuckDB ships Node-API prebuilt binaries (ABI-stable), so no rebuild against Electron is needed.
 npmRebuild: false
 compression: store
