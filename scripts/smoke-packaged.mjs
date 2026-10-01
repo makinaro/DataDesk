@@ -292,6 +292,16 @@ async function checkLaunchedApp(app, profile) {
 
   await checkUi(app, page, userData);
 
+  // The UI's own server has remove_dataset (DATADESK_UI_TOOLS, D-029); the user file stays.
+  const removed = await page.evaluate(() => window.datadesk.datasets.remove('sales'));
+  const after = await page.evaluate(() => window.datadesk.datasets.list());
+  check(
+    'remove a dataset through the UI-only tool',
+    removed.ok && after.ok && after.data.every((d) => d.name !== 'sales'),
+    removed.ok ? '' : removed.error.message,
+  );
+  check('the removed file is still on disk', existsSync(resolve('test-data/public/sales.xlsx')));
+
   if (withAgent) {
     await page.evaluate(() => {
       window.__events = [];
