@@ -154,4 +154,19 @@ describe('createSdkMapper', () => {
       map(sdk.toolResult('toolu_c', `x\n${JSON.stringify({ chartId, title: 'e' })}`, true)),
     ).toHaveLength(1);
   });
+
+  it('still finds the artifact when the title in the summary line contains a newline', () => {
+    const map = createSdkMapper();
+    const chartId = '11111111-1111-4111-8111-111111111111';
+    map(
+      sdk.assistant('m', [
+        { type: 'tool_use', id: 't', name: 'mcp__datadesk__create_chart', input: {} },
+      ]),
+    );
+    const title = 'Sales\nby region';
+    const events = map(
+      sdk.toolResult('t', `Chart "${title}" created.\n${JSON.stringify({ chartId, title })}`),
+    );
+    expect(events[1]).toEqual({ kind: 'artifact', artifactKind: 'chart', id: chartId, title });
+  });
 });

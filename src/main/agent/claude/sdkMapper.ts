@@ -30,7 +30,9 @@ function artifactFromResult(
 ): AgentEventInput | undefined {
   const artifactKind = toolName === undefined ? undefined : ARTIFACT_TOOLS[toolName];
   if (!artifactKind) return undefined;
-  const json = text.slice(text.indexOf('\n') + 1);
+  // JSON.stringify never emits raw newlines, so the JSON starts after the last one (a title
+  // in the summary line could contain a newline).
+  const json = text.slice(text.lastIndexOf('\n') + 1);
   try {
     const parsed = JSON.parse(json) as { chartId?: unknown; reportId?: unknown; title?: unknown };
     const id = artifactKind === 'chart' ? parsed.chartId : parsed.reportId;
