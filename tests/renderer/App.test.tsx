@@ -1,6 +1,8 @@
 import { act, cleanup, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { App } from '../../src/renderer/src/App';
+import { DEFAULT_SIZES } from '../../src/renderer/src/layout/panelSizes';
+import type { Layout } from '../../src/shared/appearance';
 import { CHART_ID, createFakeApi } from './fakeApi';
 import { renderWithProviders } from './renderApp';
 
@@ -14,13 +16,91 @@ function renderApp() {
   return renderWithProviders(<App />).user;
 }
 
+/** Renders the app with a saved layout, waiting for the stored appearance to apply. */
+async function renderLayout(layout: Layout) {
+  const api = createFakeApi();
+  api.settings.getAppearance.mockResolvedValue({ ok: true, data: { theme: 'dark', layout } });
+  const result = renderWithProviders(<App />, api);
+  const sideLabel = layout === 'chat-first' ? 'Resize results' : 'Resize chat';
+  await screen.findByRole('separator', { name: sideLabel });
+  return result;
+}
+
 describe('App shell', () => {
-  it('renders the four work areas', () => {
+  it('opens in Results-first: results in the middle, chat docked right, timeline closed', () => {
     renderApp();
     expect(screen.getByRole('heading', { name: 'DataDesk' })).toBeInTheDocument();
-    for (const name of ['Datasets', 'Chat', 'Charts & report', 'Agent timeline']) {
-      expect(screen.getByRole('region', { name })).toBeInTheDocument();
-    }
+    const results = screen.getByRole('region', { name: 'Charts & report' });
+    const chat = screen.getByRole('region', { name: 'Chat' });
+    expect(screen.getByRole('region', { name: 'Datasets' })).toBeInTheDocument();
+    expect(results.compareDocumentPosition(chat) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByRole('region', { name: 'Agent timeline' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Timeline' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+  });
+
+  it('Chat-first puts the chat in the middle, results right and the timeline open', async () => {
+    await renderLayout('chat-first');
+    const results = screen.getByRole('region', { name: 'Charts & report' });
+    const chat = screen.getByRole('region', { name: 'Chat' });
+    expect(chat.compareDocumentPosition(results) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Agent timeline' })).toBeInTheDocument();
+  });
+
+  it('toggles the timeline drawer per layout', async () => {
+    const user = renderApp();
+    const toggle = screen.getByRole('button', { name: 'Timeline' });
+    await user.click(toggle);
+    expect(screen.getByRole('region', { name: 'Agent timeline' })).toBeInTheDocument();
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    await user.click(toggle);
+    expect(screen.queryByRole('region', { name: 'Agent timeline' })).not.toBeInTheDocument();
+  });
+
+  it('shows the tool steps for each question inline in the docked chat', async () => {
+    const { api, user } = renderWithProviders(<App />);
+    await user.type(screen.getByLabelText('Message'), 'Which region?{Enter}');
+    act(() => {
+      api.emit({ kind: 'status', status: 'running' });
+      api.emit({
+        kind: 'tool_call',
+        toolUseId: 't1',
+        name: 'mcp__datadesk__run_sql',
+        input: '{"sql":"SELECT 1"}',
+        parentToolUseId: null,
+      });
+    });
+    const chat = screen.getByRole('list', { name: 'Conversation' });
+    expect(within(chat).getByText('● Working · datadesk · run_sql…')).toBeInTheDocument();
+
+    act(() => {
+      api.emit({ kind: 'tool_result', toolUseId: 't1', isError: false, output: '1 row' });
+      api.emit({ kind: 'status', status: 'idle' });
+    });
+    expect(within(chat).getByText(/^✓ 1 step · \d+\.\d s$/)).toBeInTheDocument();
+    expect(within(chat).getByRole('list', { name: 'Steps' })).toHaveTextContent('1 row');
+  });
+
+  it('resizes panels from the keyboard and remembers the sizes per layout', async () => {
+    const { user } = renderWithProviders(<App />);
+    const chat = screen.getByRole('region', { name: 'Chat' });
+    const before = parseInt(chat.style.width, 10);
+    screen.getByRole('separator', { name: 'Resize chat' }).focus();
+    await user.keyboard('{ArrowLeft}{ArrowLeft}');
+    expect(parseInt(chat.style.width, 10)).toBe(before + 48);
+
+    cleanup();
+    renderWithProviders(<App />, createFakeApi());
+    expect(parseInt(screen.getByRole('region', { name: 'Chat' }).style.width, 10)).toBe(
+      before + 48,
+    );
+
+    cleanup();
+    await renderLayout('chat-first');
+    const results = screen.getByRole('region', { name: 'Charts & report' });
+    expect(parseInt(results.style.width, 10)).toBe(DEFAULT_SIZES['chat-first'].side);
   });
 
   it('brings a chart forward when its chip in an answer is clicked', async () => {
@@ -41,30 +121,6 @@ describe('App shell', () => {
     const chat = screen.getByRole('list', { name: 'Conversation' });
     await user.click(within(chat).getByRole('button', { name: 'Show chart: Units by region' }));
     expect(chartTab).toHaveAttribute('aria-selected', 'true');
-  });
-
-  it('resizes panels from the keyboard and remembers the sizes', async () => {
-    const { user } = renderWithProviders(<App />);
-    const results = screen.getByRole('region', { name: 'Charts & report' });
-    const before = parseInt(results.style.width, 10);
-    screen.getByRole('separator', { name: 'Resize results' }).focus();
-    await user.keyboard('{ArrowLeft}{ArrowLeft}');
-    expect(parseInt(results.style.width, 10)).toBe(before + 48);
-
-    cleanup();
-    renderWithProviders(<App />, createFakeApi());
-    expect(parseInt(screen.getByRole('region', { name: 'Charts & report' }).style.width, 10)).toBe(
-      before + 48,
-    );
-  });
-
-  it('toggles the timeline drawer', async () => {
-    const user = renderApp();
-    const toggle = screen.getByRole('button', { name: 'Timeline' });
-    expect(toggle).toHaveAttribute('aria-pressed', 'true');
-    await user.click(toggle);
-    expect(screen.queryByRole('region', { name: 'Agent timeline' })).not.toBeInTheDocument();
-    expect(toggle).toHaveAttribute('aria-pressed', 'false');
   });
 
   it('opens and closes settings', async () => {

@@ -25,6 +25,25 @@ describe('agentReducer', () => {
     expect(done.messages[0]).toMatchObject({ text: 'Hello!', streaming: false });
   });
 
+  it('files each tool call under the user message it answers', () => {
+    const call = (id: string): AgentEventInput => ({
+      kind: 'tool_call',
+      toolUseId: id,
+      name: 'mcp__datadesk__run_sql',
+      input: '{}',
+      parentToolUseId: null,
+    });
+    let s = agentReducer(initialAgentState, { type: 'user_message', id: 'u1', text: 'first' });
+    s = run([call('t1')], s);
+    s = agentReducer(s, { type: 'user_message', id: 'u2', text: 'second' });
+    s = run([call('t2')], s);
+    expect(s.timeline.map((t) => (t.kind === 'tool' ? [t.id, t.turnId] : null))).toEqual([
+      ['t1', 'u1'],
+      ['t2', 'u2'],
+    ]);
+    expect(agentReducer(s, { type: 'reset' }).turnId).toBeNull();
+  });
+
   it('keeps sub-agent text out of the main chat', () => {
     const s = run([
       { kind: 'text_delta', messageId: 'x', delta: 'hidden', parentToolUseId: 'toolu_1' },

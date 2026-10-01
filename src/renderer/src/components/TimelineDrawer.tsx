@@ -188,9 +188,20 @@ export function laneTree(timeline: readonly TimelineItem[]): {
   return { top, childrenOf };
 }
 
+/** Timeline items with sub-agent lanes; used by the drawer and by inline turn steps. */
+export function TimelineList({ items, label }: { items: readonly TimelineItem[]; label: string }) {
+  const { top, childrenOf } = useMemo(() => laneTree(items), [items]);
+  return (
+    <ol aria-label={label} className="space-y-1">
+      {top.map((item) => (
+        <Item key={`${item.kind}-${item.id}`} item={item} childrenOf={childrenOf} />
+      ))}
+    </ol>
+  );
+}
+
 export function TimelineDrawer({ style }: { style?: CSSProperties }) {
   const { state } = useAgent();
-  const { top, childrenOf } = useMemo(() => laneTree(state.timeline), [state.timeline]);
   return (
     <Panel title="Agent timeline" style={style} className="shrink-0">
       {state.timeline.length === 0 ? (
@@ -199,11 +210,7 @@ export function TimelineDrawer({ style }: { style?: CSSProperties }) {
           cost. Sub-agents get their own lane.
         </p>
       ) : (
-        <ol aria-label="Timeline" className="space-y-1">
-          {top.map((item) => (
-            <Item key={`${item.kind}-${item.id}`} item={item} childrenOf={childrenOf} />
-          ))}
-        </ol>
+        <TimelineList items={state.timeline} label="Timeline" />
       )}
     </Panel>
   );

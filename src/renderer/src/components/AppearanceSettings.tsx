@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { Theme } from '../../../shared/appearance';
+import type { Layout, Theme } from '../../../shared/appearance';
 import { useAppearance } from '../appearance/AppearanceProvider';
 
 const THEMES: { id: Theme; label: string; hint: string }[] = [
@@ -9,12 +9,21 @@ const THEMES: { id: Theme; label: string; hint: string }[] = [
   { id: 'system', label: 'System', hint: 'Follows Windows' },
 ];
 
+const LAYOUTS: { id: Layout; label: string; hint: string }[] = [
+  { id: 'results-first', label: 'Results-first', hint: 'Charts in the middle, chat docked right' },
+  { id: 'chat-first', label: 'Chat-first', hint: 'Chat in the middle, charts on the right' },
+];
+
 export function AppearanceSettings() {
   const { appearance, update } = useAppearance();
   const [error, setError] = useState<string | null>(null);
 
   async function choose(theme: Theme) {
     setError(await update({ theme }));
+  }
+
+  async function chooseLayout(layout: Layout) {
+    setError(await update({ layout }));
   }
 
   return (
@@ -44,12 +53,65 @@ export function AppearanceSettings() {
           ))}
         </div>
       </fieldset>
+      <fieldset>
+        <legend className="mb-2 text-sm font-medium">Layout</legend>
+        <div className="grid grid-cols-2 gap-3">
+          {LAYOUTS.map((l) => (
+            <label
+              key={l.id}
+              className={`cursor-pointer rounded-lg border p-2 has-focus-visible:outline-2 has-focus-visible:outline-focus ${
+                appearance.layout === l.id ? 'border-fg' : 'border-line hover:border-faint'
+              }`}
+            >
+              <input
+                type="radio"
+                name="layout"
+                value={l.id}
+                checked={appearance.layout === l.id}
+                onChange={() => void chooseLayout(l.id)}
+                className="sr-only"
+              />
+              <LayoutPreview layout={l.id} />
+              <span className="mt-2 block text-sm">{l.label}</span>
+              <span className="block text-xs text-faint">{l.hint}</span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
       {error && (
         <p role="alert" className="rounded bg-danger-soft px-3 py-2 text-sm text-danger">
           {error}
         </p>
       )}
     </div>
+  );
+}
+
+/** Datasets, the main area and the side column, with the chat drawn as message lines. */
+function LayoutPreview({ layout }: { layout: Layout }) {
+  const chat = (
+    <span className="flex flex-col justify-end gap-1 p-1.5">
+      <span className="ml-auto h-1.5 w-1/2 rounded-full bg-bubble" />
+      <span className="h-1 w-3/4 rounded-full bg-faint" />
+      <span className="mt-0.5 h-2 rounded-sm border border-line" />
+    </span>
+  );
+  const results = (
+    <span className="flex items-end gap-1 p-2">
+      <span className="h-1/3 flex-1 rounded-sm bg-faint" />
+      <span className="h-2/3 flex-1 rounded-sm bg-muted" />
+      <span className="h-1/2 flex-1 rounded-sm bg-faint" />
+    </span>
+  );
+  return (
+    <span
+      aria-hidden="true"
+      className="grid h-14 grid-cols-[1fr_3fr_2fr] overflow-hidden rounded border border-line bg-canvas"
+    >
+      <span className="bg-surface" />
+      {layout === 'results-first' ? results : chat}
+      <span className="border-l border-line">{layout === 'results-first' ? chat : results}</span>
+    </span>
   );
 }
 

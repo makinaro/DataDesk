@@ -15,6 +15,7 @@ const tool = (id: string, name: string, parentToolUseId: string | null): Timelin
   name,
   input: '{}',
   parentToolUseId,
+  turnId: null,
   startedAt: 0,
 });
 

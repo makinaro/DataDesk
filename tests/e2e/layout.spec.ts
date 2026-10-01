@@ -26,3 +26,43 @@ test('panels resize by mouse drag and keyboard, and keep their size after a relo
     .poll(() => page.getByRole('region', { name: 'Datasets' }).evaluate(width))
     .toBeCloseTo(start + 36, 0);
 });
+
+test('every theme and both layouts render with zero CSP violations', async ({ page }) => {
+  const violations: string[] = [];
+  page.on('console', (msg) => {
+    if (/Content Security Policy/i.test(msg.text())) violations.push(msg.text());
+  });
+  await page.reload();
+
+  const region = (name: string) => page.getByRole('region', { name });
+  const after = (a: string, b: string) =>
+    page.evaluate(
+      ([first, second]) => {
+        const find = (n: string) => document.querySelector(`section[aria-label="${n}"]`);
+        const x = find(first);
+        const y = find(second);
+        return !!x && !!y && !!(x.compareDocumentPosition(y) & Node.DOCUMENT_POSITION_FOLLOWING);
+      },
+      [a, b] as const,
+    );
+
+  await page.getByRole('button', { name: 'Settings' }).click();
+  await page.getByRole('tab', { name: 'Appearance' }).click();
+  for (const theme of ['Light', 'Slate', 'System', 'Dark']) {
+    await page.getByRole('radio', { name: new RegExp(`^${theme}`) }).check({ force: true });
+    await expect(page.getByRole('radio', { name: new RegExp(`^${theme}`) })).toBeChecked();
+  }
+  await page.getByRole('radio', { name: /Chat-first/ }).check({ force: true });
+  await page.getByRole('button', { name: 'Close' }).click();
+  await expect(region('Agent timeline')).toBeVisible();
+  expect(await after('Chat', 'Charts & report')).toBe(true);
+
+  await page.getByRole('button', { name: 'Settings' }).click();
+  await page.getByRole('tab', { name: 'Appearance' }).click();
+  await page.getByRole('radio', { name: /Results-first/ }).check({ force: true });
+  await page.getByRole('button', { name: 'Close' }).click();
+  await expect(region('Chat')).toBeVisible();
+  expect(await after('Charts & report', 'Chat')).toBe(true);
+
+  expect(violations).toEqual([]);
+});

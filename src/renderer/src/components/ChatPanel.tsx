@@ -1,14 +1,43 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import {
+  Fragment,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent,
+} from 'react';
 import { useAgent } from '../agent/AgentProvider';
-import type { ChatMessage } from '../agent/agentState';
+import type { ChatMessage, ToolCallItem } from '../agent/agentState';
 import { useApi } from '../api';
 import { ChatMarkdown } from './ChatMarkdown';
 import { CopyIcon, SendIcon, StopIcon } from './icons';
+import { TurnSteps } from './TurnSteps';
 
 const BUSY = new Set(['starting', 'running', 'stopping']);
 
-export function ChatPanel({ className = '' }: { className?: string }) {
+interface ChatPanelProps {
+  className?: string;
+  style?: CSSProperties;
+  /**
+   * Docked beside the results (Results-first): tighter spacing, and each question shows its
+   * tool steps inline, because the timeline drawer starts closed in that layout.
+   */
+  docked?: boolean;
+}
+
+export function ChatPanel({ className = '', style, docked = false }: ChatPanelProps) {
   const { state, send, stop, reset } = useAgent();
+  const stepsByTurn = useMemo(() => {
+    const map = new Map<string, ToolCallItem[]>();
+    for (const item of state.timeline) {
+      if (item.kind !== 'tool' || item.turnId === null) continue;
+      const list = map.get(item.turnId);
+      if (list) list.push(item);
+      else map.set(item.turnId, [item]);
+    }
+    return map;
+  }, [state.timeline]);
   const [draft, setDraft] = useState('');
   const [error, setError] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
@@ -33,9 +62,16 @@ export function ChatPanel({ className = '' }: { className?: string }) {
   }
 
   return (
-    <section aria-label="Chat" className={`flex min-h-0 min-w-0 flex-col ${className}`}>
+    <section
+      aria-label="Chat"
+      style={style}
+      className={`flex min-h-0 min-w-0 flex-col ${docked ? 'bg-surface' : ''} ${className}`}
+    >
       <div className="min-h-0 flex-1 overflow-auto">
-        <ol aria-label="Conversation" className="mx-auto max-w-[760px] px-6 pt-6 pb-2">
+        <ol
+          aria-label="Conversation"
+          className={`mx-auto max-w-[760px] pb-2 ${docked ? 'px-3.5 pt-3' : 'px-6 pt-6'}`}
+        >
           {state.messages.length === 0 && (
             <li className="mt-[12vh] text-center text-sm text-faint">
               Ask a question about your datasets, e.g. “Which region sold the most units?”
@@ -43,7 +79,10 @@ export function ChatPanel({ className = '' }: { className?: string }) {
           )}
           {state.messages.map((m) =>
             m.role === 'user' ? (
-              <UserMessage key={m.id} message={m} />
+              <Fragment key={m.id}>
+                <UserMessage message={m} />
+                {docked && <TurnSteps items={stepsByTurn.get(m.id) ?? []} running={busy} />}
+              </Fragment>
             ) : (
               <Answer key={m.id} message={m} />
             ),
@@ -52,7 +91,7 @@ export function ChatPanel({ className = '' }: { className?: string }) {
         <div ref={endRef} />
       </div>
 
-      <div className="px-6 pt-2 pb-4">
+      <div className={docked ? 'px-3 pt-2 pb-3' : 'px-6 pt-2 pb-4'}>
         {error && (
           <p
             role="alert"
@@ -61,7 +100,11 @@ export function ChatPanel({ className = '' }: { className?: string }) {
             {error}
           </p>
         )}
-        <div className="mx-auto max-w-[760px] rounded-[14px] border border-line bg-surface py-2 pr-2 pl-3.5 focus-within:border-faint">
+        <div
+          className={`mx-auto max-w-[760px] rounded-[14px] border border-line py-2 pr-2 pl-3.5 focus-within:border-faint ${
+            docked ? 'bg-canvas' : 'bg-surface'
+          }`}
+        >
           <textarea
             aria-label="Message"
             value={draft}

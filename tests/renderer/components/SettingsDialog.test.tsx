@@ -157,6 +157,21 @@ describe('SettingsDialog', () => {
     expect(api.settings.setAgent).not.toHaveBeenCalled();
   });
 
+  it('switches the layout and saves it alongside the theme', async () => {
+    const user = userEvent.setup();
+    const { api } = renderDialog();
+    await user.click(screen.getByRole('tab', { name: 'Appearance' }));
+    expect(screen.getByRole('radio', { name: /Results-first/ })).toBeChecked();
+
+    await user.click(screen.getByRole('radio', { name: /Chat-first/ }));
+
+    expect(screen.getByRole('radio', { name: /Chat-first/ })).toBeChecked();
+    expect(api.settings.setAppearance).toHaveBeenCalledWith({
+      theme: 'dark',
+      layout: 'chat-first',
+    });
+  });
+
   it('reverts the theme and says why when saving fails', async () => {
     const user = userEvent.setup();
     const api = createFakeApi();

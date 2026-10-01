@@ -14,6 +14,8 @@ export interface ToolCallItem {
   name: string;
   input: string;
   parentToolUseId: string | null;
+  /** The user message this call answers (null before the first message, e.g. in tests). */
+  turnId: string | null;
   startedAt: number;
   result?: { isError: boolean; output: string; finishedAt: number };
   /** For sub-agent (Agent/Task) calls: the sub-agent's latest message, shown in its lane. */
@@ -62,6 +64,8 @@ export interface AgentState {
   artifacts: ArtifactRef[];
   sessionCostUsd: number;
   lastSeq: number;
+  /** The latest user message: tool calls from now on belong to its turn. */
+  turnId: string | null;
 }
 
 export interface ArtifactRef {
@@ -80,6 +84,7 @@ export const initialAgentState: AgentState = {
   artifacts: [],
   sessionCostUsd: 0,
   lastSeq: -1,
+  turnId: null,
 };
 
 export type AgentAction =
@@ -108,6 +113,7 @@ export function agentReducer(state: AgentState, action: AgentAction): AgentState
   if (action.type === 'user_message') {
     return {
       ...state,
+      turnId: action.id,
       messages: [
         ...state.messages,
         { id: action.id, role: 'user', text: action.text, streaming: false },
@@ -179,6 +185,7 @@ export function agentReducer(state: AgentState, action: AgentAction): AgentState
             name: e.name,
             input: e.input,
             parentToolUseId: e.parentToolUseId,
+            turnId: s.turnId,
             startedAt: e.at,
           },
         ],
