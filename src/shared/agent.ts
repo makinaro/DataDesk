@@ -124,6 +124,17 @@ export type OpenAIModel = z.infer<typeof OpenAIModelSchema>;
 export const AnalystProviderSchema = z.enum(['anthropic', 'openai']);
 export type AnalystProvider = z.infer<typeof AnalystProviderSchema>;
 
+/**
+ * Compare mode (Phase 7): the same question runs on both providers at once, each in its own
+ * one-shot session. Each lane's events are ordinary AgentEvents with their own `seq`, tagged
+ * with the provider; they go on `compare:event`, never into the chat.
+ */
+export const CompareEventSchema = z.strictObject({
+  provider: AnalystProviderSchema,
+  event: AgentEventSchema,
+});
+export type CompareEvent = z.infer<typeof CompareEventSchema>;
+
 export const AgentSettingsSchema = z.strictObject({
   /** Defaults keep settings files from before Phase 7 valid (they have no provider). */
   provider: AnalystProviderSchema.default('anthropic'),

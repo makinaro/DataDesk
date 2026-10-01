@@ -16,6 +16,9 @@ export const IpcChannels = {
   agentStop: 'agent:stop',
   agentReset: 'agent:reset',
   agentApprove: 'agent:approve',
+  compareRun: 'compare:run',
+  compareStop: 'compare:stop',
+  compareReset: 'compare:reset',
   settingsGetAgent: 'settings:getAgent',
   settingsSetAgent: 'settings:setAgent',
   artifactsGetChart: 'artifacts:getChart',
@@ -28,4 +31,5 @@ export type IpcChannel = (typeof IpcChannels)[keyof typeof IpcChannels];
 /** Main → renderer push channels (webContents.send). Payloads are validated in main. */
 export const IpcEvents = {
   agentEvent: 'agent:event',
+  compareEvent: 'compare:event',
 } as const;

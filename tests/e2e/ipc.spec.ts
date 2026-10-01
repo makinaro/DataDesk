@@ -11,6 +11,7 @@ test('bridge exposes only whitelisted methods', async ({ page }) => {
     agent: ['approve', 'onEvent', 'reset', 'send', 'stop'],
     app: ['info'],
     artifacts: ['exportReport', 'getChart', 'getReport'],
+    compare: ['onEvent', 'reset', 'run', 'stop'],
     datasets: ['list', 'pick', 'preview', 'registerFile', 'schema'],
     secrets: ['clear', 'set', 'status'],
     settings: ['getAgent', 'setAgent'],

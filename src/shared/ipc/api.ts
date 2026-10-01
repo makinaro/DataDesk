@@ -1,4 +1,4 @@
-import type { AgentEvent, AgentSettings } from '../agent';
+import type { AgentEvent, AgentSettings, CompareEvent } from '../agent';
 import type { ChartArtifact, ReportArtifact } from '../artifacts';
 import type { ColumnInfo, DatasetPreview, DatasetSummary, RegisteredDataset } from '../datasets';
 import type { IpcChannels } from './channels';
@@ -37,6 +37,16 @@ export interface DatadeskApi {
     approve(requestId: string, approved: boolean): Promise<IpcResult<{ found: boolean }>>;
     /** Subscribes to agent events; returns an unsubscribe function. */
     onEvent(listener: (event: AgentEvent) => void): () => void;
+  };
+  /** Compare mode: one question on both providers side by side (Phase 7). */
+  compare: {
+    /** Starts fresh sessions on both providers; needs both keys. */
+    run(text: string): Promise<IpcResult<{ accepted: true }>>;
+    stop(): Promise<IpcResult<{ ok: true }>>;
+    /** Ends both sessions (frees their processes); used when leaving compare mode. */
+    reset(): Promise<IpcResult<{ ok: true }>>;
+    /** Subscribes to both lanes' events; returns an unsubscribe function. */
+    onEvent(listener: (event: CompareEvent) => void): () => void;
   };
   settings: {
     getAgent(): Promise<IpcResult<AgentSettings>>;

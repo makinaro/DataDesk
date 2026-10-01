@@ -32,4 +32,17 @@ describe('App shell', () => {
     await user.click(screen.getByRole('button', { name: 'Close' }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
+
+  it('swaps the chat for compare mode and back, ending the compare sessions on leaving', async () => {
+    const { api, user } = renderWithProviders(<App />);
+    const toggle = screen.getByRole('button', { name: 'Compare' });
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('region', { name: 'Compare providers' })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Chat' })).not.toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Datasets' })).toBeInTheDocument();
+    await user.click(toggle);
+    expect(screen.getByRole('region', { name: 'Chat' })).toBeInTheDocument();
+    expect(api.compare.reset).toHaveBeenCalledOnce();
+  });
 });

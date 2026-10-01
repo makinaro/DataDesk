@@ -31,7 +31,19 @@ export interface AgentRuntimeDeps {
   discoverHfTools?: (token: string) => Promise<ToolDiscovery>;
   /** Starts an OpenAI session (datadesk-mcp + model). Injected in tests (no process, no network). */
   createOpenAISession?: (input: OpenAISessionInput) => Promise<OpenAISessionSetup>;
+  /**
+   * A compare-mode lane (D-022): one fixed provider, approvals declined without asking, no
+   * Hugging Face, and its own datadesk-mcp temp dir.
+   */
+  lane?: { provider: AnalystProvider; instance: string };
 }
+
+/** Compare lanes never ask: two dialogs for one question, and two writes, would be confusing. */
+const NO_APPROVALS: Pick<ApprovalBroker, 'request' | 'denyAll' | 'respond'> = {
+  request: () => Promise.resolve(false),
+  denyAll: () => undefined,
+  respond: () => false,
+};
 
 /** Shown when the selected provider has no key. */
 const MISSING_KEY: Record<AnalystProvider, string> = {
@@ -52,7 +64,9 @@ export function hfUnavailableNotice(found: Extract<ToolDiscovery, { ok: false }>
 /** Wires settings, keys, paths, approvals and the event bus into an orchestrator. */
 export function createAgentRuntime(deps: AgentRuntimeDeps) {
   const emit = createEventBus(deps.deliver, deps.log);
-  const approvals = new ApprovalBroker(emit);
+  const approvals: Pick<ApprovalBroker, 'request' | 'denyAll' | 'respond'> = deps.lane
+    ? NO_APPROVALS
+    : new ApprovalBroker(emit);
   /** The orchestrator for the selected provider, created on first use. */
   let live: { provider: AnalystProvider; orchestrator: Orchestrator } | undefined;
 
@@ -74,7 +88,7 @@ export function createAgentRuntime(deps: AgentRuntimeDeps) {
           settings,
           paths: deps.paths,
           workspaceDir,
-          instance: 'openai',
+          instance: deps.lane?.instance ?? 'openai',
         });
       },
     });
@@ -94,10 +108,13 @@ export function createAgentRuntime(deps: AgentRuntimeDeps) {
           deps.log('OpenAI key could not be read; starting without the OpenAI tools.');
           return undefined;
         });
-        const storedHfToken = await deps.keyStore.getKey('huggingface').catch(() => {
-          deps.log('Hugging Face token could not be read; starting without the HF tools.');
-          return undefined;
-        });
+        // Compare lanes run without HF: the OpenAI lane has none, so the comparison stays fair.
+        const storedHfToken = deps.lane
+          ? undefined
+          : await deps.keyStore.getKey('huggingface').catch(() => {
+              deps.log('Hugging Face token could not be read; starting without the HF tools.');
+              return undefined;
+            });
         // Runtime discovery (D-019): list HF's tools ourselves, then disallow all but ours.
         const notices: string[] = [];
         let hfToken: string | undefined;
@@ -134,7 +151,7 @@ export function createAgentRuntime(deps: AgentRuntimeDeps) {
           mcpServer: {
             command: process.execPath,
             args: [join(deps.paths.mainDir, 'mcp-server.js')],
-            env: buildServerEnv(deps.paths, 'agent'),
+            env: buildServerEnv(deps.paths, 'agent', deps.lane?.instance),
           },
           canUseTool,
           abortController,
@@ -171,7 +188,7 @@ export function createAgentRuntime(deps: AgentRuntimeDeps) {
      * provider has no key.
      */
     async get(): Promise<Orchestrator> {
-      const { provider } = await deps.settings.getAgent();
+      const provider = deps.lane?.provider ?? (await deps.settings.getAgent()).provider;
       if (!(await deps.keyStore.status())[provider]) {
         throw new IpcUserError('UNAVAILABLE', MISSING_KEY[provider]);
       }
@@ -192,7 +209,7 @@ export function createAgentRuntime(deps: AgentRuntimeDeps) {
     async onSettingsChanged(): Promise<void> {
       const previous = live;
       await previous?.orchestrator.reset('settings');
-      const { provider } = await deps.settings.getAgent();
+      const provider = deps.lane?.provider ?? (await deps.settings.getAgent()).provider;
       if (previous && previous.provider !== provider && live === previous) live = undefined;
     },
     /** A changed or removed key must not keep an old session alive. */

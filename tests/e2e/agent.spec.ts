@@ -45,3 +45,17 @@ test('approving an unknown request is a no-op', async ({ page }) => {
   );
   expect(result).toEqual({ ok: true, data: { found: false } });
 });
+
+test('compare mode explains that it needs both keys, and the chat comes back', async ({ page }) => {
+  await page.getByRole('button', { name: 'Compare' }).click();
+  await page.getByLabel('Question to compare').fill('Which region sold the most?');
+  await page
+    .getByRole('region', { name: 'Compare providers' })
+    .getByRole('button', { name: 'Compare' })
+    .click();
+  await expect(page.getByRole('alert')).toContainText(
+    'needs both an Anthropic and an OpenAI API key',
+  );
+  await page.getByRole('button', { name: 'Compare', pressed: true }).click();
+  await expect(page.getByLabel('Message')).toBeVisible();
+});

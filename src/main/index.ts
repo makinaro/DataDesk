@@ -2,11 +2,13 @@ import { join } from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain, safeStorage } from 'electron';
 import { IpcEvents } from '../shared/ipc/channels';
 import { createAgentRuntime } from './agent/agentRuntime';
+import { createCompareRuntime } from './agent/compareRuntime';
 import { ArtifactStore } from '../node-shared/artifactStore';
 import { printHtmlToPdf } from './artifacts/printPdf';
 import { renderChartSvg } from './artifacts/chartSvg';
 import { registerAgentHandlers } from './ipc/handlers/agent';
 import { registerArtifactHandlers } from './ipc/handlers/artifacts';
+import { registerCompareHandlers } from './ipc/handlers/compare';
 import { registerAppHandlers } from './ipc/handlers/app';
 import { registerDatasetHandlers } from './ipc/handlers/datasets';
 import { registerSecretsHandlers } from './ipc/handlers/secrets';
@@ -107,8 +109,29 @@ function start(): void {
           console.error(`[agent] ${message}`, detail ?? '');
         },
       });
+      const compare = createCompareRuntime({
+        keyStore,
+        settings,
+        paths,
+        app: {
+          isPackaged: app.isPackaged,
+          version: app.getVersion(),
+          resourcesPath: process.resourcesPath,
+        },
+        deliver: (event) => {
+          for (const win of BrowserWindow.getAllWindows()) {
+            win.webContents.send(IpcEvents.compareEvent, event);
+          }
+        },
+        log: (message, detail) => {
+          console.error(`[compare] ${message}`, detail ?? '');
+        },
+      });
       // Every key shapes the session (OpenAI and Hugging Face add tools), so any change resets it.
-      registerSecretsHandlers(handle, keyStore, () => agent.onKeyChanged());
+      registerSecretsHandlers(handle, keyStore, async () => {
+        await Promise.all([agent.onKeyChanged(), compare.onKeyChanged()]);
+      });
+      registerCompareHandlers(handle, compare);
       registerArtifactHandlers(handle, {
         store: new ArtifactStore(join(app.getPath('userData'), 'artifacts')),
         pickSavePath: async (defaultName, format) => {
@@ -134,7 +157,9 @@ function start(): void {
         currentOrchestrator: () => agent.current(),
         approvals: agent.approvals,
         settings,
-        onSettingsChanged: () => agent.onSettingsChanged(),
+        onSettingsChanged: async () => {
+          await Promise.all([agent.onSettingsChanged(), compare.onSettingsChanged()]);
+        },
       });
       const uiClient = new UiMcpClient({
         createTransport: () =>
@@ -171,6 +196,9 @@ function start(): void {
         });
         agent.dispose().catch((error: unknown) => {
           console.error('[agent] dispose failed', error);
+        });
+        compare.dispose().catch((error: unknown) => {
+          console.error('[compare] dispose failed', error);
         });
       });
 

@@ -714,3 +714,59 @@ probe that runs the SDK with scripted fake models (no network):
 - Prices are constants; a price change needs a code change. Long-context rates (prompts over
   272K tokens) are not modelled.
 - An interrupted turn leaves no trace in the model's context (on Claude it does).
+
+## D-022: Provider switch and compare mode (2026-10-01)
+
+**Context:** Phase 7 lets the user pick the analyst's provider, and adds a compare mode that
+asks both providers the same question and shows answer, tool calls, cost and latency side by
+side. Both orchestrators emit the same `AgentEvent`s (D-021), so the UI can treat them alike.
+
+**Decision:**
+
+- **Settings:**
+  - `provider` (`anthropic` | `openai`) and `openaiModel` (from the priced `OPENAI_MODELS`) are
+    added to `AgentSettings`. Both have zod defaults, so a `settings.json` from before Phase 7
+    still loads, as Claude.
+  - `model` stays the Claude model, so switching back and forth keeps both choices.
+- **Switching:**
+  - The runtime needs the selected provider's key (`UNAVAILABLE` names it). Saving settings goes
+    through `onSettingsChanged`: it resets the current orchestrator once (`'settings'`) and drops
+    it if the provider changed. The next message creates the other one.
+  - Swapping lazily on the next send would emit a second reset marker after the renderer had
+    already shown the user's new message, and the marker would clear it.
+- **Compare mode is two "lanes":** each lane is an ordinary `createAgentRuntime` with
+  `lane: { provider, instance }`.
+  - **Fixed provider:** each lane ignores the chat's provider setting.
+  - **Own event bus:** each lane numbers its own events. They go on a separate push channel,
+    `compare:event`, as `{ provider, event }`, with the envelope validated
+    (`CompareEventSchema`).
+  - **Own datadesk-mcp temp dir:** `agent-compare-<provider>`.
+  - **No approvals:** tools that need the user are declined without asking. One question would
+    otherwise raise two dialogs, and both lanes would register or download the same thing.
+  - **No Hugging Face:** the OpenAI lane has none (D-021), so the Claude lane runs without it
+    too, keeping the comparison fair. That also means no HF discovery traffic.
+- **Each question starts fresh sessions on both sides** (one-shot), so earlier comparisons don't
+  colour the next. Leaving compare mode (`compare:reset`) ends both sessions, so no Claude CLI
+  or datadesk-mcp stays idle in the background. Settings and key changes reset the lanes too.
+- **Both keys are required** (`compare:run` refuses with `UNAVAILABLE`) rather than running one
+  lane alone, which wouldn't be a comparison.
+- **Renderer:** each lane feeds the chat's own `agentReducer`, and `summarizeLane` reduces the
+  state to the comparison. "Cost" is the turn's cost. "Turn (SDK)" is the duration the provider
+  reports. "Time to answer" runs from the click to `turn_complete`, including session start (the
+  Claude CLI process or the datadesk-mcp spawn).
+
+**Alternatives:**
+
+- Tagging every `AgentEvent` with a lane id: it would touch every event producer and consumer
+  for a feature that only compare mode needs.
+- One shared approval dialog for both lanes: twice the side effects for one click.
+- Keeping compare sessions alive for follow-up questions: then the comparison depends on the
+  history, and processes linger while the user is back in the chat.
+
+**Consequences:**
+
+- Compare mode costs two analyst runs per question, and the user sees both prices.
+- Charts and reports created in compare mode are saved as usual, but compare mode shows only
+  their tool calls, not the artifacts.
+- Up to three agent sessions can run at once (chat plus two lanes), each with its own
+  datadesk-mcp. They share the catalog file, as the UI's server already does.

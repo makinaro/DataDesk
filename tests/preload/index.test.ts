@@ -35,6 +35,7 @@ describe('preload bridge', () => {
       'agent',
       'app',
       'artifacts',
+      'compare',
       'datasets',
       'secrets',
       'settings',
@@ -42,6 +43,7 @@ describe('preload bridge', () => {
     expect(Object.keys(api.artifacts).sort()).toEqual(['exportReport', 'getChart', 'getReport']);
     expect(Object.keys(api.agent).sort()).toEqual(['approve', 'onEvent', 'reset', 'send', 'stop']);
     expect(Object.keys(api.settings).sort()).toEqual(['getAgent', 'setAgent']);
+    expect(Object.keys(api.compare).sort()).toEqual(['onEvent', 'reset', 'run', 'stop']);
     expect(Object.keys(api.app).sort()).toEqual(['info']);
     expect(Object.keys(api.secrets).sort()).toEqual(['clear', 'set', 'status']);
     expect(Object.keys(api.datasets).sort()).toEqual([
@@ -84,6 +86,23 @@ describe('preload bridge', () => {
     expect(removeListener).toHaveBeenCalledWith('agent:event', handler);
   });
 
+  it('compare.onEvent passes only the payload on compare:event and can unsubscribe', () => {
+    on.mockClear();
+    const listener = vi.fn();
+    const unsubscribe = api.compare.onEvent(listener);
+    const [channel, handler] = on.mock.calls[0] as [string, (e: unknown, p: unknown) => void];
+    expect(channel).toBe('compare:event');
+    const payload = {
+      provider: 'openai',
+      event: { kind: 'status', status: 'idle', seq: 0, at: 1 },
+    };
+    handler({ sender: 'SHOULD-NOT-LEAK' }, payload);
+    expect(listener).toHaveBeenCalledWith(payload);
+    expect(JSON.stringify(listener.mock.calls)).not.toContain('SHOULD-NOT-LEAK');
+    unsubscribe();
+    expect(removeListener).toHaveBeenCalledWith('compare:event', handler);
+  });
+
   it('maps methods to the right channels and payloads', async () => {
     invoke.mockClear();
     await api.secrets.set('openai', 'sk-test-12345678');
@@ -98,6 +117,9 @@ describe('preload bridge', () => {
     await api.artifacts.getChart(CHART);
     await api.artifacts.getReport(REPORT);
     await api.artifacts.exportReport({ id: REPORT, format: 'md' });
+    await api.compare.run('Which region?');
+    await api.compare.stop();
+    await api.compare.reset();
     expect(invoke.mock.calls).toEqual([
       ['secrets:set', { provider: 'openai', key: 'sk-test-12345678' }],
       ['secrets:clear', { provider: 'huggingface' }],
@@ -111,6 +133,9 @@ describe('preload bridge', () => {
       ['artifacts:getChart', { id: CHART }],
       ['artifacts:getReport', { id: REPORT }],
       ['artifacts:exportReport', { id: REPORT, format: 'md' }],
+      ['compare:run', { text: 'Which region?' }],
+      ['compare:stop', undefined],
+      ['compare:reset', undefined],
     ]);
   });
 
