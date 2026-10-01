@@ -9,7 +9,7 @@ const PROVIDERS: { id: Provider; label: string; hint: string }[] = [
   {
     id: 'openai',
     label: 'OpenAI',
-    hint: 'Enables column search and second-opinion tools. When the analyst uses them, OpenAI receives column names and types, a few sample values, the search wording, and for second opinions the question, the SQL, a preview of up to 50 result rows and the draft answer. Critiques are requested with storage off; OpenAI’s API data policy still applies. Changing this key starts a new conversation.',
+    hint: 'Enables column search and second-opinion tools. When the analyst uses them, OpenAI receives column names and types, a few sample values, the search wording, and for second opinions the question, the SQL, a preview of up to 50 result rows and the draft answer. If you also choose OpenAI as the analyst’s provider (below), OpenAI receives the whole conversation: your messages, the analyst’s instructions, and every tool call and result, including schemas, sample rows and query results. Requests are sent with storage off and tracing disabled; OpenAI’s API data policy still applies. Changing this key starts a new conversation.',
   },
   {
     id: 'huggingface',

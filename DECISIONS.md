@@ -607,3 +607,166 @@ Verified 2026-10-01 from the HF OpenAPI description, the huggingface.js `file-do
 - If HF moves its CDN outside `*.hf.co`, downloads fail with "not a Hugging Face host" until the
   list is updated. That fails closed.
 - A file is downloaded again each time it is loaded; there is no cache by ETag.
+
+## D-021: OpenAI Agents SDK provider: SDK loop, DataDesk-owned tools and approvals (2026-10-01)
+
+**Context:** Phase 7 runs the same analyst on the OpenAI Agents SDK as a second provider behind
+the `Orchestrator` seam. Verified 2026-10-01 against the npm registry and the installed typings
+of `@openai/agents-core` / `@openai/agents-openai` **0.18.0** (they depend on `openai` ^7.2.0,
+deduped to our 7.25.0, and optionally on `@modelcontextprotocol/client` 2.2.0). The docs-researcher
+run was cut short by a usage limit, so the facts below come from the `.d.ts` files and from a
+probe that runs the SDK with scripted fake models (no network):
+
+- `Runner.run(agent, input, { stream: true, maxTurns, signal })` returns a `StreamedRunResult`.
+  It yields `raw_model_stream_event` (`response_started`, `output_text_delta`, `response_done`
+  with usage), `run_item_stream_event` (`message_output_created`, `tool_called`, `tool_output`)
+  and `agent_updated_stream_event`. `result.history` is the replayable conversation.
+- `agent.asTool({ toolName, toolDescription, runConfig, runOptions, onStream })` runs a fresh
+  nested agent. `onStream` receives the nested run's events with the parent's `toolCall.callId`.
+  The nested run inherits the runner's model settings, and its usage is added to the parent's.
+- **Agent-tool names are rewritten:** `sql-analyst` reaches the model as `sql_analyst`.
+- A function tool's `invoke(context, input, details)` gets `details.toolCall.callId` and
+  `details.signal`. The Responses API's tool outputs carry no error flag.
+- `MCPServerStdio({ command, args, env, cwd, cacheToolsList, clientSessionTimeoutSeconds })`
+  spawns through `@modelcontextprotocol/client`'s `StdioClientTransport`. That transport merges a
+  short OS allowlist (`getDefaultEnvironment()`) with our `env`, never all of `process.env`.
+- Tracing: `RunConfig.tracingDisabled`. Core's default exporter is the console. The OpenAI
+  exporter is only installed by `setDefaultOpenAITracingExporter()`, which we never call.
+- The SDK reports tokens, not dollars. Prices come from developers.openai.com/api/docs/pricing
+  (2026-10-01), in USD per 1M tokens (input / cached / output): gpt-5.4-mini 0.75 / 0.075 / 4.50,
+  gpt-5.4 2.50 / 0.25 / 15, gpt-5.5 5 / 0.50 / 30.
+
+**Decision:**
+
+- **Packages:** `@openai/agents-core` and `@openai/agents-openai` (exact versions). The umbrella
+  `@openai/agents` adds the realtime package, which we don't need.
+- **Same datadesk-mcp, our own tool wrappers.** datadesk-mcp runs over stdio through the SDK's
+  `MCPServerStdio`, with the env from `buildServerEnv(…, 'agent', instance)` plus
+  `DATADESK_OPENAI_API_KEY`. That env goes to the child's environment, not its command line. We
+  don't put the server on agents (`mcpServers`). Instead `analystAgents.ts` lists the server's
+  tools once and builds one `FunctionTool` per allowed tool per caller. This gives us:
+  - **One allowlist, built by us.** A tool datadesk-mcp adds later never reaches the model, and a
+    missing expected tool fails the session. This is the stand-in for Claude's init guard.
+  - **Neutral names** (`mcp__datadesk__run_sql`), so events, artifacts, the timeline and the
+    shared test fixture are identical across providers.
+  - **Approvals inline:** `register_dataset` awaits `ApprovalBroker` inside the tool. The
+    questions, validation and stripping come from the shared `approvalQuestions.ts`. The SDK's
+    `needsApproval` would interrupt the run and need a serialize-and-resume step for each
+    approval, including inside nested agents. Only the analyst may ask; for a sub-agent the tool
+    itself refuses, on top of not being in its row.
+  - **An error flag:** each wrapper records which calls failed, for `tool_result.isError`.
+- **Sub-agents as tools:** `profiler`, `sql_analyst` and `report_writer` come from the same
+  `SUBAGENT_TOOLS` rows, prompts and preloaded skills as on Claude (D-017). They are fresh nested
+  runs with at most 20 turns and no sub-agent tools, so nesting is impossible. The mapper reports
+  a delegation as the neutral `Agent {subagent_type, prompt}`, the Claude shape, so the timeline
+  lanes work unchanged.
+- **Skills served by DataDesk:** the SDK has no Agent Skills. The same plugin `SKILL.md` files are
+  read at session start. Sub-agents get theirs appended to their instructions, and the analyst
+  gets a `Skill` tool that returns a skill's body on demand: the same progressive disclosure.
+- **No Hugging Face on this provider (Phase 7).** The remote HF server, its discovery, guard and
+  scope hook are wired into the Claude CLI. Without the token, datadesk-mcp doesn't register
+  `load_hf_dataset`, and there is no `dataset-scout`.
+- **OpenAI tools on:** `search_columns` and `second_opinion` are enabled, because the key that
+  runs the analyst already sends the conversation to OpenAI.
+- **Privacy:**
+  - `store: false` with `include: ['reasoning.encrypted_content']`, and the history replayed from
+    memory. The Responses API otherwise keeps requests for 30+ days.
+  - Tracing is disabled per run, also for nested runs.
+  - Errors are mapped by class (`explainOpenAIError`), so a raw API message, which can echo a
+    masked key, never reaches the chat.
+  - The client pins `baseURL` and nulls org/project, as in D-018.
+- **Cost and limits:**
+  - The model must be one of `OPENAI_MODELS`, a fixed list matching our price table.
+  - Cost is added up per `response_done`, from the analyst and its sub-agents. Reaching
+    `maxBudgetUsd` aborts the turn (`error_max_budget_usd`) and refuses later turns.
+  - `maxTurns` maps to the run's `maxTurns` (`error_max_turns`).
+  - `toolNotFoundBehavior: 'return_error_to_model'`, so a hallucinated tool name doesn't end the
+    turn.
+- **Lifecycle:**
+  - Turns run one after another.
+  - `stop()` aborts the turn's signal, which also reaches nested runs and tools, and denies its
+    approvals. A stopped turn is not added to the history.
+  - `reset()` emits the boundary marker, drops the history and closes datadesk-mcp.
+- **Temp dirs:** concurrent agent servers (chat and compare mode, two providers) each get their
+  own DuckDB spill directory (`duckdb-tmp/agent-<instance>`).
+
+**Alternatives:**
+
+- `mcpServers` + `toolFilter` on each agent: SDK-native, but it gives raw tool names, no error
+  flag and approval only through interrupt/resume. Scoping per caller would need a callable
+  filter keyed on the agent.
+- `needsApproval` + `result.interruptions` + `RunState` resume: the documented
+  human-in-the-loop path. It ends and restarts the stream on every approval, and a sub-agent's
+  interruption surfaces through the parent's state. The inline `await` matches how the Claude
+  side's `canUseTool` already works.
+- Handoffs instead of agents-as-tools: control would pass to the sub-agent for the rest of the
+  conversation, which is not how the Claude sub-agents behave.
+- `previousResponseId` instead of replaying the history: needs `store: true`.
+- A free-text model field: cost and the spend cap would be unknown for unlisted models.
+
+**Consequences:**
+
+- The OpenAI key now also _runs the analyst_ when the user picks OpenAI. The Settings text has to
+  say so; that comes with the provider switch.
+- `store: false` with encrypted reasoning items is the documented stateless pattern, but no real
+  call has exercised it here. It is on the manual-check list. If OpenAI rejects replayed
+  reasoning items, the fallback is `reasoningItemIdPolicy: 'omit'`.
+- Prices are constants; a price change needs a code change. Long-context rates (prompts over
+  272K tokens) are not modelled.
+- An interrupted turn leaves no trace in the model's context (on Claude it does).
+
+## D-022: Provider switch and compare mode (2026-10-01)
+
+**Context:** Phase 7 lets the user pick the analyst's provider, and adds a compare mode that
+asks both providers the same question and shows answer, tool calls, cost and latency side by
+side. Both orchestrators emit the same `AgentEvent`s (D-021), so the UI can treat them alike.
+
+**Decision:**
+
+- **Settings:**
+  - `provider` (`anthropic` | `openai`) and `openaiModel` (from the priced `OPENAI_MODELS`) are
+    added to `AgentSettings`. Both have zod defaults, so a `settings.json` from before Phase 7
+    still loads, as Claude.
+  - `model` stays the Claude model, so switching back and forth keeps both choices.
+- **Switching:**
+  - The runtime needs the selected provider's key (`UNAVAILABLE` names it). Saving settings goes
+    through `onSettingsChanged`: it resets the current orchestrator once (`'settings'`) and drops
+    it if the provider changed. The next message creates the other one.
+  - Swapping lazily on the next send would emit a second reset marker after the renderer had
+    already shown the user's new message, and the marker would clear it.
+- **Compare mode is two "lanes":** each lane is an ordinary `createAgentRuntime` with
+  `lane: { provider, instance }`.
+  - **Fixed provider:** each lane ignores the chat's provider setting.
+  - **Own event bus:** each lane numbers its own events. They go on a separate push channel,
+    `compare:event`, as `{ provider, event }`, with the envelope validated
+    (`CompareEventSchema`).
+  - **Own datadesk-mcp temp dir:** `agent-compare-<provider>`.
+  - **No approvals:** tools that need the user are declined without asking. One question would
+    otherwise raise two dialogs, and both lanes would register or download the same thing.
+  - **No Hugging Face:** the OpenAI lane has none (D-021), so the Claude lane runs without it
+    too, keeping the comparison fair. That also means no HF discovery traffic.
+- **Each question starts fresh sessions on both sides** (one-shot), so earlier comparisons don't
+  colour the next. Leaving compare mode (`compare:reset`) ends both sessions, so no Claude CLI
+  or datadesk-mcp stays idle in the background. Settings and key changes reset the lanes too.
+- **Both keys are required** (`compare:run` refuses with `UNAVAILABLE`) rather than running one
+  lane alone, which wouldn't be a comparison.
+- **Renderer:** each lane feeds the chat's own `agentReducer`, and `summarizeLane` reduces the
+  state to the comparison. "Cost" is the turn's cost. "Turn (SDK)" is the duration the provider
+  reports. "Time to answer" runs from the click to `turn_complete`, including session start (the
+  Claude CLI process or the datadesk-mcp spawn).
+
+**Alternatives:**
+
+- Tagging every `AgentEvent` with a lane id: it would touch every event producer and consumer
+  for a feature that only compare mode needs.
+- One shared approval dialog for both lanes: twice the side effects for one click.
+- Keeping compare sessions alive for follow-up questions: then the comparison depends on the
+  history, and processes linger while the user is back in the chat.
+
+**Consequences:**
+
+- Compare mode costs two analyst runs per question, and the user sees both prices.
+- Charts and reports created in compare mode are saved as usual, but compare mode shows only
+  their tool calls, not the artifacts.
+- Up to three agent sessions can run at once (chat plus two lanes), each with its own
+  datadesk-mcp. They share the catalog file, as the UI's server already does.

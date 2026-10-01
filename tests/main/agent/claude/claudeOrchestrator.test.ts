@@ -429,3 +429,29 @@ describe('ClaudeOrchestrator lifecycle (review regressions)', () => {
     expect(error?.kind === 'error' && error.message.length).toBeLessThanOrEqual(2_000);
   });
 });
+
+describe('ClaudeOrchestrator stop while starting (Phase 7 review)', () => {
+  it('drops the pending message instead of running it once the CLI is up', async () => {
+    const t = setup([[sdk.result(0.01)], [sdk.result(0.01)]]);
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const original = t.createSession.getMockImplementation();
+    t.createSession.mockImplementationOnce(async (ctx) => {
+      await gate;
+      return original ? original(ctx) : Promise.reject(new Error('no setup'));
+    });
+    t.orchestrator.send('expensive question');
+    await t.orchestrator.stop();
+    release();
+    await t.until(() => t.events.at(-1)?.kind === 'status');
+    await new Promise((r) => setTimeout(r, 20));
+    expect(t.calls.prompts).toEqual([]);
+    const statuses = t.events.flatMap((e) => (e.kind === 'status' ? [e.status] : []));
+    expect(statuses).toEqual(['starting', 'stopping', 'idle']);
+    t.orchestrator.send('next');
+    await t.until(() => t.kinds().includes('turn_complete'));
+    expect(t.calls.prompts).toEqual(['next']);
+  });
+});

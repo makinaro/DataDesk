@@ -112,8 +112,33 @@ export type AgentEventInput = AgentEvent extends infer E
     : never
   : never;
 
+/**
+ * OpenAI models the analyst can run on (Phase 7). A fixed list, because the OpenAI SDK reports
+ * tokens, not dollars: cost (and the spend cap) comes from DataDesk's own price table.
+ */
+export const OPENAI_MODELS = ['gpt-5.4-mini', 'gpt-5.4', 'gpt-5.5'] as const;
+export const OpenAIModelSchema = z.enum(OPENAI_MODELS);
+export type OpenAIModel = z.infer<typeof OpenAIModelSchema>;
+
+/** Which SDK runs the analyst; named like the key it needs (secrets ProviderSchema). */
+export const AnalystProviderSchema = z.enum(['anthropic', 'openai']);
+export type AnalystProvider = z.infer<typeof AnalystProviderSchema>;
+
+/**
+ * Compare mode (Phase 7): the same question runs on both providers at once, each in its own
+ * one-shot session. Each lane's events are ordinary AgentEvents with their own `seq`, tagged
+ * with the provider; they go on `compare:event`, never into the chat.
+ */
+export const CompareEventSchema = z.strictObject({
+  provider: AnalystProviderSchema,
+  event: AgentEventSchema,
+});
+export type CompareEvent = z.infer<typeof CompareEventSchema>;
+
 export const AgentSettingsSchema = z.strictObject({
-  /** Model alias or full ID passed to the provider (never starts with '-', so never a CLI flag). */
+  /** Defaults keep settings files from before Phase 7 valid (they have no provider). */
+  provider: AnalystProviderSchema.default('anthropic'),
+  /** Claude model alias or full ID (never starts with '-', so never a CLI flag). */
   model: z
     .string()
     .min(1)
@@ -122,6 +147,8 @@ export const AgentSettingsSchema = z.strictObject({
       /^[a-z0-9][a-z0-9.\-[\]]*$/i,
       'Use a model alias or ID such as sonnet or claude-sonnet-5-5.',
     ),
+  /** The model when OpenAI runs the analyst (a fixed list: cost comes from our price table). */
+  openaiModel: OpenAIModelSchema.default('gpt-5.4-mini'),
   /** Hard cap on spend per conversation. */
   maxBudgetUsd: z.number().min(0.01).max(100),
   /** Agentic turns per user message. */
@@ -130,7 +157,9 @@ export const AgentSettingsSchema = z.strictObject({
 export type AgentSettings = z.infer<typeof AgentSettingsSchema>;
 
 export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
+  provider: 'anthropic',
   model: 'sonnet',
+  openaiModel: 'gpt-5.4-mini',
   maxBudgetUsd: 2,
   maxTurns: 30,
 };

@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type { DatadeskApi } from '../shared/ipc/api';
-import type { AgentEvent } from '../shared/agent';
+import type { AgentEvent, CompareEvent } from '../shared/agent';
 import { IpcChannels, IpcEvents, type IpcChannel } from '../shared/ipc/channels';
 import type { IpcRequest, IpcResponse } from '../shared/ipc/contract';
 import type { IpcResult } from '../shared/ipc/result';
@@ -63,6 +63,20 @@ const api: DatadeskApi = {
       ipcRenderer.on(IpcEvents.agentEvent, handler);
       return () => {
         ipcRenderer.removeListener(IpcEvents.agentEvent, handler);
+      };
+    },
+  },
+  compare: {
+    run: (text) => invoke(IpcChannels.compareRun, { text }),
+    stop: () => invoke(IpcChannels.compareStop),
+    reset: () => invoke(IpcChannels.compareReset),
+    onEvent: (listener) => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: CompareEvent) => {
+        listener(payload);
+      };
+      ipcRenderer.on(IpcEvents.compareEvent, handler);
+      return () => {
+        ipcRenderer.removeListener(IpcEvents.compareEvent, handler);
       };
     },
   },

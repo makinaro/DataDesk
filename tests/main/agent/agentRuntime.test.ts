@@ -6,8 +6,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createAgentRuntime } from '../../../src/main/agent/agentRuntime';
 import { IpcUserError } from '../../../src/main/ipc/errors';
 import type { ToolDiscovery } from '../../../src/main/mcp/toolDiscovery';
-import { DEFAULT_AGENT_SETTINGS, type AgentEvent } from '../../../src/shared/agent';
+import type { OpenAISessionSetup } from '../../../src/main/agent/openai/openaiOrchestrator';
+import type { OpenAISessionInput } from '../../../src/main/agent/openai/openaiSession';
+import {
+  DEFAULT_AGENT_SETTINGS,
+  type AgentEvent,
+  type AnalystProvider,
+} from '../../../src/shared/agent';
 import { PLUGIN_DIR, scriptedQuery, sdk } from './claude/fakeSdk';
+import { fakeServer, scriptedModel } from './openai/fakeOpenAI';
 
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({ query: vi.fn() }));
 
@@ -28,6 +35,7 @@ interface RuntimeOpts {
   hfUnreadable?: boolean;
   /** What listing the HF server's tools returns (default: the anonymous set plus create_repo). */
   hfDiscovery?: ToolDiscovery;
+  provider?: AnalystProvider;
 }
 
 function runtime(opts: RuntimeOpts = {}) {
@@ -58,12 +66,35 @@ function runtime(opts: RuntimeOpts = {}) {
       },
     ),
   );
+  const settings = {
+    ...DEFAULT_AGENT_SETTINGS,
+    model: 'haiku',
+    provider: opts.provider ?? 'anthropic',
+  };
+  const openai = scriptedModel({ analyst: [{ text: 'OpenAI answer' }] });
+  const openaiServer = fakeServer();
+  const createOpenAISession = vi.fn((input: OpenAISessionInput) =>
+    Promise.resolve<OpenAISessionSetup>({
+      modelName: input.modelName,
+      model: openai.model,
+      server: openaiServer.server,
+      skills: [],
+      openaiTools: true,
+      maxTurns: input.settings.maxTurns,
+      maxBudgetUsd: input.settings.maxBudgetUsd,
+    }),
+  );
   const rt = createAgentRuntime({
     keyStore: {
-      status: () => Promise.resolve({ anthropic: hasKey, openai: false, huggingface: false }),
+      status: () =>
+        Promise.resolve({
+          anthropic: hasKey,
+          openai: opts.openaiKey !== undefined,
+          huggingface: false,
+        }),
       getKey: (provider: string) => keys[provider]?.() ?? Promise.resolve(undefined),
     },
-    settings: { getAgent: () => Promise.resolve({ ...DEFAULT_AGENT_SETTINGS, model: 'haiku' }) },
+    settings: { getAgent: () => Promise.resolve(settings) },
     paths: {
       userData,
       mainDir: 'C:/app/out/main',
@@ -75,8 +106,18 @@ function runtime(opts: RuntimeOpts = {}) {
     log: () => undefined,
     query: queryFn,
     discoverHfTools,
+    createOpenAISession,
   });
-  return { rt, delivered, calls, workspace, discoverHfTools };
+  return {
+    rt,
+    delivered,
+    calls,
+    workspace,
+    discoverHfTools,
+    settings,
+    createOpenAISession,
+    openaiServer,
+  };
 }
 
 describe('createAgentRuntime', () => {
@@ -213,5 +254,71 @@ describe('createAgentRuntime', () => {
     const options = calls.options as Options;
     expect(options.env).not.toHaveProperty('DATADESK_HF_TOKEN');
     expect(Object.keys(options.mcpServers ?? {})).toEqual(['datadesk']);
+  });
+
+  describe('provider switch (Phase 7)', () => {
+    it('runs the analyst on OpenAI when selected, with the OpenAI key and model', async () => {
+      const { rt, delivered, calls, createOpenAISession, workspace } = runtime({
+        provider: 'openai',
+        openaiKey: 'sk-openai-runtime-000000',
+      });
+      (await rt.get()).send('hello');
+      await vi.waitFor(() => {
+        expect(delivered.some((e) => e.kind === 'turn_complete')).toBe(true);
+      });
+      expect(createOpenAISession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          apiKey: 'sk-openai-runtime-000000',
+          modelName: 'gpt-5.4-mini',
+          workspaceDir: workspace,
+          instance: 'openai',
+        }),
+      );
+      expect(calls.prompts).toEqual([]); // Claude never started
+      expect(delivered.find((e) => e.kind === 'session')).toMatchObject({ model: 'gpt-5.4-mini' });
+      expect(delivered.flatMap((e) => (e.kind === 'assistant_message' ? [e.text] : []))).toEqual([
+        'OpenAI answer',
+      ]);
+    });
+
+    it('refuses OpenAI without an OpenAI key, even with an Anthropic key', async () => {
+      const { rt } = runtime({ provider: 'openai' });
+      const error = await rt.get().catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(IpcUserError);
+      expect((error as IpcUserError).message).toMatch(/OpenAI API key/);
+    });
+
+    it('switching provider ends the conversation once and swaps the orchestrator', async () => {
+      const { rt, delivered, calls, settings, openaiServer } = runtime({
+        openaiKey: 'sk-openai-runtime-000000',
+      });
+      const claude = await rt.get();
+      claude.send('hello');
+      await vi.waitFor(() => {
+        expect(calls.prompts).toHaveLength(1);
+      });
+      settings.provider = 'openai';
+      await rt.onSettingsChanged();
+      expect(calls.closed).toBe(true);
+      const openai = await rt.get();
+      expect(openai).not.toBe(claude);
+      openai.send('hello again');
+      await vi.waitFor(() => {
+        expect(delivered.filter((e) => e.kind === 'turn_complete')).toHaveLength(2);
+      });
+      // Exactly one boundary: a second one would clear the message the user just sent.
+      expect(delivered.filter((e) => e.kind === 'conversation_reset')).toEqual([
+        expect.objectContaining({ reason: 'settings' }),
+      ]);
+      await rt.onKeyChanged();
+      expect(openaiServer.closed()).toBe(1);
+    });
+
+    it('a settings change on the same provider keeps the orchestrator', async () => {
+      const { rt } = runtime();
+      const before = await rt.get();
+      await rt.onSettingsChanged();
+      expect(await rt.get()).toBe(before);
+    });
   });
 });

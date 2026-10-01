@@ -5,19 +5,11 @@ import type {
   SDKMessage,
   SDKUserMessage,
 } from '@anthropic-ai/claude-agent-sdk';
-import { z } from 'zod';
 import { isSubagentTool, preview, type ResetReason } from '../../../shared/agent';
-import { DatasetNameSchema } from '../../../shared/datasets';
 import type { ApprovalBroker } from '../approvals';
+import { approvalQuestion, needsApproval } from '../approvalQuestions';
 import type { EmitAgentEvent, Orchestrator } from '../orchestrator';
-import {
-  DEFAULT_HF_REVISION,
-  defaultHfDatasetName,
-  HF_MAX_DOWNLOAD_BYTES,
-  LoadHfDatasetInput,
-} from '../../../shared/hf';
-import { APPROVAL_TOOLS, type SessionTools } from './agentOptions';
-import { HF_APPROVAL_TOOLS } from './datadeskTools';
+import type { SessionTools } from './agentOptions';
 import { checkInit } from './initGuard';
 import { InputQueue } from './inputQueue';
 import { createSdkMapper } from './sdkMapper';
@@ -68,78 +60,6 @@ interface Session {
 /** Thrown when a reset happened while a session was still starting. Not an error for the user. */
 class SupersededError extends Error {}
 
-const RegisterInput = z.object({
-  path: z.string().min(1).max(4096),
-  name: DatasetNameSchema.optional(),
-  sheet: z.string().max(100).optional(),
-});
-
-interface ApprovalQuestion {
-  title: string;
-  lines: string[];
-  /** Exactly what the tool receives if the user approves (validated and stripped). */
-  input: Record<string, unknown>;
-  /** Told to the analyst on a denial. */
-  declined: string;
-}
-
-/** Anything but the main branch is pointed out: users rarely read the revision line. */
-function revisionNote(revision: string): string {
-  if (revision === DEFAULT_HF_REVISION) return revision;
-  if (revision === 'refs/convert/parquet') return `${revision} (the Hub's automatic Parquet copy)`;
-  return `${revision} (NOT the main branch: only allow it if you expected this version)`;
-}
-
-const mb = (bytes: number) => `${String(Math.round(bytes / 1024 ** 2))} MB`;
-
-/**
- * Tools that always ask the user (D-010, D-020): how to validate the input and what to show.
- * Returns undefined for input the tool would reject. load_hf_dataset is only registered with an
- * HF token; without one the tool doesn't exist and the guard refuses it.
- */
-const APPROVALS: Record<string, ((input: unknown) => ApprovalQuestion | undefined) | undefined> = {
-  [APPROVAL_TOOLS[0]]: (input) => {
-    const parsed = RegisterInput.safeParse(input);
-    if (!parsed.success) return undefined;
-    const { path, name, sheet } = parsed.data;
-    return {
-      title: 'Add a dataset?',
-      lines: [
-        'The analyst wants to register this file so it can query it:',
-        '',
-        `File:  ${path}`,
-        ...(name ? [`Name:  ${name} (replaces any dataset with this name)`] : []),
-        ...(sheet ? [`Sheet: ${sheet}`] : []),
-      ],
-      input: parsed.data,
-      declined: 'The user declined to add this file.',
-    };
-  },
-  [HF_APPROVAL_TOOLS[0]]: (input) => {
-    // Strict: an unknown key means the model sent something the dialog wouldn't show.
-    const parsed = LoadHfDatasetInput.strict().safeParse(input);
-    if (!parsed.success) return undefined;
-    const { repo_id, path, revision, name } = parsed.data;
-    return {
-      title: 'Download a dataset from Hugging Face?',
-      lines: [
-        'The analyst wants to download this file from the Hugging Face Hub and add it as a dataset:',
-        '',
-        `Dataset:  ${repo_id}`,
-        `          https://huggingface.co/datasets/${repo_id}`,
-        `File:     ${path}`,
-        `Revision: ${revisionNote(revision ?? DEFAULT_HF_REVISION)}`,
-        `Name:     ${name ?? defaultHfDatasetName(repo_id, path)} (replaces any dataset with this name)`,
-        '',
-        `It is saved in DataDesk's data folder. Files over ${mb(HF_MAX_DOWNLOAD_BYTES)} are refused.`,
-        'Anyone can publish on the Hub: the contents are treated as untrusted data.',
-      ],
-      input: parsed.data,
-      declined: 'The user declined to download this dataset.',
-    };
-  },
-};
-
 function firstLine(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   return message.split('\n')[0] ?? message;
@@ -152,6 +72,8 @@ export class ClaudeOrchestrator implements Orchestrator {
   private session: Promise<Session> | undefined;
   /** The started session, available synchronously (for reset/stop). */
   private live: Session | undefined;
+  /** Bumped by stop(): messages sent before it that haven't reached the session are dropped. */
+  private stopEpoch = 0;
 
   constructor(private readonly deps: ClaudeOrchestratorDeps) {}
 
@@ -160,9 +82,15 @@ export class ClaudeOrchestrator implements Orchestrator {
     this.deps.emit({ kind: 'status', status: starting ? 'starting' : 'running' });
     this.session ??= this.start(this.generation);
     const pending = this.session;
+    const epoch = this.stopEpoch;
     pending.then(
       (session) => {
         if (session.ending) return;
+        if (epoch !== this.stopEpoch) {
+          // Stopped while the session was starting: the message is dropped, nothing runs.
+          this.deps.emit({ kind: 'status', status: 'idle' });
+          return;
+        }
         session.input.push(text);
         this.deps.emit({ kind: 'status', status: 'running' });
       },
@@ -179,7 +107,13 @@ export class ClaudeOrchestrator implements Orchestrator {
   }
 
   async stop(): Promise<void> {
+    this.stopEpoch++;
     const session = this.live;
+    if (!session && this.session !== undefined) {
+      // Still starting (the CLI can take seconds): the pending message is dropped on arrival.
+      this.deps.emit({ kind: 'status', status: 'stopping' });
+      return;
+    }
     if (!session || session.ending) return;
     this.deps.emit({ kind: 'status', status: 'stopping' });
     this.deps.approvals.denyAll(String(session.generation));
@@ -237,9 +171,7 @@ export class ClaudeOrchestrator implements Orchestrator {
         }
         return { behavior: 'allow', updatedInput: delegation.data };
       }
-      // hasOwn: a plain object would also resolve prototype keys such as "constructor".
-      const ask = Object.hasOwn(APPROVALS, toolName) ? APPROVALS[toolName] : undefined;
-      if (!ask) {
+      if (!needsApproval(toolName)) {
         return { behavior: 'deny', message: `${toolName} is not available in DataDesk.` };
       }
       if (agentID !== undefined) {
@@ -249,7 +181,7 @@ export class ClaudeOrchestrator implements Orchestrator {
         };
       }
       // Validate before asking: never show the user (or pass on) input the tool would reject.
-      const question = ask(input);
+      const question = approvalQuestion(toolName, input);
       if (!question) {
         return { behavior: 'deny', message: `Invalid ${toolName} input; nothing was asked.` };
       }

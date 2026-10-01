@@ -4,6 +4,7 @@ import {
   type AgentEvent,
   type AgentEventInput,
   type AgentSettings,
+  type CompareEvent,
 } from '../../src/shared/agent';
 import type { ChartArtifact, ReportArtifact } from '../../src/shared/artifacts';
 import type { DatasetSummary, RegisteredDataset } from '../../src/shared/datasets';
@@ -79,6 +80,7 @@ export function createFakeApi(
   const snapshot = () => ({ ...status });
   const registered = [...datasets];
   const listeners = new Set<(event: AgentEvent) => void>();
+  const compareListeners = new Set<(event: CompareEvent) => void>();
   let agentSettings: AgentSettings = { ...DEFAULT_AGENT_SETTINGS };
   const register = (name: string): RegisteredDataset => {
     // Like the real catalog: re-registering a name replaces it.
@@ -148,6 +150,17 @@ export function createFakeApi(
         };
       }),
     },
+    compare: {
+      run: vi.fn((_text: string) => ok({ accepted: true as const })),
+      stop: vi.fn(() => ok({ ok: true as const })),
+      reset: vi.fn(() => ok({ ok: true as const })),
+      onEvent: vi.fn((listener: (event: CompareEvent) => void) => {
+        compareListeners.add(listener);
+        return () => {
+          compareListeners.delete(listener);
+        };
+      }),
+    },
     settings: {
       getAgent: vi.fn(() => ok({ ...agentSettings })),
       setAgent: vi.fn((next: AgentSettings) => {
@@ -174,5 +187,11 @@ export function createFakeApi(
     const full = { ...event, seq: seq++, at: Date.now() };
     for (const l of [...listeners]) l(full);
   };
-  return Object.assign(api, { emit });
+  /** Pushes a compare-lane event; each lane numbers its own events, as in main. */
+  const compareSeq = { anthropic: 0, openai: 0 };
+  const emitCompare = (provider: CompareEvent['provider'], event: AgentEventInput) => {
+    const full = { provider, event: { ...event, seq: compareSeq[provider]++, at: Date.now() } };
+    for (const l of [...compareListeners]) l(full);
+  };
+  return Object.assign(api, { emit, emitCompare });
 }

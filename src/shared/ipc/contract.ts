@@ -91,6 +91,18 @@ export const ipcContract = {
     /** false if the request already timed out or was resolved. */
     response: z.strictObject({ found: z.boolean() }),
   },
+  [IpcChannels.compareRun]: {
+    request: z.strictObject({ text: z.string().trim().min(1).max(20_000) }),
+    response: z.strictObject({ accepted: z.literal(true) }),
+  },
+  [IpcChannels.compareStop]: {
+    request: NoPayload,
+    response: z.strictObject({ ok: z.literal(true) }),
+  },
+  [IpcChannels.compareReset]: {
+    request: NoPayload,
+    response: z.strictObject({ ok: z.literal(true) }),
+  },
   [IpcChannels.settingsGetAgent]: { request: NoPayload, response: AgentSettingsSchema },
   [IpcChannels.settingsSetAgent]: { request: AgentSettingsSchema, response: AgentSettingsSchema },
   [IpcChannels.artifactsGetChart]: {

@@ -106,4 +106,17 @@ describe('ipcContract', () => {
       ).toBe(false);
     });
   });
+
+  describe('compare channels', () => {
+    const run = ipcContract[IpcChannels.compareRun].request;
+
+    it('takes one bounded question and nothing else', () => {
+      expect(run.safeParse({ text: 'Which region?' }).success).toBe(true);
+      expect(run.safeParse({ text: '   ' }).success).toBe(false);
+      expect(run.safeParse({ text: 'x'.repeat(20_001) }).success).toBe(false);
+      expect(run.safeParse({ text: 'q', provider: 'openai' }).success).toBe(false);
+      expect(ipcContract[IpcChannels.compareStop].request.safeParse({}).success).toBe(false);
+      expect(ipcContract[IpcChannels.compareReset].request.safeParse(undefined).success).toBe(true);
+    });
+  });
 });

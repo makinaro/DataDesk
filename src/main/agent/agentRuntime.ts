@@ -1,7 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { query } from '@anthropic-ai/claude-agent-sdk';
-import type { AgentEvent } from '../../shared/agent';
+import type { AgentEvent, AnalystProvider } from '../../shared/agent';
 import { IpcUserError } from '../ipc/errors';
 import { buildServerEnv, type ServerPaths } from '../mcp/serverProcess';
 import { bearerTransport, discoverTools, type ToolDiscovery } from '../mcp/toolDiscovery';
@@ -14,6 +14,9 @@ import { ClaudeOrchestrator, type QueryFn } from './claude/claudeOrchestrator';
 import { claudeExecutablePath } from './claude/executable';
 import { HF_MCP_URL, hfDisallowedTools } from './claude/hfTools';
 import { createEventBus } from './eventBus';
+import { OpenAIOrchestrator, type OpenAISessionSetup } from './openai/openaiOrchestrator';
+import { createOpenAISession, type OpenAISessionInput } from './openai/openaiSession';
+import type { Orchestrator } from './orchestrator';
 
 export interface AgentRuntimeDeps {
   keyStore: Pick<KeyStore, 'status' | 'getKey'>;
@@ -26,7 +29,28 @@ export interface AgentRuntimeDeps {
   query?: QueryFn;
   /** Lists the HF MCP server's tools with the user's token. Injected in tests (no network). */
   discoverHfTools?: (token: string) => Promise<ToolDiscovery>;
+  /** Starts an OpenAI session (datadesk-mcp + model). Injected in tests (no process, no network). */
+  createOpenAISession?: (input: OpenAISessionInput) => Promise<OpenAISessionSetup>;
+  /**
+   * A compare-mode lane (D-022): one fixed provider, approvals declined without asking, no
+   * Hugging Face, and its own datadesk-mcp temp dir.
+   */
+  lane?: { provider: AnalystProvider; instance: string };
 }
+
+/** Compare lanes never ask: two dialogs for one question, and two writes, would be confusing. */
+const NO_APPROVALS: Pick<ApprovalBroker, 'request' | 'denyAll' | 'respond'> = {
+  request: () => Promise.resolve(false),
+  denyAll: () => undefined,
+  respond: () => false,
+};
+
+/** Shown when the selected provider has no key. */
+const MISSING_KEY: Record<AnalystProvider, string> = {
+  anthropic: 'Add your Anthropic API key in Settings to start the analyst.',
+  openai:
+    'Add your OpenAI API key in Settings to run the analyst on OpenAI (or switch the provider back to Claude).',
+};
 
 const discoverHfTools = (token: string) => discoverTools(() => bearerTransport(HF_MCP_URL, token));
 
@@ -40,12 +64,36 @@ export function hfUnavailableNotice(found: Extract<ToolDiscovery, { ok: false }>
 /** Wires settings, keys, paths, approvals and the event bus into an orchestrator. */
 export function createAgentRuntime(deps: AgentRuntimeDeps) {
   const emit = createEventBus(deps.deliver, deps.log);
-  const approvals = new ApprovalBroker(emit);
-  let orchestrator: ClaudeOrchestrator | undefined;
+  const approvals: Pick<ApprovalBroker, 'request' | 'denyAll' | 'respond'> = deps.lane
+    ? NO_APPROVALS
+    : new ApprovalBroker(emit);
+  /** The orchestrator for the selected provider, created on first use. */
+  let live: { provider: AnalystProvider; orchestrator: Orchestrator } | undefined;
 
   const workspaceDir = join(deps.paths.userData, 'agent-workspace');
 
-  const createOrchestrator = () =>
+  const createOpenAI = () =>
+    new OpenAIOrchestrator({
+      emit,
+      approvals,
+      log: deps.log,
+      createSession: async () => {
+        const apiKey = await deps.keyStore.getKey('openai');
+        if (!apiKey) throw new Error('Add your OpenAI API key in Settings.');
+        const settings = await deps.settings.getAgent();
+        mkdirSync(workspaceDir, { recursive: true });
+        return (deps.createOpenAISession ?? createOpenAISession)({
+          apiKey,
+          modelName: settings.openaiModel,
+          settings,
+          paths: deps.paths,
+          workspaceDir,
+          instance: deps.lane?.instance ?? 'openai',
+        });
+      },
+    });
+
+  const createClaude = () =>
     new ClaudeOrchestrator({
       emit,
       approvals,
@@ -60,10 +108,13 @@ export function createAgentRuntime(deps: AgentRuntimeDeps) {
           deps.log('OpenAI key could not be read; starting without the OpenAI tools.');
           return undefined;
         });
-        const storedHfToken = await deps.keyStore.getKey('huggingface').catch(() => {
-          deps.log('Hugging Face token could not be read; starting without the HF tools.');
-          return undefined;
-        });
+        // Compare lanes run without HF: the OpenAI lane has none, so the comparison stays fair.
+        const storedHfToken = deps.lane
+          ? undefined
+          : await deps.keyStore.getKey('huggingface').catch(() => {
+              deps.log('Hugging Face token could not be read; starting without the HF tools.');
+              return undefined;
+            });
         // Runtime discovery (D-019): list HF's tools ourselves, then disallow all but ours.
         const notices: string[] = [];
         let hfToken: string | undefined;
@@ -100,7 +151,7 @@ export function createAgentRuntime(deps: AgentRuntimeDeps) {
           mcpServer: {
             command: process.execPath,
             args: [join(deps.paths.mainDir, 'mcp-server.js')],
-            env: buildServerEnv(deps.paths, 'agent'),
+            env: buildServerEnv(deps.paths, 'agent', deps.lane?.instance),
           },
           canUseTool,
           abortController,
@@ -131,24 +182,46 @@ export function createAgentRuntime(deps: AgentRuntimeDeps) {
 
   return {
     approvals,
-    current: () => orchestrator,
-    /** The orchestrator, created on first use. Refuses clearly if no Anthropic key is set. */
-    async get(): Promise<ClaudeOrchestrator> {
-      if (!(await deps.keyStore.status()).anthropic) {
-        throw new IpcUserError(
-          'UNAVAILABLE',
-          'Add your Anthropic API key in Settings to start the analyst.',
-        );
+    current: (): Orchestrator | undefined => live?.orchestrator,
+    /**
+     * The orchestrator for the selected provider, created on first use. Refuses clearly if that
+     * provider has no key.
+     */
+    async get(): Promise<Orchestrator> {
+      const provider = deps.lane?.provider ?? (await deps.settings.getAgent()).provider;
+      if (!(await deps.keyStore.status())[provider]) {
+        throw new IpcUserError('UNAVAILABLE', MISSING_KEY[provider]);
       }
-      orchestrator ??= createOrchestrator();
-      return orchestrator;
+      if (live?.provider !== provider) {
+        // Normally swapped in onSettingsChanged; this covers a provider change from elsewhere.
+        // Swap synchronously (no await in between), so concurrent calls agree on one orchestrator.
+        const previous = live;
+        live = {
+          provider,
+          orchestrator: provider === 'openai' ? createOpenAI() : createClaude(),
+        };
+        await previous?.orchestrator.reset('settings');
+      }
+      return live.orchestrator;
+    },
+    /**
+     * Model, budget and provider are session options: end the conversation, and drop an
+     * orchestrator of the wrong provider (reset already released its process and server).
+     */
+    async onSettingsChanged(): Promise<void> {
+      const previous = live;
+      const provider = deps.lane?.provider ?? (await deps.settings.getAgent()).provider;
+      // Drop it before awaiting its reset: a send arriving meanwhile then creates the new one
+      // instead of resetting this one a second time (which would clear the user's message).
+      if (previous && previous.provider !== provider && live === previous) live = undefined;
+      await previous?.orchestrator.reset('settings');
     },
     /** A changed or removed key must not keep an old session alive. */
     async onKeyChanged(): Promise<void> {
-      await orchestrator?.reset('key');
+      await live?.orchestrator.reset('key');
     },
     async dispose(): Promise<void> {
-      await orchestrator?.dispose();
+      await live?.orchestrator.dispose();
     },
   };
 }

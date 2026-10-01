@@ -112,9 +112,9 @@ you can find a dataset, approve it, load it, and query it.
 
 ## Phase 7 (stretch): OpenAI Agents SDK provider and compare mode
 
-- [ ] `OpenAIOrchestrator` (`@openai/agents`, MCP stdio to the same datadesk-mcp, agents-as-tools)
-- [ ] Provider switch in settings
-- [ ] Compare mode: side-by-side answer, tool calls, cost, latency
+- [x] `OpenAIOrchestrator` (`@openai/agents`, MCP stdio to the same datadesk-mcp, agents-as-tools)
+- [x] Provider switch in settings
+- [x] Compare mode: side-by-side answer, tool calls, cost, latency
 
 **Done when:** the same mocked conversation runs through both orchestrators, and compare mode
 works manually.

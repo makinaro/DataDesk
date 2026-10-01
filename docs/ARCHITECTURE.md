@@ -4,7 +4,7 @@
 
 ```
 ┌────────────── Renderer (sandboxed, contextIsolation, no Node) ──────────────┐
-│ React: DatasetSidebar · Chat · Charts/Report panel · AgentTimeline drawer   │
+│ React: DatasetSidebar · Chat · Charts/Report · Timeline · Compare view      │
 │ Talks only to window.datadesk (explicit methods built by the preload)       │
 └───────────────▲──────────────── ipcRenderer.invoke / on ────────────────────┘
                 │ zod-validated both ways (src/shared/ipc/contract.ts)
@@ -22,6 +22,15 @@
               │            DuckDB · catalog · OpenAI tools · load_hf_dataset  │
               └─ HTTPS ─► Hugging Face MCP (Bearer ${DATADESK_HF_TOKEN})      │
                          └────────────────────────────────────────────────────┘
+
+With the OpenAI provider (Phase 7) there is no agent binary: the agent loop runs inside main.
+
+┌──────────────────────────── Main process ───────────────────────────────────┐
+│ OpenAIOrchestrator ── Runner.run() from @openai/agents-core ──HTTPS──► OpenAI│
+│   analyst + sub-agents as tools · tools wrapped by DataDesk (D-021)          │
+│   └─ MCPServerStdio ──stdio──► datadesk-mcp (DATADESK_OPENAI_API_KEY in env) │
+│ CompareRuntime: one Claude lane + one OpenAI lane, fresh sessions (D-022)    │
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
 
 | Process            | Trust        | Can touch keys?                                                     | Talks to                        |
@@ -31,6 +40,11 @@
 | Main               | trusted      | decrypts, passes to children via explicit env/headers               | renderer, SDK, UiMcpClient      |
 | Claude Code binary | agent engine | `ANTHROPIC_API_KEY`; the OpenAI key and HF token (env, D-018/D-019) | our MCP servers, HF MCP         |
 | datadesk-mcp       | tool server  | agent copy only: `DATADESK_OPENAI_API_KEY`, `DATADESK_HF_TOKEN`     | DuckDB, OpenAI, HF Hub (keyed)  |
+
+With the OpenAI provider, main itself holds the OpenAI key for the Responses API (pinned
+endpoint, `store: false`, tracing off) and spawns its datadesk-mcp directly, with the key in that
+child's env only. In compare mode up to three agent sessions run at once (chat plus two lanes),
+each with its own datadesk-mcp and DuckDB temp dir.
 
 ## Security layers
 
@@ -44,9 +58,13 @@
 4. **Agent:** only MCP tools + `Skill` + `Agent` (our sub-agents only, scoped by one table,
    a PreToolUse hook and canUseTool), isolated config dir, plugin-only skills, and a
    `system:init` guard (D-013, D-015, D-017). Remote HF tools are discovered by main and all but
-   three read-only ones are disallowed (D-019).
+   three read-only ones are disallowed (D-019). On the OpenAI provider DataDesk builds the tool
+   list itself from the same allowlist and scope table, and a missing tool fails the session
+   (D-021).
 5. **Approvals:** `register_dataset` and `load_hf_dataset` always ask the user through
    `ApprovalBroker`; anything but an explicit yes (timeout, abort, reset) is a no (D-010, D-020).
+   Both providers share the questions (`src/main/agent/approvalQuestions.ts`); compare lanes
+   decline without asking (D-022).
 6. **SQL:** read-only by statement type, one statement, row caps, timeouts, and file access
    restricted to dataset directories (Phase 1).
 7. **Charts and reports:** artifacts are loaded by uuid, specs are sanitized twice, Vega runs
@@ -101,3 +119,19 @@ resources/       agent-plugin (runtime skills), icons
 5. On approval, datadesk-mcp downloads the file (redirects followed by hand, token only to
    huggingface.co, size-capped, `.part` then rename) into `userData/datasets/hf/…` and registers
    it through a narrow `allowDirs` exception (D-020). From there it is a dataset like any other.
+
+## Data flow: OpenAI provider and compare mode (Phase 7)
+
+1. Settings → Provider: OpenAI. Saving resets the conversation and drops the Claude orchestrator
+   (`onSettingsChanged`); the next `agent:send` creates an `OpenAIOrchestrator`.
+2. The first message starts a session: main reads the OpenAI key, spawns datadesk-mcp through the
+   SDK's `MCPServerStdio`, checks it lists every expected tool, and loads the plugin skills.
+3. Each message is one `Runner.run(analyst, history + message, { stream: true })`. The analyst's
+   tools are DataDesk-built function tools (`mcp__datadesk__*`, `Skill`) and three agents-as-tools
+   (`profiler`, `sql_analyst`, `report_writer`) with their scope-table rows.
+4. `openaiMapper.ts` turns stream events (including the sub-agents', via `onStream`) into the same
+   `AgentEvent`s the Claude mapper produces; cost is added up per `response_done` from our price
+   table. Only a completed turn is appended to the replayed history.
+5. Compare mode: `compare:run` resets both lanes and sends the question to a Claude lane and an
+   OpenAI lane. Their events go on `compare:event` as `{ provider, event }`; the Compare view feeds
+   each lane into the chat's own reducer and shows answer, tool calls, cost and time side by side.
