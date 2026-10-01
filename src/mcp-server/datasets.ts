@@ -1,4 +1,4 @@
-import { rm, rmdir } from 'node:fs/promises';
+import { realpath, rm, rmdir } from 'node:fs/promises';
 import { dirname, resolve, sep } from 'node:path';
 import {
   suggestDatasetName,
@@ -90,8 +90,9 @@ export async function removeDataset(
   }
   await rm(entry.path, { force: true });
   // Download folders (owner/repo/revision) that are now empty go too; stop at the first that
-  // isn't, and never remove ownedDir itself.
-  const root = resolve(ownedDir);
+  // isn't, and never remove ownedDir itself. The catalog holds real paths (8.3 short names and
+  // junctions expanded), so compare against ownedDir's real path too.
+  const root = await realpath(ownedDir).catch(() => resolve(ownedDir));
   for (let dir = dirname(entry.path); fold(dir) !== fold(root); dir = dirname(dir)) {
     if (!fold(dir).startsWith(fold(root + sep))) break;
     try {
