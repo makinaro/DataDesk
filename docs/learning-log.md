@@ -1187,6 +1187,11 @@ One question in the Results-first layout, from Enter to a saved PNG:
   CI's temp dir is `RUNNER~1`. Comparing the two as strings said "not inside", so empty
   folders stayed. The short-TEMP run caught it before pushing; the fix resolves both sides
   with `realpath`.
+- **An invisible label made the whole window scroll.** `sr-only` is `position: absolute`. Without
+  a positioned ancestor, its containing block is the page, not the chat's scroll box. So in a
+  long conversation the "Analyst:" labels sat far below the window and stretched the document.
+  The fix: scroll boxes are `relative`, and the app shell is `relative overflow-clip`. Fixed
+  overlays (menus, dialogs, tooltips) are still fine, because overflow doesn't clip them.
 - **Middle-click needs `preventDefault` on `mousedown`.** In Chromium on Windows the middle
   button starts autoscroll, and then no `auxclick` fires. jsdom tests passed anyway; the e2e
   test caught it.

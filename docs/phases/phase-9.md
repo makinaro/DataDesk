@@ -68,6 +68,8 @@ Built from the prototype on `prototype/ui-polish`. You picked layout A (Chat-fir
     agent never has that tool (D-029).
   - Your own files are only forgotten. A Hugging Face download is deleted, together with its
     empty folders.
+- **The window no longer scrolls** (your report): in a long chat, screen-reader labels escaped
+  the chat's scroll box and stretched the page. An e2e test now checks the window never scrolls.
 - **Closable result tabs** ([resultTabs.ts](../../src/renderer/src/results/resultTabs.ts),
   [useResultTabs.ts](../../src/renderer/src/results/useResultTabs.ts)): VS Code-style tabs for
   the data preview, charts and reports.
@@ -93,7 +95,7 @@ Built from the prototype on `prototype/ui-polish`. You picked layout A (Chat-fir
 ## How it was verified
 
 - **Unit/integration: 840 passed** (710 at the end of Phase 8).
-- **E2E: 38 passed** (28 before), with the normal TEMP and with the 8.3 short TEMP that CI uses.
+- **E2E: 39 passed** (28 before), with the normal TEMP and with the 8.3 short TEMP that CI uses.
   New e2e checks:
   - every theme × both layouts with zero CSP console violations;
   - splitters by mouse drag and keyboard, kept across a reload;
