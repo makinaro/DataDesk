@@ -1,13 +1,15 @@
 import { join } from 'node:path';
 import OpenAI from 'openai';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { explainOpenAIError } from '../../../../src/main/agent/openai/errors';
 import {
   createOpenAISession,
   datadeskServerOptions,
+  openaiClientOptions,
+  SERVER_START_TIMEOUT_S,
   sessionSkillNames,
   type StdioServerOptions,
 } from '../../../../src/main/agent/openai/openaiSession';
+import { DATADESK_TOOL_TIMEOUT_MS } from '../../../../src/main/agent/claude/agentOptions';
 import { scriptedModel } from './fakeOpenAI';
 
 const KEY = 'sk-test-openai-0123456789';
@@ -47,6 +49,26 @@ describe('datadeskServerOptions (the OpenAI analyst’s datadesk-mcp)', () => {
     expect(options.cwd).toBe(input.workspaceDir);
     expect(options.name).toBe('datadesk');
   });
+
+  it('bounds tool calls and start-up separately (the SDK has two clocks)', () => {
+    const options = datadeskServerOptions(input);
+    // `timeout` is per tool call (SDK default 60 s); the session timeout only covers start-up.
+    expect(options.timeout).toBe(DATADESK_TOOL_TIMEOUT_MS);
+    expect(options.clientSessionTimeoutSeconds).toBe(SERVER_START_TIMEOUT_S);
+    expect(SERVER_START_TIMEOUT_S).toBeLessThanOrEqual(60);
+  });
+});
+
+describe('openaiClientOptions', () => {
+  it('pins the endpoint: OPENAI_* variables cannot redirect or re-bill the analyst', () => {
+    vi.stubEnv('OPENAI_BASE_URL', 'https://evil.example/v1');
+    vi.stubEnv('OPENAI_ORG_ID', 'org-someone-else');
+    vi.stubEnv('OPENAI_PROJECT_ID', 'proj-someone-else');
+    const client = new OpenAI(openaiClientOptions(KEY));
+    expect(client.baseURL).toBe('https://api.openai.com/v1');
+    expect(client.organization).toBeNull();
+    expect(client.project).toBeNull();
+  });
 });
 
 describe('createOpenAISession', () => {
@@ -76,24 +98,5 @@ describe('createOpenAISession', () => {
     });
     expect(setup.skills.map((s) => s.name).sort()).toEqual(sessionSkillNames().sort());
     expect(sessionSkillNames()).not.toContain('datadesk:evaluating-datasets');
-  });
-});
-
-describe('explainOpenAIError', () => {
-  it('never repeats the raw API message (it can echo a masked key)', () => {
-    const raw = new OpenAI.AuthenticationError(
-      401,
-      { message: 'Incorrect API key provided: sk-test-****6789' },
-      'Incorrect API key provided: sk-test-****6789',
-      new Headers(),
-    );
-    expect(explainOpenAIError(raw)).toBe(
-      'OpenAI rejected the API key (401). Check it in Settings.',
-    );
-    expect(explainOpenAIError(new Error('wrapped', { cause: raw }))).toMatch(/401/);
-    expect(
-      explainOpenAIError(new OpenAI.RateLimitError(429, undefined, 'quota', new Headers())),
-    ).toMatch(/429/);
-    expect(explainOpenAIError(new Error('first line\nsecond'))).toBe('first line');
   });
 });

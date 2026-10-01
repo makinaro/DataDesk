@@ -401,4 +401,95 @@ describe('OpenAIOrchestrator', () => {
     await t.turns(1);
     expect(t.of('turn_complete')[0]).toMatchObject({ ok: true });
   });
+
+  describe('review regressions', () => {
+    it('counts sub-agent spend toward the cost and the cap', async () => {
+      const t = setup(
+        {
+          analyst: [
+            {
+              calls: [{ callId: 'p', name: 'profiler', args: { input: 'profile' } }],
+              usage: { input: 0, output: 0 },
+            },
+            { text: 'never reached' },
+          ],
+          profiler: [{ text: 'expensive profile', usage: { input: 1_000_000, output: 0 } }],
+        },
+        { session: { maxBudgetUsd: 0.5 } },
+      );
+      t.orchestrator.send('profile it');
+      await t.turns(1);
+      const turn = t.of('turn_complete')[0];
+      expect(turn).toMatchObject({ ok: false, reason: 'error_max_budget_usd' });
+      expect(turn?.costUsd).toBeCloseTo(0.75, 6); // the profiler's 1M input tokens
+      expect(t.requests.filter((r) => r.agent === 'analyst')).toHaveLength(1);
+    });
+
+    it('reset() does not wait for a session that is still starting, and closes it later', async () => {
+      const t = setup({ analyst: [{ text: 'never' }] });
+      let finishStart: (setup: OpenAISessionSetup) => void = () => undefined;
+      const started = new Promise<OpenAISessionSetup>((resolve) => {
+        finishStart = resolve;
+      });
+      const real = await t.createSession();
+      t.createSession.mockReset();
+      t.createSession.mockReturnValueOnce(started);
+      t.orchestrator.send('hello');
+      await vi.waitFor(() => {
+        expect(t.createSession).toHaveBeenCalledOnce();
+      });
+      await t.orchestrator.reset(); // resolves although the session hasn't started
+      const marker = t.events.length;
+      finishStart(real);
+      await vi.waitFor(() => {
+        expect(t.server.closed()).toBe(1);
+      });
+      expect(t.events.slice(marker)).toEqual([]);
+      expect(t.requests).toEqual([]);
+    });
+
+    it('a failure while preparing a turn is reported, and the next message still runs', async () => {
+      const t = setup({ analyst: [{ text: 'first' }, { text: 'third' }] });
+      t.orchestrator.send('one');
+      await t.turns(1);
+      const listTools = t.server.server.listTools;
+      t.server.server.listTools = () => Promise.reject(new Error('datadesk-mcp exited'));
+      t.orchestrator.send('two');
+      await t.turns(2);
+      expect(t.of('turn_complete')[1]).toMatchObject({ ok: false, reason: 'error' });
+      expect(t.of('error').at(-1)?.message).toBe('datadesk-mcp exited');
+      t.server.server.listTools = listTools;
+      t.orchestrator.send('three');
+      await t.turns(3);
+      expect(t.of('turn_complete')[2]).toMatchObject({ ok: true });
+      expect(t.of('status').at(-1)?.status).toBe('idle');
+    });
+
+    it('stop() while the session starts drops the message instead of running it', async () => {
+      const t = setup({ analyst: [{ text: 'after stop' }] });
+      let finishStart: (setup: OpenAISessionSetup) => void = () => undefined;
+      const real = await t.createSession();
+      t.createSession.mockReset();
+      t.createSession.mockReturnValueOnce(
+        new Promise<OpenAISessionSetup>((resolve) => {
+          finishStart = resolve;
+        }),
+      );
+      t.orchestrator.send('expensive question');
+      await vi.waitFor(() => {
+        expect(t.createSession).toHaveBeenCalledOnce();
+      });
+      await t.orchestrator.stop();
+      finishStart(real);
+      await vi.waitFor(() => {
+        expect(t.of('status').at(-1)?.status).toBe('idle');
+      });
+      expect(t.of('status').map((s) => s.status)).toContain('stopping');
+      expect(t.requests).toEqual([]);
+      expect(t.of('turn_complete')).toEqual([]);
+      t.orchestrator.send('next');
+      await t.turns(1);
+      expect(t.of('assistant_message').map((m) => m.text)).toEqual(['after stop']);
+    });
+  });
 });

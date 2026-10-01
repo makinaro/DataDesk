@@ -181,4 +181,39 @@ describe('createCompareRuntime', () => {
       ),
     ).toHaveLength(2);
   });
+
+  it('the Claude lane declines approval tools without asking too', async () => {
+    const t = setup();
+    await t.compare.run('q');
+    await t.completed(1);
+    const canUseTool = (t.claude.calls.options as Options).canUseTool;
+    const decision = await canUseTool?.('mcp__datadesk__register_dataset', { path: 'C:/a.csv' }, {
+      signal: new AbortController().signal,
+      suggestions: [],
+      toolUseID: 'x',
+    } as never);
+    expect(decision).toMatchObject({ behavior: 'deny' });
+    expect(t.delivered.some((e) => e.event.kind === 'approval_request')).toBe(false);
+  });
+
+  it('stop works while a lane is still starting (nothing is sent to the model)', async () => {
+    const t = setup();
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const original = t.createOpenAISession.getMockImplementation();
+    t.createOpenAISession.mockImplementationOnce(async (input) => {
+      await gate;
+      if (!original) throw new Error('no setup');
+      return original(input);
+    });
+    await t.compare.run('expensive question');
+    await t.compare.stop();
+    release();
+    await vi.waitFor(() => {
+      expect(t.lane('openai').at(-1)).toMatchObject({ kind: 'status', status: 'idle' });
+    });
+    expect(t.openai.requests).toEqual([]);
+  });
 });

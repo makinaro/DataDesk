@@ -123,7 +123,7 @@ function parseArgs(input: string): unknown {
  * One datadesk-mcp tool as an SDK function tool, bound to one caller. Names follow the Claude
  * side (mcp__datadesk__run_sql), so events, artifacts and the timeline are provider-neutral.
  */
-function datadeskFunctionTool(
+export function datadeskFunctionTool(
   listedTool: MCPTool,
   caller: Caller,
   input: AnalystTreeInput,
@@ -155,6 +155,8 @@ function datadeskFunctionTool(
           return fail(callId, 'Only the main analyst can ask the user to add files.');
         const question = approvalQuestion(name, args);
         if (!question) return fail(callId, `Invalid ${name} input; nothing was asked.`);
+        // Never open a dialog for a turn that was already stopped or reset.
+        if (signal.aborted) return fail(callId, 'The turn was stopped; nothing was asked.');
         if (!(await input.askUser(name, question, signal))) {
           return fail(callId, `${question.declined} Do not retry.`);
         }

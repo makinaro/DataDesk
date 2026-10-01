@@ -194,11 +194,13 @@ export function createAgentRuntime(deps: AgentRuntimeDeps) {
       }
       if (live?.provider !== provider) {
         // Normally swapped in onSettingsChanged; this covers a provider change from elsewhere.
-        await live?.orchestrator.reset('settings');
+        // Swap synchronously (no await in between), so concurrent calls agree on one orchestrator.
+        const previous = live;
         live = {
           provider,
           orchestrator: provider === 'openai' ? createOpenAI() : createClaude(),
         };
+        await previous?.orchestrator.reset('settings');
       }
       return live.orchestrator;
     },
@@ -208,9 +210,11 @@ export function createAgentRuntime(deps: AgentRuntimeDeps) {
      */
     async onSettingsChanged(): Promise<void> {
       const previous = live;
-      await previous?.orchestrator.reset('settings');
       const provider = deps.lane?.provider ?? (await deps.settings.getAgent()).provider;
+      // Drop it before awaiting its reset: a send arriving meanwhile then creates the new one
+      // instead of resetting this one a second time (which would clear the user's message).
       if (previous && previous.provider !== provider && live === previous) live = undefined;
+      await previous?.orchestrator.reset('settings');
     },
     /** A changed or removed key must not keep an old session alive. */
     async onKeyChanged(): Promise<void> {

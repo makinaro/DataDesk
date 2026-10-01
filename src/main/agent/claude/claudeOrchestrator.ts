@@ -72,6 +72,8 @@ export class ClaudeOrchestrator implements Orchestrator {
   private session: Promise<Session> | undefined;
   /** The started session, available synchronously (for reset/stop). */
   private live: Session | undefined;
+  /** Bumped by stop(): messages sent before it that haven't reached the session are dropped. */
+  private stopEpoch = 0;
 
   constructor(private readonly deps: ClaudeOrchestratorDeps) {}
 
@@ -80,9 +82,15 @@ export class ClaudeOrchestrator implements Orchestrator {
     this.deps.emit({ kind: 'status', status: starting ? 'starting' : 'running' });
     this.session ??= this.start(this.generation);
     const pending = this.session;
+    const epoch = this.stopEpoch;
     pending.then(
       (session) => {
         if (session.ending) return;
+        if (epoch !== this.stopEpoch) {
+          // Stopped while the session was starting: the message is dropped, nothing runs.
+          this.deps.emit({ kind: 'status', status: 'idle' });
+          return;
+        }
         session.input.push(text);
         this.deps.emit({ kind: 'status', status: 'running' });
       },
@@ -99,7 +107,13 @@ export class ClaudeOrchestrator implements Orchestrator {
   }
 
   async stop(): Promise<void> {
+    this.stopEpoch++;
     const session = this.live;
+    if (!session && this.session !== undefined) {
+      // Still starting (the CLI can take seconds): the pending message is dropped on arrival.
+      this.deps.emit({ kind: 'status', status: 'stopping' });
+      return;
+    }
     if (!session || session.ending) return;
     this.deps.emit({ kind: 'status', status: 'stopping' });
     this.deps.approvals.denyAll(String(session.generation));

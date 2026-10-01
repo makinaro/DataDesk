@@ -11,6 +11,9 @@ import { OPENAI_ANALYST_SKILLS, OPENAI_SUBAGENTS } from './analystAgents';
 import type { OpenAISessionSetup } from './openaiOrchestrator';
 import { loadSkills } from './skills';
 
+/** How long datadesk-mcp may take to start and list its tools. */
+export const SERVER_START_TIMEOUT_S = 60;
+
 export type StdioServerOptions = ConstructorParameters<typeof MCPServerStdio>[0];
 type ConnectableServer = OpenAISessionSetup['server'] & { connect(): Promise<void> };
 
@@ -28,19 +31,23 @@ export interface OpenAISessionInput {
 }
 
 /**
- * The OpenAI client for the analyst. Same pinning as datadesk-mcp's (D-018): OPENAI_BASE_URL,
- * OPENAI_ORG_ID and OPENAI_PROJECT_ID in the environment can't redirect or re-bill requests.
+ * The analyst's OpenAI client options. Same pinning as datadesk-mcp's (D-018): OPENAI_BASE_URL,
+ * OPENAI_ORG_ID and OPENAI_PROJECT_ID in the environment can't redirect or re-bill requests
+ * that carry the key and the whole conversation.
  */
-export function createResponsesModel(apiKey: string, modelName: OpenAIModel): Model {
-  const client = new OpenAI({
+export function openaiClientOptions(apiKey: string): ConstructorParameters<typeof OpenAI>[0] {
+  return {
     apiKey,
     baseURL: 'https://api.openai.com/v1',
     organization: null,
     project: null,
     timeout: 120_000,
     maxRetries: 2,
-  });
-  return new OpenAIResponsesModel(client, modelName);
+  };
+}
+
+export function createResponsesModel(apiKey: string, modelName: OpenAIModel): Model {
+  return new OpenAIResponsesModel(new OpenAI(openaiClientOptions(apiKey)), modelName);
 }
 
 /**
@@ -62,7 +69,11 @@ export function datadeskServerOptions(
       DATADESK_OPENAI_API_KEY: input.apiKey,
     },
     cacheToolsList: true,
-    clientSessionTimeoutSeconds: DATADESK_TOOL_TIMEOUT_MS / 1000,
+    // Two different clocks in the SDK: `timeout` bounds each tool call (default 60 s, too short
+    // for profiling a large file; the tools have their own readable limits), while
+    // clientSessionTimeoutSeconds bounds start-up and tool listing (Electron-as-Node + DuckDB).
+    timeout: DATADESK_TOOL_TIMEOUT_MS,
+    clientSessionTimeoutSeconds: SERVER_START_TIMEOUT_S,
   };
 }
 

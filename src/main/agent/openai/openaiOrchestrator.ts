@@ -86,6 +86,10 @@ function firstLine(error: unknown): string {
 export class OpenAIOrchestrator implements Orchestrator {
   private generation = 0;
   private session: Promise<Session> | undefined;
+  /** The started session, available synchronously (reset closes it without waiting). */
+  private live: Session | undefined;
+  /** Bumped by stop(): messages sent before it that haven't started yet are dropped. */
+  private stopEpoch = 0;
   /** Turns run one after another; reset starts a new chain. */
   private chain: Promise<void> = Promise.resolve();
   private turn: Turn | undefined;
@@ -99,23 +103,34 @@ export class OpenAIOrchestrator implements Orchestrator {
   send(text: string): void {
     const generation = this.generation;
     this.deps.emit({ kind: 'status', status: this.session === undefined ? 'starting' : 'running' });
-    this.chain = this.chain.then(() => this.runTurn(text, generation));
+    const epoch = this.stopEpoch;
+    this.chain = this.chain
+      .then(() => this.runTurn(text, generation, epoch))
+      .catch((error: unknown) => {
+        // runTurn reports its own failures; this only keeps the chain usable.
+        this.deps.log?.('OpenAI turn failed unexpectedly', explainOpenAIError(error));
+      });
   }
 
   async stop(): Promise<void> {
+    // Also covers messages still waiting for the session to start (they are dropped).
+    this.stopEpoch++;
     const turn = this.turn;
-    if (!turn) return;
+    if (!turn && this.session === undefined) return;
     this.deps.emit({ kind: 'status', status: 'stopping' });
     this.deps.approvals.denyAll(this.scope(this.generation));
-    turn.reason ??= 'interrupted';
-    turn.abort.abort();
+    if (turn) {
+      turn.reason ??= 'interrupted';
+      turn.abort.abort();
+    }
     await Promise.resolve();
   }
 
   async reset(reason: ResetReason = 'user'): Promise<void> {
     // Synchronous part: nothing from the old conversation is emitted after the marker.
     const oldGeneration = this.generation++;
-    const session = this.session;
+    const started = this.live;
+    this.live = undefined;
     this.session = undefined;
     this.chain = Promise.resolve();
     this.turn?.abort.abort();
@@ -124,7 +139,7 @@ export class OpenAIOrchestrator implements Orchestrator {
     this.deps.emit({ kind: 'conversation_reset', reason });
     this.deps.emit({ kind: 'status', status: 'idle' });
     // A session still starting closes itself (SupersededError) when it sees the new generation.
-    const started = await session?.catch(() => undefined);
+    // Never await it: spawning datadesk-mcp may be slow.
     await started?.setup.server.close().catch((error: unknown) => {
       this.deps.log?.('closing datadesk-mcp failed', error);
     });
@@ -162,12 +177,18 @@ export class OpenAIOrchestrator implements Orchestrator {
       await setup.server.close().catch(() => undefined);
       throw error;
     }
+    if (generation !== this.generation) {
+      await setup.server.close().catch(() => undefined);
+      throw new SupersededError();
+    }
     for (const message of setup.notices ?? [])
       live({ kind: 'error', message: preview(message, 2_000) });
-    return { setup, history: [], costUsd: 0, announced: false };
+    const session: Session = { setup, history: [], costUsd: 0, announced: false };
+    this.live = session;
+    return session;
   }
 
-  private async runTurn(text: string, generation: number): Promise<void> {
+  private async runTurn(text: string, generation: number, epoch: number): Promise<void> {
     if (generation !== this.generation) return;
     const emit: EmitAgentEvent = (event) => {
       if (generation === this.generation) this.deps.emit(event);
@@ -187,6 +208,11 @@ export class OpenAIOrchestrator implements Orchestrator {
       return;
     }
     if (generation !== this.generation) return;
+    if (epoch !== this.stopEpoch) {
+      // Stopped before this message started: drop it.
+      emit({ kind: 'status', status: 'idle' });
+      return;
+    }
     emit({ kind: 'status', status: 'running' });
     const { setup } = session;
     if (!session.announced) {
@@ -242,34 +268,6 @@ export class OpenAIOrchestrator implements Orchestrator {
       return;
     }
 
-    const agent = buildAnalystTree({
-      listed: await setup.server.listTools(),
-      server: setup.server,
-      model: setup.model,
-      modelSettings: OPENAI_MODEL_SETTINGS,
-      openaiTools: setup.openaiTools,
-      skills: setup.skills,
-      signal: turn.abort.signal,
-      markError: (callId) => errors.add(callId),
-      askUser: (toolName, question, signal) =>
-        this.deps.approvals.request({
-          toolName,
-          title: question.title,
-          detail: preview(question.lines.join('\n')),
-          signal,
-          scope: this.scope(generation),
-        }),
-      onSubagentEvent: (event, parent) => {
-        for (const e of map(event, parent)) emit(e);
-      },
-    });
-    const runner = new Runner({
-      tracingDisabled: true,
-      traceIncludeSensitiveData: false,
-      workflowName: 'DataDesk analyst',
-      toolNotFoundBehavior: 'return_error_to_model',
-    });
-
     // Each outcome becomes one turn_complete; an abort is reported by why we aborted.
     const conclude = (failure: unknown) => {
       if (turn.reason === 'error_max_budget_usd') {
@@ -283,12 +281,40 @@ export class OpenAIOrchestrator implements Orchestrator {
           'Stopped: the analyst used its maximum number of steps for this message.',
         );
       } else {
-        this.deps.log?.('OpenAI run failed', failure);
+        // The explained form only: a raw API error can carry a masked key and request details.
+        this.deps.log?.('OpenAI run failed', explainOpenAIError(failure));
         finish(false, 'error', explainOpenAIError(failure));
       }
     };
 
     try {
+      const agent = buildAnalystTree({
+        listed: await setup.server.listTools(),
+        server: setup.server,
+        model: setup.model,
+        modelSettings: OPENAI_MODEL_SETTINGS,
+        openaiTools: setup.openaiTools,
+        skills: setup.skills,
+        signal: turn.abort.signal,
+        markError: (callId) => errors.add(callId),
+        askUser: (toolName, question, signal) =>
+          this.deps.approvals.request({
+            toolName,
+            title: question.title,
+            detail: preview(question.lines.join('\n')),
+            signal,
+            scope: this.scope(generation),
+          }),
+        onSubagentEvent: (event, parent) => {
+          for (const e of map(event, parent)) emit(e);
+        },
+      });
+      const runner = new Runner({
+        tracingDisabled: true,
+        traceIncludeSensitiveData: false,
+        workflowName: 'DataDesk analyst',
+        toolNotFoundBehavior: 'return_error_to_model',
+      });
       const result = await runner.run(agent, [...session.history, user(text)], {
         stream: true,
         maxTurns: setup.maxTurns,
