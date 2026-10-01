@@ -53,6 +53,29 @@ Built from the prototype on `prototype/ui-polish`. You picked layout A (Chat-fir
 - **Packaged smoke** ([smoke-packaged.mjs](../../scripts/smoke-packaged.mjs)) now plays a markdown
   answer and a chart through every theme and both layouts, and fails on any CSP violation.
 
+### Added after your first review
+
+- **Analyst-registered datasets show up at once.** A Hugging Face download (or any
+  `register_dataset` call) by the analyst used to need an app reload. Now the sidebar refreshes
+  as soon as the tool call succeeds ([App.tsx](../../src/renderer/src/App.tsx),
+  `changesCatalog` in [agent.ts](../../src/shared/agent.ts)).
+- **Remove a dataset.** Right-click, Shift+F10 or the Menu key opens a menu; Delete on a
+  focused dataset goes straight to the confirm step
+  ([DatasetSidebar.tsx](../../src/renderer/src/components/DatasetSidebar.tsx),
+  [ContextMenu.tsx](../../src/renderer/src/components/ContextMenu.tsx),
+  [ConfirmDialog.tsx](../../src/renderer/src/components/ConfirmDialog.tsx)).
+  - It goes through a new `datasets:remove` channel to a **UI-only** `remove_dataset` tool. The
+    agent never has that tool (D-029).
+  - Your own files are only forgotten. A Hugging Face download is deleted, together with its
+    empty folders.
+- **Closable result tabs** ([resultTabs.ts](../../src/renderer/src/results/resultTabs.ts),
+  [useResultTabs.ts](../../src/renderer/src/results/useResultTabs.ts)): VS Code-style tabs for
+  the data preview, charts and reports.
+  - Close by ×, middle-click or Delete; ←/→, Home and End move between tabs.
+  - Closing the selected tab selects its neighbour. A closed chart stays closed until its chip
+    reopens it.
+  - Closed tabs stay closed across layout switches and compare mode.
+
 ## Decisions
 
 - **D-024:** theme tokens, and an appearance store kept apart from the agent settings.
@@ -61,21 +84,23 @@ Built from the prototype on `prototype/ui-polish`. You picked layout A (Chat-fir
 - **D-026:** chat markdown with class-only highlighting (highlight.js, not Shiki), and a
   write-only clipboard channel instead of opening the clipboard permission.
 - **D-027:** splitters as ARIA window splitters, with sizes in validated `localStorage`.
+- **D-029:** `remove_dataset` exists only in the UI's server; only DataDesk's own downloads
+  are deleted from disk.
 - **D-028:** theme-aware interactive charts, and export where main renders the SVG itself (D-016
   still holds) while the renderer may send only PNG bytes, which main checks against the PNG
   signature.
 
 ## How it was verified
 
-- **Unit/integration: 808 passed** (710 at the end of Phase 8).
-- **E2E: 36 passed** (28 before), with the normal TEMP and with the 8.3 short TEMP that CI uses.
+- **Unit/integration: 840 passed** (710 at the end of Phase 8).
+- **E2E: 38 passed** (28 before), with the normal TEMP and with the 8.3 short TEMP that CI uses.
   New e2e checks:
   - every theme × both layouts with zero CSP console violations;
   - splitters by mouse drag and keyboard, kept across a reload;
   - charts themed, zooming, filtering by legend, resetting, following panel width, and saving
     real PNG and SVG files;
   - the clipboard round-trip.
-- **Packaged (unpacked build): 13/13**, including "no CSP violations in any theme or layout" from
+- **Packaged (unpacked build): 15/15**, including "no CSP violations in any theme or layout" from
   the real `app://` origin.
 - **Not run:** the installer smoke. It refused because DataDesk is installed on this machine,
   which is the safety check working as intended.
@@ -126,6 +151,8 @@ A test now runs every chart type through real Vega.
   added zoom or legend filter, and they keep their own size.
 - The dev app wasn't separately screenshotted. Its CSP is strictly looser than production's,
   which every test above uses.
+- An agent in **compare mode** that registers a dataset doesn't refresh the sidebar yet. Compare
+  keeps its own event state; the chat analyst does refresh it.
 - Carried over: renderer bundle size and sibling SVG overwrite (Phase 3); download and artifact
   cleanup UI (Phase 6); no HF on the OpenAI provider and an interrupted OpenAI turn not kept in
   its context (Phase 7); manual checks from Phases 2–8.

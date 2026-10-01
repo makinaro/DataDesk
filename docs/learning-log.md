@@ -1176,6 +1176,23 @@ One question in the Results-first layout, from Enter to a saved PNG:
   several layers, and a legend selection on them fails with "Unrecognized signal name". Only
   primitive marks get interaction now. A test also runs every chart type through real Vega,
   because checking the spec's shape is not the same as checking the chart works.
+- **The sidebar only knew about the user's own additions.** It re-fetched after Add file or a
+  drop, but the analyst registers datasets too (`load_hf_dataset`, `register_dataset`), so an
+  HF download only showed up after a reload. App now counts successful catalog-changing tool
+  calls in the timeline and refreshes when the count grows.
+- **A tool can exist for one client only.** `remove_dataset` is registered only when main
+  spawns the UI's server (`DATADESK_UI_TOOLS=1`). Agent servers get the variable blanked
+  explicitly, because the Claude CLI merges its own env first (D-029).
+- **Short paths broke folder cleanup, but only on CI.** The catalog stores real paths, while
+  CI's temp dir is `RUNNER~1`. Comparing the two as strings said "not inside", so empty
+  folders stayed. The short-TEMP run caught it before pushing; the fix resolves both sides
+  with `realpath`.
+- **Middle-click needs `preventDefault` on `mousedown`.** In Chromium on Windows the middle
+  button starts autoscroll, and then no `auxclick` fires. jsdom tests passed anyway; the e2e
+  test caught it.
+- **New accessible names can break old selectors.** Tabs added buttons named "Close
+  <tab>", so `getByRole('button', { name: 'Close' })` (a substring match) found two. Use
+  `exact: true` for short names.
 - **Vega line opacity is the `opacity` attribute**, not `stroke-opacity`. The e2e legend check
   first looked at the wrong one. Also, legend symbols are covered by a transparent hit area, so
   the test clicks the label's coordinates the way a user would.
