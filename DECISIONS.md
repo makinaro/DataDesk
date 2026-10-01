@@ -516,6 +516,14 @@ a live anonymous `tools/list`, and dummy-key probes of `@anthropic-ai/claude-age
      `hf_whoami` never reach the model's context.
   3. The init guard accepts the `hf` server only when a token was set, and refuses any HF tool
      outside the allowlist. A `failed` hf server is accepted (its tools are simply absent).
+- **`hf_fs` verbs:** its live schema (anonymous `tools/list`, 2026-10-01) allows only
+  `ls|cat|attach|stat|find|search`, all reads. A token could change what the server offers, so the
+  PreToolUse hook enforces `ls|cat|stat|find|search` itself with a strict schema (`HfFsInput` in
+  `hfTools.ts`). `attach` returns images, which we don't need.
+- **Scout only:** the HF tools are auto-approved, but the hook denies them on the main thread. Only
+  `dataset-scout` reads the Hub, so Hub text and the user's rows never share one context, and
+  stray local values are less likely to end up in Hub search words. The analyst passes the scout a
+  question, not data.
 - The system prompt labels everything from the Hub as untrusted text.
 
 **Alternatives:**

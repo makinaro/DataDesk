@@ -14,7 +14,7 @@ const PROVIDERS: { id: Provider; label: string; hint: string }[] = [
   {
     id: 'huggingface',
     label: 'Hugging Face',
-    hint: 'Lets the analyst search the Hugging Face Hub and download public datasets. Hugging Face receives the search words, the dataset ids and files it looks at, and your token (a read-only token is enough). Nothing from your local datasets is sent. Every download asks you first and is capped at 500 MB; files are kept in DataDesk’s data folder. Changing this token starts a new conversation.',
+    hint: 'Lets the analyst search the Hugging Face Hub and download datasets. Hugging Face receives the search words the analyst writes, the dataset ids and files it looks at, and your token. DataDesk never uploads your files. The token also lets it see and download any private or gated datasets your account can access; use a read-only token. Every download asks you first and is capped at 500 MB; files are kept in DataDesk’s data folder. Changing this token starts a new conversation.',
   },
 ];
 

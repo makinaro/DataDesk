@@ -86,7 +86,7 @@ describe('SettingsDialog', () => {
   it('says what the Hugging Face token sends, that downloads ask first, and the reset', () => {
     renderDialog(createFakeApi());
     expect(screen.getByText(/Hugging Face receives the search words/)).toHaveTextContent(
-      /Nothing from your local datasets is sent.*Every download asks you first.*starts a new conversation/,
+      /never uploads your files.*private or gated.*read-only token.*Every download asks you first.*starts a new conversation/,
     );
   });
 });
