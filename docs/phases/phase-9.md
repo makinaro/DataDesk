@@ -67,7 +67,7 @@ Built from the prototype on `prototype/ui-polish`. You picked layout A (Chat-fir
 
 ## How it was verified
 
-- **Unit/integration: 796 passed** (710 at the end of Phase 8).
+- **Unit/integration: 808 passed** (710 at the end of Phase 8).
 - **E2E: 36 passed** (28 before), with the normal TEMP and with the 8.3 short TEMP that CI uses.
   New e2e checks:
   - every theme × both layouts with zero CSP console violations;
@@ -100,6 +100,12 @@ The `code-reviewer` agent approved with **no blockers**.
 showed axes but no bars. Zoom's clip combined with the rounded bar ends to clip every bar away.
 Fixed in `ba0dfc3`: zoom applies only to lines, areas and points (D-028's intent). There's a
 regression test at each level, and the e2e test now hit-tests each bar instead of counting paths.
+Checking your other stored charts turned up two more problems, fixed in the next commit:
+
+- a boxplot failed to render at all, because the legend filter was added to a composite mark;
+- boxplot whiskers and error bars were black on the dark canvas.
+
+A test now runs every chart type through real Vega.
 
 **Not changed, on purpose:**
 

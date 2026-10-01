@@ -1172,6 +1172,10 @@ One question in the Results-first layout, from Enter to a saved PNG:
   tests only looked at the spec, and the e2e test counted bar `<path>`s, which still exist when
   clipped. Zoom is now limited to lines, areas and points. The e2e test hit-tests each bar's
   centre with `elementFromPoint`, which respects `clip-path`.
+- **Composite marks don't take params.** `boxplot`, `errorbar` and `errorband` expand into
+  several layers, and a legend selection on them fails with "Unrecognized signal name". Only
+  primitive marks get interaction now. A test also runs every chart type through real Vega,
+  because checking the spec's shape is not the same as checking the chart works.
 - **Vega line opacity is the `opacity` attribute**, not `stroke-opacity`. The e2e legend check
   first looked at the wrong one. Also, legend symbols are covered by a transparent hit area, so
   the test clicks the label's coordinates the way a user would.
