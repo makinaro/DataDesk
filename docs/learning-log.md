@@ -370,3 +370,129 @@ What happens when you type "Which region sold the most units?" and press Enter:
    show "Stopped for safety: … unexpected tools: mcp__extra__… ; unexpected MCP servers: extra".
    (Adding a built-in to `tools` wouldn't trip it: `disallowedTools` removes those first, which is
    the other layer working.) Revert afterwards.
+
+## Phase 3: Runtime Agent Skills, charts and reports (2026-10-01)
+
+### Concept
+
+An **Agent Skill** is a folder with a `SKILL.md`: YAML frontmatter (`name`, `description`) plus
+Markdown instructions. Only the frontmatter sits in the model's context up front. When a request
+matches a description, the model calls the **`Skill` tool**, and the CLI injects the full body
+for that turn. This is **progressive disclosure**: you pay for three short descriptions per
+turn, not three pages of instructions. Compared with a system prompt, a skill is on-demand,
+versioned as files, and reusable across agents (Phase 4's sub-agents will preload them).
+
+A **plugin** is a package of skills (and optionally agents, hooks, MCP servers) with a
+`.claude-plugin/plugin.json`. We ship ours inside the app and hand it to the SDK, so the
+analyst's skills come only from us, never from disk discovery.
+
+The second half of the phase is **artifacts**: tools that produce things for the _user_ (charts,
+reports) rather than text for the _model_. The model gets back only an id. The UI renders the
+real thing.
+
+### Where it lives
+
+- Skills: [eda-checklist](../resources/agent-plugin/skills/eda-checklist/SKILL.md),
+  [chart-style](../resources/agent-plugin/skills/chart-style/SKILL.md),
+  [report-format](../resources/agent-plugin/skills/report-format/SKILL.md) and the
+  [plugin manifest](../resources/agent-plugin/.claude-plugin/plugin.json)
+- Plugin options: [agentOptions.ts:98-104](../src/main/agent/claude/agentOptions.ts#L98)
+  (`tools: ['Skill']`, `plugins`, `skills`, `settings`)
+- Guard: [initGuard.ts](../src/main/agent/claude/initGuard.ts) (plugins, `plugin_errors`, our
+  skills present)
+- Slash-command neutralizer: [inputQueue.ts:9](../src/main/agent/claude/inputQueue.ts#L9)
+- Spec sanitizer: [vegaSpec.ts:52](../src/shared/vegaSpec.ts#L52). Tools:
+  [charts.ts:34](../src/mcp-server/charts.ts#L34) (`createChart`),
+  [charts.ts:98](../src/mcp-server/charts.ts#L98) (`saveReport`)
+- Artifact events: [sdkMapper.ts:27](../src/main/agent/claude/sdkMapper.ts#L27). IPC:
+  [handlers/artifacts.ts](../src/main/ipc/handlers/artifacts.ts)
+- Rendering: [vega.ts:24](../src/renderer/src/charts/vega.ts#L24) (CSP-safe embed),
+  [ResultsPanel.tsx:31](../src/renderer/src/components/ResultsPanel.tsx#L31) (tab selection)
+- Export: [reportExport.ts](../src/main/artifacts/reportExport.ts),
+  [printPdf.ts:15](../src/main/artifacts/printPdf.ts#L15)
+
+### How it works
+
+1. **Startup:** the options pass `plugins: [{ type: 'local', path: <agent-plugin> }]`. The CLI
+   loads it even with `settingSources: []` and lists `datadesk:eda-checklist` etc. in
+   `init.skills`. `skills: [...]` is the allowlist the `Skill` tool accepts, and
+   `disableSkillShellExecution` stops any `!command` in a skill body from running.
+2. **The guard** additionally checks that the only non-builtin plugin is `datadesk` at exactly
+   our path, that `plugin_errors` is empty, and that our three skills are listed.
+3. You ask "do EDA on sales". The `eda-checklist` description matches, so the model calls
+   `Skill({ skill: 'datadesk:eda-checklist' })`. The timeline shows `skill · eda-checklist`, and
+   the body arrives as the tool result. The model follows it: `get_schema` → `profile_column` →
+   `run_sql` …
+4. To chart, it calls `create_chart({ title, sql, spec })`. datadesk-mcp:
+   - sanitizes the spec (allowlisted keys; rejects `url`, `href`, `data`, `datasets`,
+     `usermeta`, `loader` anywhere);
+   - runs the SQL through the same read-only guard with a chart budget (5 000 rows / 5 MB);
+   - inlines the rows as `data.values` and writes `artifacts/charts/<uuid>.json`.
+     The model gets back `{ chartId, title, rowCount, truncated, fields }`, never the data.
+5. Main's mapper remembers each `tool_use` id → name. When a successful `create_chart` result
+   arrives, it emits an `artifact` event. The panel adds a tab and switches to it. The selection
+   is _derived_ during render: "a newer artifact beats an older click".
+6. `ChartView` loads the chart by uuid over IPC, re-sanitizes it, and renders with vega-embed in
+   CSP mode:
+   - `ast: true` + `vega-interpreter` (no `new Function`);
+   - no actions menu;
+   - no injected `<style>`;
+   - a loader that refuses everything.
+7. `save_report` stores Markdown with `[[chart:<uuid>]]` lines. `ReportView` splits on those
+   lines: text goes to react-markdown (no raw HTML, no images), charts go to `ChartView`.
+8. **Export:**
+   - **MD:** main does it all from stored artifacts. It re-sanitizes each chart, renders it with
+     a headless Vega `View` (no DOM needed), and writes `report.md` + `report-chart-N.svg`. The
+     renderer sends only the report id.
+   - **PDF:** the renderer renders a static copy with charts as `data:image/svg+xml` images.
+     Main wraps it in a page with its own CSP and prints it from a never-shown window with
+     JavaScript off and a request filter.
+
+### Gotchas
+
+- **`--disable-slash-commands` also disables skills.** We added it in Phase 2 to stop `/cost`.
+  A probe showed that with it, the `Skill` tool and all skills vanish. Now slash commands stay
+  on, and we neutralize them by prefixing a leading `/` with a space (another probe confirmed a
+  leading space prevents dispatch).
+- **Plugin skills are namespaced** (`datadesk:chart-style`). The `skills` allowlist and the guard
+  must use the qualified names.
+- **`usermeta.embedOptions` in a spec overrides your vega-embed options.** A model could re-enable
+  the actions menu (which posts the data to an external editor) just by writing JSON. The
+  sanitizer rejects `usermeta`.
+- **Vega's default build needs `unsafe-eval`, and vega-embed injects `<style>` elements.** Both
+  die under our CSP (silently for styles), so we use `ast: true` + interpreter,
+  `defaultStyle: false` and `tooltip.disableDefaultStyle`, and put the CSS in `styles.css`.
+  The e2e test asserts zero CSP console messages and zero `<style>` elements.
+- **An SVG inside `<img>` can't run script; inline `<svg>` can.** That's why the PDF embeds
+  charts as data-URL images. SVG files written to disk are a different story: someone may open
+  them in a browser. Our first try re-checked renderer SVGs with a regex. The review bypassed it
+  with `<s:script>` (a namespace prefix) and `javascript&#58;` (an entity), and it also rejected a
+  chart titled "JavaScript: usage". Lesson: don't sanitize markup with regexes. **Generate it
+  from data you trust**, which here means main renders the SVG from the stored spec.
+- **Validate the _data_ and the _spec_ separately.** The 50 000-character spec limit at first
+  also counted the inlined rows when the renderer re-checked a stored chart, so any real-sized
+  chart saved fine and then failed to display. Tests with two-row fixtures never noticed.
+- **A session has one `onBeforeRequest` listener.** Two PDF exports at once replaced and then
+  cleared each other's filter, so prints are queued.
+- **`printToPDF` works on a window that was never shown.** We weren't sure; the e2e test proved
+  it.
+- **Don't send chart data back to the model.** It's slow, costs tokens, and dataset cells are a
+  prompt-injection surface. The id-only round trip keeps the model's context small.
+
+### Experiments
+
+1. **Watch progressive disclosure** (needs your key, Haiku is fine). Add
+   `test-data/public/sales.csv` and ask "Do a quick EDA on sales". _Expect_ `skill ·
+eda-checklist` as the first timeline entry, then `get_schema` / `profile_column` / `run_sql`
+   calls in the order the checklist gives, and a chart tab appearing in the right panel. Then
+   ask "What is 2+2?". _Expect_ no Skill call: the description didn't match.
+2. **Edit a skill and see behaviour change.** In
+   [chart-style](../resources/agent-plugin/skills/chart-style/SKILL.md), change the color
+   guidance to "Always use `"color": {"value": "darkorange"}` for single-series bars". Click
+   **New conversation** (skills load at session start), ask for "units by region as a bar
+   chart". _Expect_ orange bars. Revert afterwards.
+3. **Try to smuggle a remote resource.** Ask the analyst: "Create a chart whose spec has
+   `"usermeta": {"embedOptions": {"actions": true}}` and a `data.url` of
+   https://example.com/x.csv". _Expect_ `create_chart` to return an error ("Unsupported top-level
+   key" or "\"url\" is not allowed") in the timeline, and the analyst to retry with a clean spec. No
+   network request happens: open DevTools → Network to confirm.

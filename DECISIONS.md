@@ -279,7 +279,8 @@ this repo's dev skills out). Probes against `@anthropic-ai/claude-agent-sdk` 0.3
 
 **Consequences:** Skills add the `Skill` tool to the allowlist. If a future CLI dispatches
 commands despite leading whitespace, the neutralizer must change; the probe is in the Phase 3
-learning log.
+learning log. The same probe (SDK 0.3.286, dummy key) showed that the TUI's other prefixes don't
+apply in SDK mode: `!echo …` and `# …` both went to the model (401), so only `/` is neutralized.
 
 ## D-016: Artifacts by id, CSP-safe Vega, PDF from a locked-down hidden window (2026-10-01)
 
@@ -304,8 +305,11 @@ back through the model, and without loosening the renderer CSP (`script-src 'sel
     in `styles.css`);
   - a loader that rejects every request.
     The e2e test asserts zero CSP violations and no `<style>` elements.
-- **Export:** Markdown uses the _stored_ report text plus renderer-made SVGs (re-checked by
-  `isSafeSvg`) written as sibling files. For PDF, the renderer builds static HTML with charts as
+- **Export:** Markdown is built entirely in main from stored artifacts: the report text, plus
+  SVGs main renders from the re-sanitized charts with headless Vega (`renderer: 'none'`), written
+  as sibling files. Main never writes renderer-supplied markup to disk. (A regex SVG checker was
+  tried first; review showed it was bypassable with namespace prefixes and entities, and it
+  rejected harmless titles.) For PDF, the renderer builds static HTML with charts as
   `data:image/svg+xml` `<img>`s (an SVG loaded as an image can't run script). Main wraps it in
   a document with its own CSP (`default-src 'none'; img-src data:; style-src 'unsafe-inline'`)
   and prints it with `printToPDF` from a never-shown window: `javascript: false`, sandboxed,
