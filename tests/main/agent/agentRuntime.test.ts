@@ -19,28 +19,32 @@ afterEach(() => {
   rmSync(userData, { recursive: true, force: true });
 });
 
-function runtime(opts: { hasKey?: boolean; openaiKey?: string; openaiUnreadable?: boolean } = {}) {
+interface RuntimeOpts {
+  hasKey?: boolean;
+  openaiKey?: string;
+  openaiUnreadable?: boolean;
+  hfToken?: string;
+  hfUnreadable?: boolean;
+}
+
+function runtime(opts: RuntimeOpts = {}) {
   const hasKey = opts.hasKey ?? true;
   const delivered: AgentEvent[] = [];
   const workspace = join(userData, 'agent-workspace');
   const { queryFn, calls } = scriptedQuery([[sdk.result(0.01)]], {
     initFirst: sdk.init({ cwd: workspace }),
   });
+  const unreadable = () =>
+    Promise.reject(new Error('Error while decrypting the ciphertext provided'));
+  const keys: Record<string, () => Promise<string | undefined>> = {
+    anthropic: () => Promise.resolve(hasKey ? KEY : undefined),
+    openai: () => (opts.openaiUnreadable ? unreadable() : Promise.resolve(opts.openaiKey)),
+    huggingface: () => (opts.hfUnreadable ? unreadable() : Promise.resolve(opts.hfToken)),
+  };
   const rt = createAgentRuntime({
     keyStore: {
       status: () => Promise.resolve({ anthropic: hasKey, openai: false, huggingface: false }),
-      getKey: (provider: string) =>
-        Promise.resolve(
-          provider === 'anthropic'
-            ? hasKey
-              ? KEY
-              : undefined
-            : provider === 'openai' && opts.openaiUnreadable
-              ? Promise.reject(new Error('Error while decrypting the ciphertext provided'))
-              : provider === 'openai'
-                ? opts.openaiKey
-                : undefined,
-        ),
+      getKey: (provider: string) => keys[provider]?.() ?? Promise.resolve(undefined),
     },
     settings: { getAgent: () => Promise.resolve({ ...DEFAULT_AGENT_SETTINGS, model: 'haiku' }) },
     paths: {
@@ -138,5 +142,33 @@ describe('createAgentRuntime', () => {
     const options = calls.options as Options;
     expect(options.env).not.toHaveProperty('DATADESK_OPENAI_API_KEY');
     expect(options.allowedTools).not.toContain('mcp__datadesk__search_columns');
+  });
+
+  it('attaches the HF server with a ${…} placeholder; the token only in the CLI env', async () => {
+    const hfToken = 'hf_test_token_0123456789';
+    const { rt, calls, delivered } = runtime({ hfToken });
+    (await rt.get()).send('hello');
+    await vi.waitFor(() => {
+      expect(delivered.some((e) => e.kind === 'turn_complete')).toBe(true);
+    });
+    const options = calls.options as Options;
+    expect(options.env?.DATADESK_HF_TOKEN).toBe(hfToken);
+    // mcpServers becomes the CLI's --mcp-config argument: the token must not be in it.
+    expect(JSON.stringify(options.mcpServers)).not.toContain(hfToken);
+    expect(options.mcpServers?.hf).toMatchObject({
+      type: 'http',
+      headers: { Authorization: 'Bearer ${DATADESK_HF_TOKEN}' },
+    });
+  });
+
+  it.each([{}, { hfUnreadable: true }])('has no HF server or token variable with %j', async (o) => {
+    const { rt, calls, delivered } = runtime(o);
+    (await rt.get()).send('hello');
+    await vi.waitFor(() => {
+      expect(delivered.some((e) => e.kind === 'turn_complete')).toBe(true);
+    });
+    const options = calls.options as Options;
+    expect(options.env).not.toHaveProperty('DATADESK_HF_TOKEN');
+    expect(Object.keys(options.mcpServers ?? {})).toEqual(['datadesk']);
   });
 });

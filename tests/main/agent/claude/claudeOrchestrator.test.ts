@@ -21,6 +21,7 @@ function setup(
       workspaceDir: WORKSPACE,
       pluginDir: PLUGIN_DIR,
       openaiTools: false,
+      hfTools: false,
     });
   });
   const orchestrator = new ClaudeOrchestrator({ emit, query: queryFn, approvals, createSession });
@@ -171,6 +172,14 @@ describe('ClaudeOrchestrator', () => {
       await expect(call('mcp__evil__x', {})).resolves.toMatchObject({ behavior: 'deny' });
     });
 
+    it('denies HF tools outside the allowlist, e.g. one added mid-session (D-019)', async () => {
+      const { t, call } = await gate();
+      for (const tool of ['mcp__hf__create_repo', 'mcp__hf__hf_jobs', 'mcp__hf__hf_whoami']) {
+        await expect(call(tool, { name: 'x' })).resolves.toMatchObject({ behavior: 'deny' });
+      }
+      expect(t.kinds()).not.toContain('approval_request');
+    });
+
     it('asks the user before register_dataset and respects the answer', async () => {
       const { t, call } = await gate();
       const pending = call('mcp__datadesk__register_dataset', { path: 'C:/data/x.csv' });
@@ -291,6 +300,7 @@ describe('ClaudeOrchestrator lifecycle (review regressions)', () => {
               workspaceDir: WORKSPACE,
               pluginDir: PLUGIN_DIR,
               openaiTools: false,
+              hfTools: false,
             });
           };
         }),

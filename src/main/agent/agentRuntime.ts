@@ -47,15 +47,24 @@ export function createAgentRuntime(deps: AgentRuntimeDeps) {
           deps.log('OpenAI key could not be read; starting without the OpenAI tools.');
           return undefined;
         });
+        const hfToken = await deps.keyStore.getKey('huggingface').catch(() => {
+          deps.log('Hugging Face token could not be read; starting without the HF tools.');
+          return undefined;
+        });
+        const tools = {
+          openaiTools: openaiApiKey !== undefined,
+          hfTools: hfToken !== undefined,
+        };
         const settings = await deps.settings.getAgent();
         mkdirSync(workspaceDir, { recursive: true });
         const options = buildAgentOptions({
           settings,
-          openaiTools: openaiApiKey !== undefined,
+          ...tools,
           workspaceDir,
           env: buildAgentEnv({
             apiKey,
             openaiApiKey,
+            hfToken,
             userData: deps.paths.userData,
             appVersion: deps.app.version,
             parentEnv: process.env,
@@ -86,7 +95,7 @@ export function createAgentRuntime(deps: AgentRuntimeDeps) {
           options,
           workspaceDir,
           pluginDir: deps.paths.agentPluginDir,
-          openaiTools: openaiApiKey !== undefined,
+          ...tools,
         };
       },
     });

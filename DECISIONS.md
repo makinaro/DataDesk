@@ -472,3 +472,66 @@ installed `.d.ts` and are exercised by tests that run the real SDK over an injec
 - Column samples and small query results leave the machine when the tools are used.
 - Model ids are constants; changing them invalidates the cache only for the embedding model,
   because the model is part of the key.
+
+## D-019: Remote Hugging Face MCP server: token via CLI env, tools discovered then allowlisted (2026-10-01)
+
+**Context:** Phase 6 attaches Hugging Face's hosted MCP server so the analyst can find public
+datasets. Verified 2026-10-01 from huggingface.co/docs/hub/hf-mcp-server, the
+github.com/huggingface/hf-mcp-server source (`tool-ids.ts`, `settings.ts`, `bouquet-presets.ts`),
+a live anonymous `tools/list`, and dummy-key probes of `@anthropic-ai/claude-agent-sdk` 0.3.286
+(CLI 2.1.286) against a local fake MCP server:
+
+- The server is `https://huggingface.co/mcp`, stateless streamable HTTP, with an optional
+  `Authorization: Bearer <token>`. Anonymous use offers `hf_whoami`, `hub_repo_search`,
+  `hub_repo_details` and `hf_fs`. **A signed-in user with default settings also gets write,
+  compute and Gradio tools** (`create_repo`, `hf_jobs`, `dynamic_space`, sandbox tools, a
+  Gradio Space). `?login` starts HF's OAuth flow; `?no_image_content=true` keeps results text.
+  `?bouquet=`/`?mix=` narrow the set, but no combination yields exactly the three we want.
+- The SDK passes `mcpServers` to the CLI as a `--mcp-config <JSON>` argument (D-018), so a
+  literal header would put the token on the command line.
+- **Probe:** `headers: { Authorization: 'Bearer ${VAR}' }` in the SDK's `mcpServers` is
+  expanded by the CLI from **its own env**; the fake server received the token. The docs only
+  promise this for `.mcp.json`.
+- **Probe:** with an explicit header, a 401 marks the server `failed`. No OAuth discovery
+  request is made and nothing opens a browser.
+- **Probe:** `disallowedTools` removes named remote tools (and `mcp__hf__*`) from `init.tools`,
+  so from the model's context. The per-server `tools: [{ name, permission_policy }]` field
+  filtered nothing.
+- `alwaysLoad: true` makes the CLI wait (up to 5 s) for the server before init, so its tools are
+  in the init message.
+
+**Decision:**
+
+- **Token route:** the HF token goes into the agent CLI's explicitly built env as
+  `DATADESK_HF_TOKEN`. The `hf` server config carries only `Bearer ${DATADESK_HF_TOKEN}`. The
+  same variable reaches datadesk-mcp through the CLI's env (D-014), where `scrubSecrets` keeps
+  it for `load_hf_dataset`.
+- **Opt-in:** the server is attached only when the user saved a Hugging Face token. Changing any
+  key now resets the session. An unreadable token starts the session without HF.
+- **Allowlist (three layers):**
+  1. Only `hub_repo_search`, `hub_repo_details` and `hf_fs` are auto-approved; every other tool
+     reaches `canUseTool`, which denies it.
+  2. Before each session, main lists the server's tools itself with the token and passes every
+     tool outside the allowlist as `disallowedTools`, so write/compute/Gradio tools and
+     `hf_whoami` never reach the model's context.
+  3. The init guard accepts the `hf` server only when a token was set, and refuses any HF tool
+     outside the allowlist. A `failed` hf server is accepted (its tools are simply absent).
+- The system prompt labels everything from the Hub as untrusted text.
+
+**Alternatives:**
+
+- Token as a literal header: on the command line.
+- An in-process `type: 'sdk'` proxy server in main: keeps the token out of the CLI, but the CLI
+  already holds the Anthropic key, and the phase is about a _remote_ MCP server.
+- A bouquet only: can't express our set, and HF's settings may override it.
+- Fail the session on any unknown HF tool without discovery: a new HF default tool would break
+  DataDesk until updated.
+
+**Consequences:**
+
+- `${…}` expansion via `--mcp-config` is observed CLI behaviour, not documented. If a CLI update
+  drops it, HF requests carry the literal placeholder, get a 401, and the server shows `failed`.
+  The token still never reaches the command line.
+- Session start makes one extra request to HF when a token is set.
+- Tools HF adds _during_ a session (`tools/list_changed`) aren't in `disallowedTools` and the
+  guard has already run; `canUseTool` still denies them.

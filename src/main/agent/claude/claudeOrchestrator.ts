@@ -10,7 +10,7 @@ import { isSubagentTool, preview, type ResetReason } from '../../../shared/agent
 import { DatasetNameSchema } from '../../../shared/datasets';
 import type { ApprovalBroker } from '../approvals';
 import type { EmitAgentEvent, Orchestrator } from '../orchestrator';
-import { APPROVAL_TOOLS } from './agentOptions';
+import { APPROVAL_TOOLS, type SessionTools } from './agentOptions';
 import { checkInit } from './initGuard';
 import { InputQueue } from './inputQueue';
 import { createSdkMapper } from './sdkMapper';
@@ -26,14 +26,12 @@ export type QueryFn = (params: {
   options: Options;
 }) => QueryLike;
 
-export interface SessionSetup {
+export interface SessionSetup extends SessionTools {
   options: Options;
   /** The agent workspace; the init guard checks the CLI really runs there. */
   workspaceDir: string;
   /** The skills plugin; the init guard checks exactly this plugin loaded. */
   pluginDir: string;
-  /** Whether this session's datadesk-mcp exposes the OpenAI tools (the guard expects them). */
-  openaiTools: boolean;
 }
 
 export interface ClaudeOrchestratorDeps {
@@ -202,10 +200,11 @@ export class ClaudeOrchestrator implements Orchestrator {
 
   private async start(generation: number): Promise<Session> {
     const abortController = new AbortController();
-    const { options, workspaceDir, pluginDir, openaiTools } = await this.deps.createSession({
-      abortController,
-      canUseTool: this.canUseToolFor(generation),
-    });
+    const { options, workspaceDir, pluginDir, openaiTools, hfTools } =
+      await this.deps.createSession({
+        abortController,
+        canUseTool: this.canUseToolFor(generation),
+      });
     if (generation !== this.generation) throw new SupersededError();
     const input = new InputQueue();
     const query = this.deps.query({ prompt: input, options });
@@ -218,13 +217,13 @@ export class ClaudeOrchestrator implements Orchestrator {
       done: Promise.resolve(),
     };
     this.live = session;
-    session.done = this.consume(session, { cwd: workspaceDir, pluginDir, openaiTools });
+    session.done = this.consume(session, { cwd: workspaceDir, pluginDir, openaiTools, hfTools });
     return session;
   }
 
   private async consume(
     session: Session,
-    expected: { cwd: string; pluginDir: string; openaiTools: boolean },
+    expected: { cwd: string; pluginDir: string } & SessionTools,
   ): Promise<void> {
     const map = createSdkMapper();
     // Only this session's events, and only until it starts ending.
