@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   buildMarkdownExport,
   buildPrintDocument,
-  isSafeSvg,
   safeFileStem,
 } from '../../../src/main/artifacts/reportExport';
 import type { ReportArtifact } from '../../../src/shared/artifacts';
@@ -20,30 +19,13 @@ const report: ReportArtifact = {
   createdAt: '2026-10-01T00:00:00.000Z',
 };
 
-describe('isSafeSvg', () => {
-  it('accepts plain Vega output, including the SVG namespace URL', () => {
-    expect(isSafeSvg(SVG)).toBe(true);
-  });
-
-  it.each([
-    ['not svg', '<div></div>'],
-    ['script', '<svg><script>alert(1)</script></svg>'],
-    ['foreignObject', '<svg><foreignObject><div/></foreignObject></svg>'],
-    ['event handler', '<svg><rect onclick="x()"/></svg>'],
-    ['javascript url', '<svg><a href="javascript:x()"><rect/></a></svg>'],
-    ['external href', '<svg><image href="https://evil.example/x.png"/></svg>'],
-    ['external xlink', '<svg><image xlink:href="//evil.example/x.png"/></svg>'],
-    ['file src', '<svg><image src="file:///C:/x.png"/></svg>'],
-    ['trailing content', `${SVG}<script>x()</script>`],
-  ])('rejects %s', (_label, svg) => {
-    expect(isSafeSvg(svg)).toBe(false);
-  });
-});
-
 describe('safeFileStem', () => {
   it('removes characters Windows forbids in file names', () => {
     expect(safeFileStem('Q3: sales/region?\u0001 "final"')).toBe('Q3 sales region final');
     expect(safeFileStem('***')).toBe('report');
+    expect(safeFileStem('CON')).toBe('CON-report');
+    expect(safeFileStem('nul')).toBe('nul-report');
+    expect(safeFileStem('Summary...  ')).toBe('Summary');
     expect(safeFileStem('x'.repeat(200))).toHaveLength(80);
   });
 });
@@ -64,8 +46,8 @@ describe('buildMarkdownExport', () => {
     expect(out.markdown).toContain('![Trend](my%20report-chart-2.svg)');
   });
 
-  it('marks missing or unsafe charts as unavailable instead of writing them', () => {
-    const out = buildMarkdownExport(report, { [A]: 'A' }, { [A]: '<svg><script/></svg>' }, 's');
+  it('marks charts that could not be rendered as unavailable', () => {
+    const out = buildMarkdownExport(report, { [A]: 'A' }, {}, 's');
     expect(out.files).toEqual([]);
     expect(out.markdown).toContain('*[A: chart not available]*');
     expect(out.markdown).toContain('*[Chart: chart not available]*');

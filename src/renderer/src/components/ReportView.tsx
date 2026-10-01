@@ -14,30 +14,33 @@ export function ReportView({ id }: { id: string }) {
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  async function renderPrintBody(): Promise<string> {
+    if (!report) return '';
+    const svgs: Record<string, string> = {};
+    const chartTitles: Record<string, string> = {};
+    for (const chartId of report.chartIds) {
+      const chart = await api.artifacts.getChart(chartId);
+      if (!chart.ok) continue;
+      chartTitles[chartId] = chart.data.title;
+      const prepared = prepareSpec(chart.data.spec);
+      if (prepared.ok) svgs[chartId] = await chartToSvg(prepared.spec);
+    }
+    return renderToStaticMarkup(
+      <ReportDocument report={report} svgs={svgs} chartTitles={chartTitles} />,
+    );
+  }
+
   async function exportAs(format: 'md' | 'pdf') {
     if (!report) return;
     setBusy(true);
     setStatus(null);
     try {
-      const svgs: Record<string, string> = {};
-      const chartTitles: Record<string, string> = {};
-      for (const chartId of report.chartIds) {
-        const chart = await api.artifacts.getChart(chartId);
-        if (!chart.ok) continue;
-        chartTitles[chartId] = chart.data.title;
-        const prepared = prepareSpec(chart.data.spec);
-        if (prepared.ok) svgs[chartId] = await chartToSvg(prepared.spec);
-      }
-      const bodyHtml =
-        format === 'pdf'
-          ? renderToStaticMarkup(
-              <ReportDocument report={report} svgs={svgs} chartTitles={chartTitles} />,
-            )
-          : undefined;
+      // Markdown export is built entirely in main from the stored artifacts. For PDF the
+      // renderer lays out the page (charts as SVG images) and main prints it locked down.
+      const bodyHtml = format === 'pdf' ? await renderPrintBody() : undefined;
       const result = await api.artifacts.exportReport({
         id: report.id,
         format,
-        svgs,
         ...(bodyHtml === undefined ? {} : { bodyHtml }),
       });
       if (!result.ok) setStatus(result.error.message);

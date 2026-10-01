@@ -162,13 +162,8 @@ export function createFakeApi(
       getReport: vi.fn((id: string) =>
         id === REPORT_ID ? ok(REPORT) : notFound<ReportArtifact>('That report no longer exists.'),
       ),
-      exportReport: vi.fn(
-        (_request: {
-          id: string;
-          format: 'md' | 'pdf';
-          svgs: Record<string, string>;
-          bodyHtml?: string;
-        }) => ok<{ saved: boolean; path: string | null }>({ saved: true, path: 'C:/out/report' }),
+      exportReport: vi.fn((_request: { id: string; format: 'md' | 'pdf'; bodyHtml?: string }) =>
+        ok<{ saved: boolean; path: string | null }>({ saved: true, path: 'C:/out/report' }),
       ),
     },
   } satisfies DatadeskApi;

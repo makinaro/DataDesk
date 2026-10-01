@@ -1,7 +1,8 @@
 import type { AgentEvent, AgentSettings } from '../agent';
 import type { ChartArtifact, ReportArtifact } from '../artifacts';
 import type { ColumnInfo, DatasetPreview, DatasetSummary, RegisteredDataset } from '../datasets';
-import type { AppInfo, Provider, SecretsStatus } from './contract';
+import type { IpcChannels } from './channels';
+import type { AppInfo, IpcRequest, IpcResponse, Provider, SecretsStatus } from './contract';
 import type { IpcResult } from './result';
 
 /**
@@ -45,11 +46,8 @@ export interface DatadeskApi {
     getChart(id: string): Promise<IpcResult<ChartArtifact>>;
     getReport(id: string): Promise<IpcResult<ReportArtifact>>;
     /** Opens a save dialog in main. `bodyHtml` is required for PDF. */
-    exportReport(request: {
-      id: string;
-      format: 'md' | 'pdf';
-      svgs: Record<string, string>;
-      bodyHtml?: string;
-    }): Promise<IpcResult<{ saved: boolean; path: string | null }>>;
+    exportReport(
+      request: IpcRequest<typeof IpcChannels.artifactsExportReport>,
+    ): Promise<IpcResult<IpcResponse<typeof IpcChannels.artifactsExportReport>>>;
   };
 }

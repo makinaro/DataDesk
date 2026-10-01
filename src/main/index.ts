@@ -4,6 +4,7 @@ import { IpcEvents } from '../shared/ipc/channels';
 import { createAgentRuntime } from './agent/agentRuntime';
 import { ArtifactStore } from '../node-shared/artifactStore';
 import { printHtmlToPdf } from './artifacts/printPdf';
+import { renderChartSvg } from './artifacts/chartSvg';
 import { registerAgentHandlers } from './ipc/handlers/agent';
 import { registerArtifactHandlers } from './ipc/handlers/artifacts';
 import { registerAppHandlers } from './ipc/handlers/app';
@@ -127,6 +128,7 @@ function start(): void {
           return result.canceled || !result.filePath ? null : result.filePath;
         },
         printToPdf: printHtmlToPdf,
+        renderSvg: renderChartSvg,
       });
       registerAgentHandlers(handle, {
         getOrchestrator: () => agent.get(),

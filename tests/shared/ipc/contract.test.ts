@@ -94,24 +94,16 @@ describe('ipcContract', () => {
       expect(getChart.safeParse({ id, extra: 1 }).success).toBe(false);
     });
 
-    it('bounds export payloads', () => {
-      expect(exportReport.safeParse({ id, format: 'md', svgs: { [id]: '<svg/>' } }).success).toBe(
+    it('bounds export payloads and takes no renderer SVGs', () => {
+      expect(exportReport.safeParse({ id, format: 'md' }).success).toBe(true);
+      expect(exportReport.safeParse({ id, format: 'pdf', bodyHtml: '<p>x</p>' }).success).toBe(
         true,
       );
-      expect(exportReport.safeParse({ id, format: 'docx', svgs: {} }).success).toBe(false);
-      expect(exportReport.safeParse({ id, format: 'md', svgs: { 'not-a-uuid': '' } }).success).toBe(
-        false,
-      );
+      expect(exportReport.safeParse({ id, format: 'docx' }).success).toBe(false);
+      expect(exportReport.safeParse({ id, format: 'md', svgs: {} }).success).toBe(false);
       expect(
-        exportReport.safeParse({ id, format: 'md', svgs: { [id]: 'x'.repeat(2_000_001) } }).success,
+        exportReport.safeParse({ id, format: 'pdf', bodyHtml: 'x'.repeat(20_000_001) }).success,
       ).toBe(false);
-      const many = Object.fromEntries(
-        Array.from({ length: 51 }, (_, i) => [
-          `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
-          '<svg/>',
-        ]),
-      );
-      expect(exportReport.safeParse({ id, format: 'md', svgs: many }).success).toBe(false);
     });
   });
 });

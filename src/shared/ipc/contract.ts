@@ -105,10 +105,7 @@ export const ipcContract = {
     request: z.strictObject({
       id: ArtifactIdSchema,
       format: z.enum(['md', 'pdf']),
-      /** Chart SVGs rendered by the renderer, keyed by chart id (checked again in main). */
-      svgs: z
-        .record(ArtifactIdSchema, z.string().max(2_000_000))
-        .refine((r) => Object.keys(r).length <= 50, 'Too many charts.'),
+      // No chart SVGs from the renderer: main renders them from the stored charts (D-016).
       /** PDF only: the report body as static HTML; main wraps it in its own locked-down page. */
       bodyHtml: z.string().max(20_000_000).optional(),
     }),

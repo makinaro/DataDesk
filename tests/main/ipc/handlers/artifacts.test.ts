@@ -46,6 +46,7 @@ function wire(overrides: Partial<ArtifactHandlerDeps> = {}) {
     },
     pickSavePath: vi.fn((name: string) => Promise.resolve(`C:\\out\\${name}`)),
     printToPdf: vi.fn(() => Promise.resolve(Buffer.from('%PDF-1.7'))),
+    renderSvg: vi.fn(() => Promise.resolve<string | null>(SVG)),
     writeFile: (path, data) => {
       writes.push([path, data]);
       return Promise.resolve();
@@ -83,20 +84,25 @@ describe('artifact IPC handlers', () => {
     });
   });
 
-  it('exports Markdown from the stored report with sibling SVG files', async () => {
+  it('exports Markdown entirely from stored artifacts, with SVGs rendered in main', async () => {
     const { call, writes, deps } = wire();
-    const result = await call('artifacts:exportReport', {
-      id: REPORT_ID,
-      format: 'md',
-      svgs: { [CHART_ID]: SVG },
-    });
+    const result = await call('artifacts:exportReport', { id: REPORT_ID, format: 'md' });
     expect(result).toEqual({ ok: true, data: { saved: true, path: 'C:\\out\\Sales Q3.md' } });
     expect(deps.pickSavePath).toHaveBeenCalledWith('Sales Q3.md', 'md');
+    expect(deps.renderSvg).toHaveBeenCalledWith(chart);
     expect(writes.map(([p]) => p)).toEqual([
       'C:\\out\\Sales Q3.md',
       expect.stringMatching(/[\\/]Sales Q3-chart-1\.svg$/) as string,
     ]);
     expect(writes[0]?.[1]).toContain('![Units](Sales%20Q3-chart-1.svg)');
+    expect(writes[1]?.[1]).toBe(SVG);
+  });
+
+  it('writes a placeholder instead of an SVG for a chart main could not render', async () => {
+    const { call, writes } = wire({ renderSvg: () => Promise.resolve(null) });
+    await call('artifacts:exportReport', { id: REPORT_ID, format: 'md' });
+    expect(writes).toHaveLength(1);
+    expect(writes[0]?.[1]).toContain('*[Units: chart not available]*');
   });
 
   it('prints PDFs through the locked-down print document', async () => {
@@ -104,7 +110,6 @@ describe('artifact IPC handlers', () => {
     const result = await call('artifacts:exportReport', {
       id: REPORT_ID,
       format: 'pdf',
-      svgs: {},
       bodyHtml: '<h1>Sales</h1>',
     });
     expect(result).toMatchObject({ ok: true, data: { saved: true } });
@@ -116,24 +121,21 @@ describe('artifact IPC handlers', () => {
 
   it('writes nothing when the user cancels the save dialog', async () => {
     const { call, writes } = wire({ pickSavePath: () => Promise.resolve(null) });
-    await expect(
-      call('artifacts:exportReport', { id: REPORT_ID, format: 'md', svgs: {} }),
-    ).resolves.toEqual({ ok: true, data: { saved: false, path: null } });
+    await expect(call('artifacts:exportReport', { id: REPORT_ID, format: 'md' })).resolves.toEqual({
+      ok: true,
+      data: { saved: false, path: null },
+    });
     expect(writes).toEqual([]);
   });
 
-  it('rejects unsafe SVGs before asking for a path, and PDF exports without a body', async () => {
+  it('rejects renderer SVGs and PDF exports without a body, before opening a dialog', async () => {
     const { call, deps } = wire();
     await expect(
-      call('artifacts:exportReport', {
-        id: REPORT_ID,
-        format: 'md',
-        svgs: { [CHART_ID]: '<svg><script>x()</script></svg>' },
-      }),
+      call('artifacts:exportReport', { id: REPORT_ID, format: 'md', svgs: { [CHART_ID]: SVG } }),
+    ).resolves.toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
+    await expect(
+      call('artifacts:exportReport', { id: REPORT_ID, format: 'pdf' }),
     ).resolves.toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
     expect(deps.pickSavePath).not.toHaveBeenCalled();
-    await expect(
-      call('artifacts:exportReport', { id: REPORT_ID, format: 'pdf', svgs: {} }),
-    ).resolves.toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
   });
 });

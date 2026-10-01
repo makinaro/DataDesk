@@ -1,4 +1,4 @@
-import Markdown, { type Components } from 'react-markdown';
+import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { ReportArtifact } from '../../../shared/artifacts';
 
@@ -26,26 +26,14 @@ export function splitReport(
 }
 
 /**
- * Markdown safety: react-markdown never renders raw HTML (no rehype-raw), its default URL
- * transform drops javascript:/data: links, and images are removed (reports can't load
- * anything). Links open via the window-open handler (allowlisted hosts in the browser only).
+ * Markdown safety: react-markdown never renders raw HTML (no rehype-raw). Images and links are
+ * unwrapped to their text: reports are model-written, so a link would be a click-to-leak path
+ * (in the app and in exported PDFs), and an image a load-on-view one.
  */
-export const markdownComponents: Components = {
-  a: ({ href, children }) => (
-    <a href={href} target="_blank" rel="noreferrer noopener">
-      {children}
-    </a>
-  ),
-};
 
 export function ReportMarkdown({ text }: { text: string }) {
   return (
-    <Markdown
-      remarkPlugins={[remarkGfm]}
-      disallowedElements={['img']}
-      unwrapDisallowed
-      components={markdownComponents}
-    >
+    <Markdown remarkPlugins={[remarkGfm]} disallowedElements={['img', 'a']} unwrapDisallowed>
       {text}
     </Markdown>
   );

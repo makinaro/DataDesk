@@ -13,8 +13,8 @@ export function ChartView({ id, compact = false }: { id: string; compact?: boole
   const [renderError, setRenderError] = useState<{ id: string; message: string } | null>(null);
 
   useEffect(() => {
-    const el = ref.current;
-    if (!chart || !el) return;
+    const host = ref.current;
+    if (!chart || !host) return;
     const prepared = prepareSpec(chart.spec);
     let cleanup: (() => void) | undefined;
     let cancelled = false;
@@ -26,6 +26,10 @@ export function ChartView({ id, compact = false }: { id: string; compact?: boole
         cancelled = true;
       };
     }
+    // A fresh element per run, so a re-run (StrictMode, new data) never renders into a view
+    // that is still being set up or torn down.
+    const el = document.createElement('div');
+    host.append(el);
     renderChart(el, prepared.spec).then(
       (dispose) => {
         if (cancelled) dispose();
@@ -40,6 +44,7 @@ export function ChartView({ id, compact = false }: { id: string; compact?: boole
     return () => {
       cancelled = true;
       cleanup?.();
+      el.remove();
     };
   }, [chart]);
 

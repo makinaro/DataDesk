@@ -97,7 +97,7 @@ describe('preload bridge', () => {
     await api.datasets.registerFile(new File(['a'], 'sales.csv'), 'sales');
     await api.artifacts.getChart(CHART);
     await api.artifacts.getReport(REPORT);
-    await api.artifacts.exportReport({ id: REPORT, format: 'md', svgs: {} });
+    await api.artifacts.exportReport({ id: REPORT, format: 'md' });
     expect(invoke.mock.calls).toEqual([
       ['secrets:set', { provider: 'openai', key: 'sk-test-12345678' }],
       ['secrets:clear', { provider: 'huggingface' }],
@@ -110,7 +110,7 @@ describe('preload bridge', () => {
       ['datasets:register', { path: 'C:/data/sales.csv', name: 'sales' }],
       ['artifacts:getChart', { id: CHART }],
       ['artifacts:getReport', { id: REPORT }],
-      ['artifacts:exportReport', { id: REPORT, format: 'md', svgs: {} }],
+      ['artifacts:exportReport', { id: REPORT, format: 'md' }],
     ]);
   });
 

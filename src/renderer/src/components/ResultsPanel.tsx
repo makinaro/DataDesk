@@ -19,23 +19,17 @@ function renderCell(value: Cell): string {
 
 interface Selection {
   choice: string;
-  /** How many artifacts existed when the user chose, and which dataset was selected. */
-  artifactCount: number;
-  dataset: string | null;
+  /** The newest artifact when the choice was made; a different newest one takes over. */
+  seenNewestId: string | null;
 }
 
 /**
- * Which tab to show, derived during render (no setState in effects): a newly produced artifact
- * wins over an older manual choice; selecting a different dataset switches to its preview.
+ * Which tab to show, derived during render (no setState in effects): an artifact newer than
+ * the last choice wins; otherwise the choice, if it still exists (a reset clears artifacts).
  */
-export function visibleTab(
-  artifacts: readonly ArtifactRef[],
-  dataset: string | null,
-  selection: Selection,
-): string {
+export function visibleTab(artifacts: readonly ArtifactRef[], selection: Selection): string {
   const newest = artifacts.at(-1);
-  if (newest && artifacts.length > selection.artifactCount) return newest.id;
-  if (dataset !== selection.dataset && dataset !== null) return PREVIEW;
+  if (newest && newest.id !== selection.seenNewestId) return newest.id;
   if (selection.choice === PREVIEW || artifacts.some((a) => a.id === selection.choice)) {
     return selection.choice;
   }
@@ -45,15 +39,19 @@ export function visibleTab(
 export function ResultsPanel({ dataset, revision }: { dataset: string | null; revision: number }) {
   const { state } = useAgent();
   const artifacts = state.artifacts;
-  const [selection, setSelection] = useState<Selection>({
-    choice: PREVIEW,
-    artifactCount: 0,
-    dataset: null,
-  });
-  const tab = visibleTab(artifacts, dataset, selection);
+  const newestId = artifacts.at(-1)?.id ?? null;
+  const [selection, setSelection] = useState<Selection>({ choice: PREVIEW, seenNewestId: null });
+  // Picking a dataset counts as choosing its preview ("previous props" pattern: adjust state
+  // while rendering instead of in an effect). Whichever happened last, artifact or pick, wins.
+  const [prevDataset, setPrevDataset] = useState(dataset);
+  if (dataset !== prevDataset) {
+    setPrevDataset(dataset);
+    if (dataset !== null) setSelection({ choice: PREVIEW, seenNewestId: newestId });
+  }
+  const tab = visibleTab(artifacts, selection);
   const active = artifacts.find((a) => a.id === tab);
   const choose = (choice: string) => {
-    setSelection({ choice, artifactCount: artifacts.length, dataset });
+    setSelection({ choice, seenNewestId: newestId });
   };
 
   return (

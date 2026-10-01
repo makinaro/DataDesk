@@ -1,26 +1,19 @@
 import { CHART_REF, type ReportArtifact } from '../../shared/artifacts';
 
-/**
- * Chart SVGs come from the renderer (rendered by Vega). Before writing them to disk or into a
- * PDF, reject anything that could execute or load: scripts, event handlers, foreignObject,
- * javascript: or external references.
- */
-export function isSafeSvg(svg: string): boolean {
-  const s = svg.trim();
-  if (!/^<svg[\s>]/i.test(s) || !/<\/svg>\s*$/i.test(s)) return false;
-  return !/<script|<foreignObject|<iframe|<object|<embed|\son[a-z]+\s*=|javascript:|(?:href|src)\s*=\s*["']?\s*(?:https?:|\/\/|file:)/i.test(
-    s,
-  );
-}
+/** Device names Windows reserves regardless of extension (CON.md is still CON). */
+const RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
 
+/** A default file name from a model-written title: no path characters, no reserved names. */
 export function safeFileStem(title: string): string {
   const stem = Array.from(title)
     .map((ch) => (ch.charCodeAt(0) < 0x20 || '<>:"/\\|?*'.includes(ch) ? ' ' : ch))
     .join('')
     .replace(/\s+/g, ' ')
+    .slice(0, 80)
     .trim()
-    .slice(0, 80);
-  return stem || 'report';
+    .replace(/[. ]+$/, '');
+  if (!stem) return 'report';
+  return RESERVED.test(stem) ? `${stem}-report` : stem;
 }
 
 export interface MarkdownExport {
@@ -30,8 +23,8 @@ export interface MarkdownExport {
 }
 
 /**
- * Markdown export: uses the *stored* report text (not renderer input) and turns each
- * [[chart:<id>]] line into an image link to a sibling SVG file.
+ * Markdown export, built only from stored artifacts: the report text plus SVGs main rendered
+ * from the stored charts. Each [[chart:<id>]] line becomes an image link to a sibling SVG file.
  */
 export function buildMarkdownExport(
   report: ReportArtifact,
@@ -43,7 +36,7 @@ export function buildMarkdownExport(
   const fileFor = new Map<string, string>();
   report.chartIds.forEach((id, i) => {
     const svg = svgs[id];
-    if (svg === undefined || !isSafeSvg(svg)) return;
+    if (svg === undefined) return;
     const name = `${stem}-chart-${String(i + 1)}.svg`;
     fileFor.set(id, name);
     files.push({ name, content: svg });

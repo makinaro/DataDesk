@@ -1,4 +1,6 @@
-import { act, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { AgentProvider } from '../../../src/renderer/src/agent/AgentProvider';
+import { ApiProvider } from '../../../src/renderer/src/api';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { splitReport } from '../../../src/renderer/src/components/ReportDocument';
 import { ResultsPanel } from '../../../src/renderer/src/components/ResultsPanel';
@@ -86,7 +88,7 @@ describe('ResultsPanel', () => {
     expect(within(report).queryByText(/\[\[chart:/)).not.toBeInTheDocument();
   });
 
-  it('exports Markdown with chart SVGs and PDF with charts inlined as images', async () => {
+  it('exports Markdown via main only, and PDF with charts inlined as images', async () => {
     const { api, user } = renderPanel();
     act(() => {
       api.emit({ kind: 'artifact', artifactKind: 'report', id: REPORT_ID, title: 'Sales summary' });
@@ -95,11 +97,8 @@ describe('ResultsPanel', () => {
     await waitFor(() => {
       expect(api.artifacts.exportReport).toHaveBeenCalledTimes(1);
     });
-    expect(api.artifacts.exportReport).toHaveBeenLastCalledWith({
-      id: REPORT_ID,
-      format: 'md',
-      svgs: { [CHART_ID]: expect.stringContaining('<svg') as string },
-    });
+    expect(api.artifacts.exportReport).toHaveBeenLastCalledWith({ id: REPORT_ID, format: 'md' });
+    expect(vega.chartToSvg).not.toHaveBeenCalled();
     expect(await screen.findByText(/Saved to/)).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Export PDF' }));
@@ -123,7 +122,7 @@ describe('ResultsPanel', () => {
           kind: 'report',
           title: 'Evil',
           markdown:
-            '![x](https://evil.example/t.png)\n\n<img src=x onerror=alert(1)>\n\n[link](javascript:alert(1))',
+            '![x](https://evil.example/t.png)\n\n<img src=x onerror=alert(1)>\n\n[link](javascript:alert(1)) [site](https://github.com/x)',
           chartIds: [],
           createdAt: '2026-10-01T00:00:00.000Z',
         },
@@ -136,9 +135,8 @@ describe('ResultsPanel', () => {
     const report = await screen.findByRole('article', { name: 'Report: Evil' });
     expect(report.querySelector('img')).toBeNull();
     expect(report.querySelector('[onerror]')).toBeNull();
-    expect(within(report).getByText('link').getAttribute('href') ?? '').not.toContain(
-      'javascript:',
-    );
+    expect(report.querySelector('a')).toBeNull(); // links are unwrapped to their text
+    expect(within(report).getByText(/link site/)).toBeInTheDocument();
   });
 
   it('shows an error for a chart that no longer exists', async () => {
@@ -153,5 +151,56 @@ describe('ResultsPanel', () => {
     });
     expect(await screen.findByRole('alert')).toHaveTextContent('That chart no longer exists.');
     expect(vega.renderChart).not.toHaveBeenCalled();
+  });
+
+  it('auto-shows new artifacts again after a conversation reset', () => {
+    const { api } = renderPanel();
+    act(() => {
+      api.emit({ kind: 'artifact', artifactKind: 'chart', id: CHART_ID, title: 'Units by region' });
+      api.emit({ kind: 'conversation_reset', reason: 'user' });
+    });
+    expect(screen.getByRole('tab', { name: 'Data preview' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    act(() => {
+      api.emit({ kind: 'artifact', artifactKind: 'report', id: REPORT_ID, title: 'Sales summary' });
+    });
+    expect(screen.getByRole('tab', { name: /Sales summary/ })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+  });
+
+  it('picking another dataset shows its preview; a later artifact takes over again', async () => {
+    const api = createFakeApi();
+    const ui = (dataset: string) => (
+      <ApiProvider api={api}>
+        <AgentProvider>
+          <ResultsPanel dataset={dataset} revision={0} />
+        </AgentProvider>
+      </ApiProvider>
+    );
+    const { rerender } = render(ui('sales'));
+    act(() => {
+      api.emit({ kind: 'artifact', artifactKind: 'chart', id: CHART_ID, title: 'Units by region' });
+    });
+    expect(screen.getByRole('tab', { name: /Units by region/ })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    rerender(ui('events'));
+    expect(screen.getByRole('tab', { name: 'Data preview' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(await screen.findByRole('table', { name: 'Preview of events' })).toBeInTheDocument();
+    act(() => {
+      api.emit({ kind: 'artifact', artifactKind: 'report', id: REPORT_ID, title: 'Sales summary' });
+    });
+    expect(screen.getByRole('tab', { name: /Sales summary/ })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
   });
 });
