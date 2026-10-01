@@ -1,11 +1,8 @@
+import { useMemo } from 'react';
+import { isSubagentTool as isSubagentCall } from '../../../shared/agent';
 import { useAgent } from '../agent/AgentProvider';
 import type { TimelineItem, ToolCallItem } from '../agent/agentState';
 import { Panel } from './Panel';
-
-/** The SDK's sub-agent tool: requested as `Agent`, reported as `Task` (probe, D-017). */
-export function isSubagentCall(name: string): boolean {
-  return name === 'Agent' || name === 'Task';
-}
 
 function parseInput(input: string): Record<string, unknown> {
   try {
@@ -90,7 +87,7 @@ function SubagentLane({
         <span className="font-mono text-indigo-200">agent · {type}</span>
         {task && <span className="text-slate-300"> · {task}</span>}{' '}
         <span className="text-slate-500">
-          {duration} · {children.filter((c) => c.kind === 'tool').length} tool call(s)
+          {duration} · {children.length} tool call(s)
         </span>
       </p>
       {children.length > 0 && (
@@ -165,22 +162,28 @@ function Item({
 }
 
 /**
- * Groups tool calls under the sub-agent call that made them (parentToolUseId). Calls whose
- * parent isn't in the timeline stay top-level, so nothing is ever hidden.
+ * Groups tool calls under the sub-agent call that made them (parentToolUseId). Only top-level
+ * sub-agent calls become lanes (sub-agents can't nest), so there are no cycles; calls whose
+ * parent isn't a lane stay top-level, so nothing is ever hidden.
  */
 export function laneTree(timeline: readonly TimelineItem[]): {
   top: TimelineItem[];
   childrenOf: Map<string, TimelineItem[]>;
 } {
-  const lanes = new Set(
-    timeline.filter((i) => i.kind === 'tool' && isSubagentCall(i.name)).map((i) => i.id),
-  );
+  const lanes = new Set<string>();
+  for (const item of timeline) {
+    if (item.kind === 'tool' && item.parentToolUseId === null && isSubagentCall(item.name)) {
+      lanes.add(item.id);
+    }
+  }
   const top: TimelineItem[] = [];
   const childrenOf = new Map<string, TimelineItem[]>();
   for (const item of timeline) {
     const parent = item.kind === 'tool' ? item.parentToolUseId : null;
-    if (parent !== null && lanes.has(parent) && parent !== item.id) {
-      childrenOf.set(parent, [...(childrenOf.get(parent) ?? []), item]);
+    if (parent !== null && lanes.has(parent)) {
+      const children = childrenOf.get(parent);
+      if (children) children.push(item);
+      else childrenOf.set(parent, [item]);
     } else {
       top.push(item);
     }
@@ -190,7 +193,7 @@ export function laneTree(timeline: readonly TimelineItem[]): {
 
 export function TimelineDrawer() {
   const { state } = useAgent();
-  const { top, childrenOf } = laneTree(state.timeline);
+  const { top, childrenOf } = useMemo(() => laneTree(state.timeline), [state.timeline]);
   return (
     <Panel title="Agent timeline" className="h-56 shrink-0 border-t border-slate-800">
       {state.timeline.length === 0 ? (

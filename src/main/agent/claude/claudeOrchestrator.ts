@@ -6,11 +6,11 @@ import type {
   SDKUserMessage,
 } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
-import { preview, type ResetReason } from '../../../shared/agent';
+import { isSubagentTool, preview, type ResetReason } from '../../../shared/agent';
 import { DatasetNameSchema } from '../../../shared/datasets';
 import type { ApprovalBroker } from '../approvals';
 import type { EmitAgentEvent, Orchestrator } from '../orchestrator';
-import { APPROVAL_TOOLS, SUBAGENT_TOOL_NAMES } from './agentOptions';
+import { APPROVAL_TOOLS } from './agentOptions';
 import { checkInit } from './initGuard';
 import { InputQueue } from './inputQueue';
 import { createSdkMapper } from './sdkMapper';
@@ -149,7 +149,7 @@ export class ClaudeOrchestrator implements Orchestrator {
    */
   private canUseToolFor(generation: number): CanUseTool {
     return async (toolName, input, { signal, agentID }) => {
-      if ((SUBAGENT_TOOL_NAMES as readonly string[]).includes(toolName)) {
+      if (isSubagentTool(toolName)) {
         if (agentID !== undefined) {
           return { behavior: 'deny', message: 'Sub-agents cannot start other sub-agents.' };
         }

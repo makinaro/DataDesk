@@ -34,6 +34,13 @@ describe('laneTree', () => {
     expect(childrenOf.get('t1')?.map((i) => i.id)).toEqual(['c2']);
   });
 
+  it('never hides items in a parent cycle (only top-level sub-agent calls are lanes)', () => {
+    const items = [tool('a', 'Agent', 'b'), tool('b', 'Agent', 'a'), tool('c', 'Task', 'a')];
+    const { top, childrenOf } = laneTree(items);
+    expect(top.map((i) => i.id)).toEqual(['a', 'b', 'c']);
+    expect(childrenOf.size).toBe(0);
+  });
+
   it('labels sub-agent calls by agent type', () => {
     expect(toolLabel('Agent', JSON.stringify({ subagent_type: 'profiler' }))).toBe(
       'agent · profiler',

@@ -84,6 +84,8 @@ export function buildSubagents(): Record<SubagentName, AgentDefinition> {
         disallowedTools: ['Agent', 'Task', 'Skill', tool('register_dataset')],
         skills: [...SUBAGENT_SKILLS[name]],
         model: 'inherit',
+        // No CLAUDE.md even if one existed (settingSources: [] already loads none).
+        omitClaudeMd: true,
         maxTurns: SUBAGENT_MAX_TURNS,
       } satisfies AgentDefinition,
     ]),

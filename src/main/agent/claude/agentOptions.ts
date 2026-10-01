@@ -1,5 +1,5 @@
 import type { CanUseTool, Options } from '@anthropic-ai/claude-agent-sdk';
-import type { AgentSettings } from '../../../shared/agent';
+import { SUBAGENT_TOOL_NAMES, type AgentSettings } from '../../../shared/agent';
 import { DATADESK_SERVER, datadeskTool as tool } from './datadeskTools';
 import { scopeHook } from './scopeHook';
 import { buildSubagents } from './subagents';
@@ -32,12 +32,6 @@ export const SKILL_NAMES = [
   'datadesk:chart-style',
   'datadesk:report-format',
 ] as const;
-
-/**
- * The sub-agent tool. Requested as `Agent`; the CLI reports it as `Task` in init (probe), and
- * calls may use either name.
- */
-export const SUBAGENT_TOOL_NAMES = ['Agent', 'Task'] as const;
 
 /** Every tool the analyst may see. The init guard aborts the session on anything else. */
 export const EXPECTED_TOOLS: ReadonlySet<string> = new Set([

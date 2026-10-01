@@ -73,7 +73,7 @@ resources/       agent-plugin (runtime skills), icons
 6. `create_chart` / `save_report` write artifacts to `userData/artifacts` and return ids. Main
    turns successful results into `artifact` events; the Charts & report panel loads them by id,
    renders Vega-Lite, and exports Markdown/PDF through `artifacts:exportReport`.
-7. For bigger jobs the analyst delegates through the `Agent` tool: `canUseTool` checks the
-   sub-agent type and strips the call, the sub-agent (profiler, sql-analyst, report-writer) runs
+7. For bigger jobs the analyst delegates through the `Agent` tool: the scope hook checks the
+   sub-agent type and the call shape (canUseTool strips it too), the sub-agent (profiler, sql-analyst, report-writer) runs
    with only its scoped tools in a fresh context, and the scope hook re-checks every call. Its
    tool calls and messages arrive with `parent_tool_use_id` and render as a nested timeline lane.

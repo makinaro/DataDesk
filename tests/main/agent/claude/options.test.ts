@@ -154,6 +154,7 @@ describe('checkInit (runtime tripwire)', () => {
     ],
     [{ agents: ['profiler', 'sql-analyst'] }, /sub-agents did not load: report-writer/],
     [{ agents: [] }, /sub-agents did not load/],
+    [{ agents: undefined }, /sub-agents did not load/],
     [{ permissionMode: 'bypassPermissions' as const }, /permission mode/],
     [{ apiKeySource: '/login managed key' as const }, /credentials/],
     [{ cwd: 'C:/github_projects/data-analysis-assistant' }, /working directory/],

@@ -352,12 +352,17 @@ lazy-loaded later). Artifacts accumulate in userData (no cleanup UI yet).
 
 - **Three gates:**
   1. **`tools`:** each agent is given only its tools.
-  2. **`PreToolUse` scope hook:** keyed on `agent_id`, it denies any sub-agent call outside the
-     table, and any call from an unknown agent type.
-  3. **`canUseTool`:** it validates delegations (only our three `subagent_type`s) and strips
-     them to `{subagent_type, description, prompt}`, so there's no `model`, `run_in_background`,
-     `isolation`, `name` or `mode`. It also denies the sub-agent tool and `register_dataset` from
-     inside sub-agents.
+  2. **`PreToolUse` scope hook** (fires for every tool call, per the docs). Inside a sub-agent it
+     denies any call outside the table, and any call from an unknown agent type. On the main
+     thread it denies a delegation unless it is strictly `{subagent_type, description, prompt}`
+     with one of our three types, so there's no `model`, `run_in_background`, `isolation`,
+     `name` or `mode`. A call counts as main-thread only when both `agent_id` and `agent_type`
+     are absent, so a missing field fails closed.
+  3. **`canUseTool`:** a second layer. It strips delegations to the same three fields and
+     denies the sub-agent tool and `register_dataset` inside sub-agents. **Unverified:** whether
+     the CLI asks `canUseTool` about the main thread's own `Agent` call at all. Claude Code lists
+     the tool as not requiring permission, and a real model call is needed to check. That's why
+     the hook enforces delegation shape on its own.
 - **Env caps:**
   - `CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS=1`;
   - `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1`;

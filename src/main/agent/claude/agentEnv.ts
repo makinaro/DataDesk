@@ -35,10 +35,6 @@ export interface AgentEnvInput {
 }
 
 /**
- * The complete environment of the Claude Code process. The SDK's `env` option *replaces* the
- * child's environment, so nothing reaches it unless listed here (CLAUDE.md, Security rule 5).
- */
-/**
  * Sub-agent caps (DECISIONS D-017). The SDK has no Options fields for these, only env vars;
  * semantics verified against code.claude.com/docs/en/env-vars (2026-10-01) and by probe.
  */
@@ -57,6 +53,10 @@ export const SUBAGENT_LIMITS = {
   CLAUDE_CODE_FORK_SUBAGENT: '0',
 } as const;
 
+/**
+ * The complete environment of the Claude Code process. The SDK's `env` option *replaces* the
+ * child's environment, so nothing reaches it unless listed here (CLAUDE.md, Security rule 5).
+ */
 export function buildAgentEnv({
   apiKey,
   userData,
