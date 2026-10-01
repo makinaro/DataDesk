@@ -51,6 +51,20 @@ describe('addInteractivity', () => {
     }
   });
 
+  it('never zooms or clips bars, even horizontal ones with a quantitative x', () => {
+    // Clipping a bar under the theme's cornerRadiusEnd hid every bar (a zero-width clip group).
+    for (const mark of ['bar', { type: 'bar' }, 'rect', 'arc', 'text']) {
+      const input = spec({
+        mark,
+        encoding: {
+          y: { field: 'car', type: 'nominal' },
+          x: { field: 'total_accidents', type: 'quantitative' },
+        },
+      });
+      expect(addInteractivity(input)).toBe(input);
+    }
+  });
+
   it('makes a categorical legend a filter that fades the other series', () => {
     const out = json(
       addInteractivity(

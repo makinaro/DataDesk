@@ -26,8 +26,17 @@ export function fillWidth(spec: TopLevelSpec): TopLevelSpec {
 }
 
 /**
+ * Marks worth zooming: continuous plots. Bars are excluded on purpose: zooming one only distorts
+ * it, and the clip that zoom needs hides every bar under the theme's `cornerRadiusEnd` (Vega-Lite
+ * draws rounded bars inside a zero-width group, and clipping that group clips the bar away).
+ */
+const ZOOMABLE = new Set(['line', 'area', 'point', 'circle', 'square', 'trail']);
+
+const markType = (mark: unknown): unknown => (isObject(mark) ? mark.type : mark);
+
+/**
  * Adds interaction to a single-view chart the model wrote: drag to pan and wheel to zoom when x
- * is continuous (lines, scatter, areas; a zoomed bar chart only distorts), and a clickable
+ * is continuous on a line, area or point chart, and a clickable
  * legend that fades the other series. Composite specs and specs with their own params are left
  * as they are, so this never fights the model's design. Tooltips come from the theme config.
  */
@@ -41,7 +50,7 @@ export function addInteractivity(spec: TopLevelSpec): TopLevelSpec {
   let mark: unknown = s.mark;
 
   const x = channel(encoding, 'x');
-  if (continuous(x)) {
+  if (continuous(x) && ZOOMABLE.has(String(markType(mark)))) {
     const encodings = continuous(channel(encoding, 'y')) ? ['x', 'y'] : ['x'];
     params.push({ name: 'zoom', select: { type: 'interval', encodings }, bind: 'scales' });
     mark = isObject(mark) ? { ...mark, clip: true } : { type: mark, clip: true };

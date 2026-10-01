@@ -229,3 +229,42 @@ test('charts follow the theme, zoom, filter by legend and save as PNG and SVG', 
 
   expect(violations).toEqual([]);
 });
+
+test('horizontal bars are actually drawn, not clipped away', async ({ electronApp, page }) => {
+  // Regression: zoom's clip on a bar with the theme's rounded ends left every bar invisible
+  // while the paths still existed, so counting paths wasn't enough.
+  const id = '55555555-5555-4555-8555-555555555555';
+  const userData = await seedArtifacts(electronApp);
+  const bars = {
+    ...chart,
+    id,
+    title: 'Accidents by car',
+    spec: {
+      mark: 'bar',
+      encoding: {
+        y: { field: 'car', type: 'nominal', sort: '-x' },
+        x: { field: 'accidents', type: 'quantitative' },
+      },
+      data: {
+        values: [
+          { car: 'GLE', accidents: 69 },
+          { car: 'Passat', accidents: 59 },
+          { car: 'Mustang', accidents: 57 },
+        ],
+      },
+    },
+  };
+  writeFileSync(join(userData, 'artifacts', 'charts', `${id}.json`), JSON.stringify(bars));
+  await announce(electronApp, 'chart', id, 1000, bars.title);
+
+  const paths = page.locator('.vega-embed .mark-rect path');
+  await expect(paths).toHaveCount(3);
+  // Hit-testing respects clip-path: a clipped-away bar can't be hit at its own centre.
+  const hits = await paths.evaluateAll((els) =>
+    els.map((el) => {
+      const r = el.getBoundingClientRect();
+      return document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2) === el;
+    }),
+  );
+  expect(hits).toEqual([true, true, true]);
+});
