@@ -387,3 +387,67 @@ lazy-loaded later). Artifacts accumulate in userData (no cleanup UI yet).
   `add-mcp-tool` skill says so).
 - If a future CLI renames `Task`/`Agent` again, the guard will stop the session rather than run
   with an unknown tool.
+
+## D-018: OpenAI tools inside datadesk-mcp, keyed by the user, routed via the CLI env (2026-10-01)
+
+**Context:** Phase 5 adds two tools to our MCP server that call OpenAI: `search_columns`
+(embeddings) and `second_opinion` (a second model critiques an analysis step). Verified for
+`openai` 7.25.0 from its installed typings (2026-10-01):
+
+- `new OpenAI({ apiKey, timeout, maxRetries, fetch })`;
+- `embeddings.create({ model, input, dimensions })`, with `data[i].index`;
+- `responses.parse({ … text: { format: zodTextFormat(schema, name) } })`, which returns
+  `output_parsed`, and `openai/helpers/zod` accepts zod v4;
+- typed errors (`AuthenticationError`, `RateLimitError`, `APIConnectionError`), and a
+  per-request `signal`.
+
+Model ids come from the SDK's unions: `text-embedding-3-small` (newest embedding model) and
+`gpt-5.4-mini`.
+
+The docs-researcher run for this phase was cut short by a usage limit, so facts come from the
+installed `.d.ts` and are exercised by tests that run the real SDK over an injected `fetch`.
+
+**Decision:**
+
+- **Injectable `OpenAIClient`** (`embed`, `critique`) in `src/mcp-server/openai/client.ts`.
+  Tools depend on it, never on the SDK, so tests inject a fake.
+- **`search_columns`:** embeds `dataset.column (TYPE): e.g. v1, v2, v3` (at most 3 distinct
+  sample values, 40 chars each) and the query, at 512 dimensions. Vectors are cached by
+  `sha256(model, dimensions, text)` in a bounded, persisted JSON file (`<userData>/cache`), so a
+  column is embedded once across sessions. Results are ranked by cosine similarity.
+- **`second_opinion`:** re-runs the SQL itself through the read-only guard (50 rows) and sends
+  the question, SQL, an 8 KB result preview and the draft answer. The strict structured critique
+  comes back bounded.
+- **Key route:** `DATADESK_OPENAI_API_KEY` goes into the agent CLI's explicitly built env. The
+  CLI passes its env to datadesk-mcp (D-014), `scrubSecrets` keeps `DATADESK_*`, and the server
+  drops it from `process.env` after reading. **It is not put in the server's `env` config**: the
+  SDK sends `mcpServers` to the CLI as a `--mcp-config <JSON>` command-line argument, which other
+  processes, logs and crash reports can see. The UI's own datadesk-mcp gets no key.
+- **Opt-in and visibility:**
+  - No key: the tools aren't registered. Allowed tools, guard expectations and sub-agent tools
+    follow the key.
+  - Setting the key is the opt-in. Settings explains what is sent, the tool descriptions say it,
+    and both tools are annotated `openWorldHint: true`.
+  - Changing the key resets the session.
+- **Scope:** profiler gets `search_columns`, sql-analyst gets both, report-writer neither.
+- **Tests:** child processes in tests never get a key, so they have no OpenAI code path. The one
+  e2e that sets a fake key only lists tools. This closes the "network guard for child processes"
+  item carried since Phase 0.
+
+**Alternatives:**
+
+- Key in the server `env` config: it ends up on the command line.
+- A side channel (pipe or temp file) from main: more moving parts for the same trust level as
+  the CLI env, which already holds the Anthropic key.
+- Calling OpenAI from main instead: then the tool would no longer live in the MCP server, which
+  is the point of this phase.
+- Approval per call: these tools are read-only and the key is an explicit opt-in. An approval
+  dialog per column search would make them unusable.
+
+**Consequences:**
+
+- The CLI process holds the OpenAI key in its env, alongside the Anthropic key. The model has
+  no tool that can read the environment.
+- Column samples and small query results leave the machine when the tools are used.
+- Model ids are constants; changing them invalidates the cache only for the embedding model,
+  because the model is part of the key.
