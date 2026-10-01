@@ -32,6 +32,8 @@ export interface SessionSetup extends SessionTools {
   workspaceDir: string;
   /** The skills plugin; the init guard checks exactly this plugin loaded. */
   pluginDir: string;
+  /** Non-fatal problems to show in the chat (e.g. Hugging Face could not be attached). */
+  notices?: string[];
 }
 
 export interface ClaudeOrchestratorDeps {
@@ -200,12 +202,15 @@ export class ClaudeOrchestrator implements Orchestrator {
 
   private async start(generation: number): Promise<Session> {
     const abortController = new AbortController();
-    const { options, workspaceDir, pluginDir, openaiTools, hfTools } =
+    const { options, workspaceDir, pluginDir, openaiTools, hfTools, notices } =
       await this.deps.createSession({
         abortController,
         canUseTool: this.canUseToolFor(generation),
       });
     if (generation !== this.generation) throw new SupersededError();
+    for (const message of notices ?? []) {
+      this.deps.emit({ kind: 'error', message: preview(message, 2_000) });
+    }
     const input = new InputQueue();
     const query = this.deps.query({ prompt: input, options });
     const session: Session = {

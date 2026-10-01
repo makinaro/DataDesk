@@ -101,7 +101,7 @@ without a key.
 ## Phase 6: Hugging Face
 
 - [x] Remote HF MCP server (streamable HTTP, `Authorization: Bearer`), URL and tool names verified first
-- [ ] Runtime tool discovery + allowlist
+- [x] Runtime tool discovery + allowlist
 - [ ] `load_hf_dataset`: size-capped download to `userData/datasets/hf`, then register
 - [ ] ApprovalBroker + approval dialog (`canUseTool` → IPC → user)
 - [ ] `dataset-scout` sub-agent + `evaluating-datasets` skill

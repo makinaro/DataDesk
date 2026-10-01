@@ -5,6 +5,7 @@ import type { Options } from '@anthropic-ai/claude-agent-sdk';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createAgentRuntime } from '../../../src/main/agent/agentRuntime';
 import { IpcUserError } from '../../../src/main/ipc/errors';
+import type { ToolDiscovery } from '../../../src/main/mcp/toolDiscovery';
 import { DEFAULT_AGENT_SETTINGS, type AgentEvent } from '../../../src/shared/agent';
 import { PLUGIN_DIR, scriptedQuery, sdk } from './claude/fakeSdk';
 
@@ -25,6 +26,8 @@ interface RuntimeOpts {
   openaiUnreadable?: boolean;
   hfToken?: string;
   hfUnreadable?: boolean;
+  /** What listing the HF server's tools returns (default: the anonymous set plus create_repo). */
+  hfDiscovery?: ToolDiscovery;
 }
 
 function runtime(opts: RuntimeOpts = {}) {
@@ -41,6 +44,14 @@ function runtime(opts: RuntimeOpts = {}) {
     openai: () => (opts.openaiUnreadable ? unreadable() : Promise.resolve(opts.openaiKey)),
     huggingface: () => (opts.hfUnreadable ? unreadable() : Promise.resolve(opts.hfToken)),
   };
+  const discoverHfTools = vi.fn<(token: string) => Promise<ToolDiscovery>>(() =>
+    Promise.resolve(
+      opts.hfDiscovery ?? {
+        ok: true,
+        tools: ['hf_whoami', 'hub_repo_search', 'hub_repo_details', 'hf_fs', 'create_repo'],
+      },
+    ),
+  );
   const rt = createAgentRuntime({
     keyStore: {
       status: () => Promise.resolve({ anthropic: hasKey, openai: false, huggingface: false }),
@@ -57,8 +68,9 @@ function runtime(opts: RuntimeOpts = {}) {
     app: { isPackaged: false, version: '0.1.0', resourcesPath: 'C:/app/resources' },
     log: () => undefined,
     query: queryFn,
+    discoverHfTools,
   });
-  return { rt, delivered, calls, workspace };
+  return { rt, delivered, calls, workspace, discoverHfTools };
 }
 
 describe('createAgentRuntime', () => {
@@ -146,7 +158,7 @@ describe('createAgentRuntime', () => {
 
   it('attaches the HF server with a ${…} placeholder; the token only in the CLI env', async () => {
     const hfToken = 'hf_test_token_0123456789';
-    const { rt, calls, delivered } = runtime({ hfToken });
+    const { rt, calls, delivered, discoverHfTools } = runtime({ hfToken });
     (await rt.get()).send('hello');
     await vi.waitFor(() => {
       expect(delivered.some((e) => e.kind === 'turn_complete')).toBe(true);
@@ -159,6 +171,29 @@ describe('createAgentRuntime', () => {
       type: 'http',
       headers: { Authorization: 'Bearer ${DATADESK_HF_TOKEN}' },
     });
+    // Discovered first, with the token; everything outside the allowlist is hidden.
+    expect(discoverHfTools).toHaveBeenCalledWith(hfToken);
+    expect(options.disallowedTools).toEqual(
+      expect.arrayContaining(['mcp__hf__hf_whoami', 'mcp__hf__create_repo']),
+    );
+    expect(options.disallowedTools).not.toContain('mcp__hf__hub_repo_search');
+  });
+
+  it.each([
+    [{ ok: false, reason: 'unauthorized', detail: 'HTTP 401' } as const, /rejected your token/],
+    [{ ok: false, reason: 'unreachable', detail: 'fetch failed' } as const, /Could not reach/],
+  ])('starts without HF and tells the user when discovery fails (%j)', async (found, notice) => {
+    const { rt, calls, delivered } = runtime({ hfToken: 'hf_bad', hfDiscovery: found });
+    (await rt.get()).send('hello');
+    await vi.waitFor(() => {
+      expect(delivered.some((e) => e.kind === 'turn_complete')).toBe(true);
+    });
+    const options = calls.options as Options;
+    expect(Object.keys(options.mcpServers ?? {})).toEqual(['datadesk']);
+    expect(options.env).not.toHaveProperty('DATADESK_HF_TOKEN');
+    const errors = delivered.filter((e) => e.kind === 'error');
+    expect(errors).toHaveLength(1);
+    expect(errors[0]?.kind === 'error' && errors[0].message).toMatch(notice);
   });
 
   it.each([{}, { hfUnreadable: true }])('has no HF server or token variable with %j', async (o) => {

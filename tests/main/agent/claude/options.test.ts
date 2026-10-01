@@ -7,6 +7,7 @@ import {
   FORBIDDEN_BUILTINS,
   SKILL_NAMES,
 } from '../../../../src/main/agent/claude/agentOptions';
+import { hfDisallowedTools } from '../../../../src/main/agent/claude/hfTools';
 import { checkInit } from '../../../../src/main/agent/claude/initGuard';
 import { neutralizeSlashCommand } from '../../../../src/main/agent/claude/inputQueue';
 import { scopeHook } from '../../../../src/main/agent/claude/scopeHook';
@@ -18,18 +19,20 @@ const WORKSPACE = `${USER_DATA}/agent-workspace`;
 const PLUGIN = 'C:/Program Files/DataDesk/resources/agent-plugin';
 const expected = { cwd: WORKSPACE, pluginDir: PLUGIN, openaiTools: false, hfTools: false };
 
+const baseInput = {
+  settings: DEFAULT_AGENT_SETTINGS,
+  openaiTools: false,
+  hfTools: false,
+  workspaceDir: WORKSPACE,
+  env: { ANTHROPIC_API_KEY: KEY },
+  mcpServer: { command: 'electron.exe', args: ['mcp-server.js'], env: { X: '1' } },
+  canUseTool: () => Promise.resolve({ behavior: 'deny' as const, message: 'no' }),
+  abortController: new AbortController(),
+  pluginDir: PLUGIN,
+};
+
 function options(openaiTools = false, hfTools = false) {
-  return buildAgentOptions({
-    settings: DEFAULT_AGENT_SETTINGS,
-    openaiTools,
-    hfTools,
-    workspaceDir: WORKSPACE,
-    env: { ANTHROPIC_API_KEY: KEY },
-    mcpServer: { command: 'electron.exe', args: ['mcp-server.js'], env: { X: '1' } },
-    canUseTool: () => Promise.resolve({ behavior: 'deny', message: 'no' }),
-    abortController: new AbortController(),
-    pluginDir: PLUGIN,
-  });
+  return buildAgentOptions({ ...baseInput, openaiTools, hfTools });
 }
 
 describe('buildAgentOptions (the whole capability surface of the in-app agent)', () => {
@@ -257,6 +260,28 @@ describe('Hugging Face server (only with a token)', () => {
     const o = options(false, true);
     expect(o.allowedTools?.filter((t) => t.startsWith('mcp__hf__'))).toEqual(HF);
     expect(o.systemPrompt).toMatch(/untrusted/);
+  });
+
+  it('hides every discovered tool outside the allowlist, named as Claude Code names them', () => {
+    expect(
+      hfDisallowedTools([
+        'hub_repo_search',
+        'hf_fs',
+        'create_repo',
+        'gr1.image gen',
+        'create_repo',
+      ]),
+    ).toEqual(['mcp__hf__create_repo', 'mcp__hf__gr1_image_gen']);
+    const o = buildAgentOptions({
+      ...baseInput,
+      hfTools: true,
+      hfDisallowedTools: ['mcp__hf__create_repo'],
+    });
+    expect(o.disallowedTools).toContain('mcp__hf__create_repo');
+    // Without HF the list has no effect.
+    expect(
+      buildAgentOptions({ ...baseInput, hfDisallowedTools: ['mcp__hf__x'] }).disallowedTools,
+    ).not.toContain('mcp__hf__x');
   });
 
   it('is absent without a token', () => {

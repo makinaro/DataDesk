@@ -99,6 +99,8 @@ export const HF_TOOLS_PROMPT = `Hugging Face Hub (public datasets; use it when t
 
 export interface AgentOptionsInput extends SessionTools {
   settings: AgentSettings;
+  /** HF tools discovered outside the allowlist (D-019); hidden from the model. */
+  hfDisallowedTools?: readonly string[];
   workspaceDir: string;
   env: Record<string, string>;
   mcpServer: { command: string; args: string[]; env: Record<string, string> };
@@ -151,7 +153,10 @@ export function buildAgentOptions(input: AgentOptionsInput): Options {
     skills: [...SKILL_NAMES],
     // No shell-injection in skills; drop Claude Code's bundled skills.
     settings: { disableSkillShellExecution: true, disableBundledSkills: true },
-    disallowedTools: [...FORBIDDEN_BUILTINS],
+    disallowedTools: [
+      ...FORBIDDEN_BUILTINS,
+      ...(input.hfTools ? (input.hfDisallowedTools ?? []) : []),
+    ],
     // Explicit: when omitted the CLI may choose `auto`. In `default` mode every non-allowlisted
     // tool call reaches canUseTool (where approvals and the deny-by-default live).
     permissionMode: 'default',

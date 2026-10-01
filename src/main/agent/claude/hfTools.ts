@@ -28,6 +28,13 @@ export const HF_ALLOWED_TOOLS = [
   hfTool('hf_fs'),
 ] as const;
 
-export function isHfTool(name: string): boolean {
-  return name.startsWith(`mcp__${HF_SERVER}__`);
+/**
+ * The discovered HF tools to pass as `disallowedTools`: everything outside the allowlist.
+ * Claude Code names a tool mcp__<server>__<tool> with other characters replaced by `_`.
+ */
+export function hfDisallowedTools(discovered: readonly string[]): string[] {
+  const allowed: readonly string[] = HF_ALLOWED_TOOLS;
+  return [
+    ...new Set(discovered.map((name) => hfTool(name.replace(/[^A-Za-z0-9_-]/g, '_')))),
+  ].filter((tool) => !allowed.includes(tool));
 }
