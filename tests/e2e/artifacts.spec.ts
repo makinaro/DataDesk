@@ -74,8 +74,7 @@ async function announce(
 
 async function stubSaveDialog(app: ElectronApplication, filePath: string) {
   await app.evaluate(({ dialog }, path) => {
-    dialog.showSaveDialog = (() =>
-      Promise.resolve({ canceled: false, filePath: path })) as typeof dialog.showSaveDialog;
+    dialog.showSaveDialog = () => Promise.resolve({ canceled: false, filePath: path });
   }, filePath);
 }
 
