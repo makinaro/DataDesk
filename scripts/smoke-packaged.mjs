@@ -11,6 +11,10 @@
 //                                      also sets a DUMMY Hugging Face token: main's tool discovery
 //                                      gets a 401 from huggingface.co/mcp, so the session must start
 //                                      without the hf server and say so (D-019)
+//   npm run smoke:packaged -- --openai-agent
+//                                      runs the analyst on the OpenAI provider with a DUMMY key:
+//                                      datadesk-mcp over the SDK's MCPServerStdio must connect, then
+//                                      one request to OpenAI fails with 401 (D-021; manual use only)
 //
 // Uses a throwaway profile via Chromium's --user-data-dir and aborts if that isn't honoured,
 // so it never touches the real DataDesk profile.
@@ -26,6 +30,7 @@ const exe = resolve('release/win-unpacked/DataDesk.exe');
 const withAgent = process.argv.includes('--agent');
 const withOpenAI = process.argv.includes('--openai');
 const withHf = process.argv.includes('--hf');
+const withOpenAIAgent = process.argv.includes('--openai-agent');
 const expectedDatadeskTools = withOpenAI ? 10 : 8;
 if (!existsSync(exe)) {
   console.error(`Missing ${exe}. Run: npm run package:dir`);
@@ -148,6 +153,52 @@ try {
     check(
       'dummy key rejected with a readable error',
       /401|authenticate/i.test(error?.message ?? ''),
+      error?.message,
+    );
+  }
+
+  if (withOpenAIAgent) {
+    await page.evaluate(() => {
+      window.__events = [];
+      window.datadesk.agent.onEvent((e) => window.__events.push(e));
+    });
+    await page.evaluate(() =>
+      window.datadesk.secrets.set('openai', 'sk-openai-dummy-smoke-key-not-real'),
+    );
+    const saved = await page.evaluate(async () => {
+      const current = await window.datadesk.settings.getAgent();
+      return current.ok
+        ? window.datadesk.settings.setAgent({ ...current.data, provider: 'openai' })
+        : current;
+    });
+    check('provider switched to OpenAI', saved.ok && saved.data.provider === 'openai');
+    await page.evaluate(() => window.datadesk.agent.send('Which datasets do I have?'));
+    let events = [];
+    for (let i = 0; i < 60; i++) {
+      events = await page.evaluate(() => window.__events);
+      if (events.some((e) => e.kind === 'turn_complete' || e.kind === 'error')) break;
+      await page.waitForTimeout(1000);
+    }
+    const session = events.find((e) => e.kind === 'session');
+    check(
+      'OpenAI session started (datadesk-mcp via MCPServerStdio from the package)',
+      session !== undefined,
+      session?.model,
+    );
+    check(
+      'OpenAI analyst has the 10 datadesk tools, Skill and the 3 sub-agent tools',
+      session !== undefined &&
+        session.tools.filter((t) => t.startsWith('mcp__datadesk__')).length === 10 &&
+        ['Skill', 'profiler', 'sql_analyst', 'report_writer'].every((t) =>
+          session.tools.includes(t),
+        ),
+      session?.tools.join(', '),
+    );
+    const error = events.find((e) => e.kind === 'error');
+    check(
+      'dummy OpenAI key rejected with a readable, key-free error',
+      /OpenAI rejected the API key \(401\)/.test(error?.message ?? '') &&
+        !(error?.message ?? '').includes('sk-'),
       error?.message,
     );
   }
