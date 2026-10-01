@@ -47,7 +47,8 @@ Arguments: `$ARGUMENTS` (e.g. `profile_column "min/max/nulls/top values for one 
 - The `system:init` guard (`src/main/agent/claude/initGuard.ts`) derives its expected tools from
   `EXPECTED_TOOLS` in `agentOptions.ts`; update tests in `tests/main/agent/claude/` and the
   fake init in `fakeSdk.ts`.
-- Sub-agent scoping (Phase 4+): decide which sub-agents may call it. `report-writer` must never
+- Sub-agent scoping: add it to the scope table `SUBAGENT_TOOLS` in
+  `src/main/agent/claude/subagents.ts` for the sub-agents that may call it. `report-writer` must never
   get `run_sql` or anything that executes SQL.
 - Update the tool count in `tests/e2e/mcp-stdio.spec.ts` and `scripts/smoke-packaged.mjs`.
 

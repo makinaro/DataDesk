@@ -324,3 +324,61 @@ back through the model, and without loosening the renderer CSP (`script-src 'sel
 
 **Consequences:** Vega adds ~2.5 MB to the renderer bundle (fine for a local app; could be
 lazy-loaded later). Artifacts accumulate in userData (no cleanup UI yet).
+
+## D-017: Sub-agents from one scope table, gated three ways (2026-10-01)
+
+**Context:** Phase 4 adds sub-agents. Verified for `@anthropic-ai/claude-agent-sdk` 0.3.286
+(installed `sdk.d.ts`, code.claude.com/docs/en/agent-sdk/subagents, /sub-agents, /env-vars,
+2026-10-01, plus dummy-key probes):
+
+- the sub-agent tool is requested as `Agent` but listed as `Task` in `init`;
+- by default a session also has built-in agents (`general-purpose` inherits every tool),
+  sub-agents run in the background, and may nest 3 deep;
+- sub-agents inherit the parent's MCP tools unless `tools` narrows them;
+- `canUseTool` (with `agentID`) and `PreToolUse` hooks (with `agent_id`/`agent_type`) fire for
+  sub-agent calls;
+- the caps exist only as env vars, not `Options` fields.
+
+**Decision:**
+
+- **One scope table** (`src/main/agent/claude/subagents.ts`):
+  - profiler: read tools + `run_sql`;
+  - sql-analyst: read tools + `run_sql` + `create_chart`;
+  - report-writer: `save_report` only. It never runs SQL; it writes from findings in its prompt.
+
+  The table feeds each `AgentDefinition.tools` and the scope hook. Each agent also has
+  `disallowedTools` (Agent, Task, Skill, register_dataset), preloaded `skills`, `model: 'inherit'`
+  and `maxTurns: 20`. No `permissionMode`, `mcpServers` or `memory`.
+
+- **Three gates:**
+  1. **`tools`:** each agent is given only its tools.
+  2. **`PreToolUse` scope hook:** keyed on `agent_id`, it denies any sub-agent call outside the
+     table, and any call from an unknown agent type.
+  3. **`canUseTool`:** it validates delegations (only our three `subagent_type`s) and strips
+     them to `{subagent_type, description, prompt}`, so there's no `model`, `run_in_background`,
+     `isolation`, `name` or `mode`. It also denies the sub-agent tool and `register_dataset` from
+     inside sub-agents.
+- **Env caps:**
+  - `CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS=1`;
+  - `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1`;
+  - `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS=3`;
+  - `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` (foreground, so a turn ends after its sub-agents);
+  - `CLAUDE_CODE_FORK_SUBAGENT=0`.
+- **Init guard:** requires exactly our three agents and accepts `Agent`/`Task`.
+- **Timeline:** `forwardSubagentText: true` sends sub-agent text to its timeline lane.
+
+**Alternatives:**
+
+- Prompt-only delegation (one agent): no context isolation or tool scoping to learn from.
+- Trusting `tools` alone: one layer, and SDK defaults change.
+- `disallowedTools: ['Agent(general-purpose)', …]` deny rules: only partially documented for
+  the SDK option. The env var removes all built-ins, and the guard verifies it.
+
+**Consequences:**
+
+- Sub-agents cost extra tokens and latency; the prompt tells the analyst to delegate only bigger
+  jobs.
+- Adding a DataDesk tool now also means deciding its row in the scope table (the
+  `add-mcp-tool` skill says so).
+- If a future CLI renames `Task`/`Agent` again, the guard will stop the session rather than run
+  with an unknown tool.
