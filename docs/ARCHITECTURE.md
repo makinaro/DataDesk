@@ -11,6 +11,7 @@
 ┌───────────────┴──────────── Main process (Node, ESM) ───────────────────────┐
 │ KeyStore (safeStorage) · IPC handlers · ApprovalBroker · Report export(PDF) │
 │ UiMcpClient ──stdio──► datadesk-mcp (long-lived; sidebar/schema/register)   │
+│ HF tool discovery ──HTTPS──► Hugging Face MCP (tools/list per session)      │
 │ AgentRuntime ── query() from @anthropic-ai/claude-agent-sdk ──┐             │
 └───────────────────────────────────────────────────────────────┼─────────────┘
                      spawns (child process)                     ▼
@@ -18,18 +19,18 @@
               │ cwd = userData/agent-workspace, settingSources: []            │
               │ sub-agents: profiler · sql-analyst · report-writer · scout    │
               ├─ stdio ─► datadesk-mcp  (Electron binary, ELECTRON_RUN_AS_NODE)│
-              │            DuckDB (in-memory) · catalog · OpenAI tools        │
-              └─ HTTPS ─► Hugging Face MCP (Bearer token set by main)         │
+              │            DuckDB · catalog · OpenAI tools · load_hf_dataset  │
+              └─ HTTPS ─► Hugging Face MCP (Bearer ${DATADESK_HF_TOKEN})      │
                          └────────────────────────────────────────────────────┘
 ```
 
-| Process            | Trust        | Can touch keys?                                                    | Talks to                        |
-| ------------------ | ------------ | ------------------------------------------------------------------ | ------------------------------- |
-| Renderer           | untrusted UI | no, only booleans                                                  | main, via typed IPC             |
-| Preload            | bridge       | no                                                                 | exposes explicit functions only |
-| Main               | trusted      | decrypts, passes to children via explicit env/headers              | renderer, SDK, UiMcpClient      |
-| Claude Code binary | agent engine | `ANTHROPIC_API_KEY`, plus the OpenAI key to pass to datadesk-mcp   | our MCP servers                 |
-| datadesk-mcp       | tool server  | agent copy only: `DATADESK_OPENAI_API_KEY` via the CLI env (D-018) | DuckDB, OpenAI (when keyed)     |
+| Process            | Trust        | Can touch keys?                                                     | Talks to                        |
+| ------------------ | ------------ | ------------------------------------------------------------------- | ------------------------------- |
+| Renderer           | untrusted UI | no, only booleans                                                   | main, via typed IPC             |
+| Preload            | bridge       | no                                                                  | exposes explicit functions only |
+| Main               | trusted      | decrypts, passes to children via explicit env/headers               | renderer, SDK, UiMcpClient      |
+| Claude Code binary | agent engine | `ANTHROPIC_API_KEY`; the OpenAI key and HF token (env, D-018/D-019) | our MCP servers, HF MCP         |
+| datadesk-mcp       | tool server  | agent copy only: `DATADESK_OPENAI_API_KEY`, `DATADESK_HF_TOKEN`     | DuckDB, OpenAI, HF Hub (keyed)  |
 
 ## Security layers
 
@@ -40,12 +41,15 @@
    response and rejects senders that aren't our app frame.
 3. **Secrets:** `safeStorage` (DPAPI on Windows). Keys never leave main except as env or headers
    for child processes we spawn.
-4. **Agent:** only MCP tools + `Skill` + `Agent` (our three sub-agents only, scoped by one table,
+4. **Agent:** only MCP tools + `Skill` + `Agent` (our sub-agents only, scoped by one table,
    a PreToolUse hook and canUseTool), isolated config dir, plugin-only skills, and a
-   `system:init` guard (D-013, D-015, D-017).
-5. **SQL:** read-only by statement type, one statement, row caps, timeouts, and file access
+   `system:init` guard (D-013, D-015, D-017). Remote HF tools are discovered by main and all but
+   three read-only ones are disallowed (D-019).
+5. **Approvals:** `register_dataset` and `load_hf_dataset` always ask the user through
+   `ApprovalBroker`; anything but an explicit yes (timeout, abort, reset) is a no (D-010, D-020).
+6. **SQL:** read-only by statement type, one statement, row caps, timeouts, and file access
    restricted to dataset directories (Phase 1).
-6. **Charts and reports:** artifacts are loaded by uuid, specs are sanitized twice, Vega runs
+7. **Charts and reports:** artifacts are loaded by uuid, specs are sanitized twice, Vega runs
    without eval, styles or network, and PDFs print from a JS-off hidden window (D-016).
 
 ## Source layout
@@ -80,3 +84,20 @@ resources/       agent-plugin (runtime skills), icons
 8. With an OpenAI key set, the agent's datadesk-mcp also offers `search_columns` (embeddings,
    cached by content hash) and `second_opinion` (a second model critiques SQL + result). The key
    reaches it through the CLI's env, never a command line (D-018).
+
+## Data flow: finding and loading a Hub dataset (Phase 6)
+
+1. With a Hugging Face token saved, main lists the HF MCP server's tools itself before the
+   session starts (`src/main/mcp/toolDiscovery.ts`). A rejected token or an offline Hub starts the
+   conversation without HF and shows a notice.
+2. The session gets the `hf` server (`type: 'http'`, `Authorization: Bearer ${DATADESK_HF_TOKEN}`,
+   expanded by the CLI from its env) with every non-allowlisted tool in `disallowedTools`, and
+   the `dataset-scout` sub-agent. The init guard checks both.
+3. The analyst (or dataset-scout, following the `evaluating-datasets` skill) searches with
+   `hub_repo_search`, vets with `hub_repo_details`, and lists files with sizes via `hf_fs`.
+4. The analyst calls `mcp__datadesk__load_hf_dataset`. `canUseTool` validates the input against
+   the shared schema (`src/shared/hf.ts`) and the approval dialog shows the repo, file, revision,
+   dataset name and size limit.
+5. On approval, datadesk-mcp downloads the file (redirects followed by hand, token only to
+   huggingface.co, size-capped, `.part` then rename) into `userData/datasets/hf/…` and registers
+   it through a narrow `allowDirs` exception (D-020). From there it is a dataset like any other.
