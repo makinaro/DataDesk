@@ -53,14 +53,14 @@ test('every theme and both layouts render with zero CSP violations', async ({ pa
     await expect(page.getByRole('radio', { name: new RegExp(`^${theme}`) })).toBeChecked();
   }
   await page.getByRole('radio', { name: /Chat-first/ }).check({ force: true });
-  await page.getByRole('button', { name: 'Close' }).click();
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(region('Agent timeline')).toBeVisible();
   expect(await after('Chat', 'Charts & report')).toBe(true);
 
   await page.getByRole('button', { name: 'Settings' }).click();
   await page.getByRole('tab', { name: 'Appearance' }).click();
   await page.getByRole('radio', { name: /Results-first/ }).check({ force: true });
-  await page.getByRole('button', { name: 'Close' }).click();
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(region('Chat')).toBeVisible();
   expect(await after('Charts & report', 'Chat')).toBe(true);
 

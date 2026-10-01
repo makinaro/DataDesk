@@ -223,7 +223,7 @@ async function checkUi(app, page, userData) {
       await page.getByRole('radio', { name: new RegExp(`^${theme}`) }).check({ force: true });
       await page.waitForTimeout(150);
     }
-    await page.getByRole('button', { name: 'Close' }).click();
+    await page.getByRole('button', { name: 'Close', exact: true }).click();
     await page.locator('.vega-embed svg').first().waitFor({ timeout: 10_000 });
     check(
       `${layout} layout renders the chat and the chart`,
