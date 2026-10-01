@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { registerDataset } from '../../../src/mcp-server/datasets';
@@ -56,7 +56,12 @@ function load(
 }
 
 /** The path below the HF folder, as segments. */
-const parts = (path: string) => relative(hfDir, path).split(sep);
+const parts = (path: string) => {
+  // Registered paths are real paths: with an 8.3 TEMP (C:\Users\RUNNER~1 in CI) they spell the
+  // folder differently from hfDir, so compare against its real path too.
+  const base = path.startsWith(hfDir) ? hfDir : realpathSync.native(hfDir);
+  return relative(base, path).split(sep);
+};
 /** <revision>-<hash of the exact repo, revision and path>. */
 const folder = (revision: string): unknown =>
   expect.stringMatching(new RegExp(`^${revision}-[0-9a-f]{10}$`));
