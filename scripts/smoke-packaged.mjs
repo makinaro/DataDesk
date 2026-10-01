@@ -7,6 +7,10 @@
 //   npm run smoke:packaged -- --agent --openai
 //                                      also sets a DUMMY OpenAI key: the agent's datadesk-mcp must
 //                                      offer the 2 OpenAI tools (listed only, never called; D-018)
+//   npm run smoke:packaged -- --agent --hf
+//                                      also sets a DUMMY Hugging Face token: main's tool discovery
+//                                      gets a 401 from huggingface.co/mcp, so the session must start
+//                                      without the hf server and say so (D-019)
 //
 // Uses a throwaway profile via Chromium's --user-data-dir and aborts if that isn't honoured,
 // so it never touches the real DataDesk profile.
@@ -21,6 +25,7 @@ import { _electron as electron } from '@playwright/test';
 const exe = resolve('release/win-unpacked/DataDesk.exe');
 const withAgent = process.argv.includes('--agent');
 const withOpenAI = process.argv.includes('--openai');
+const withHf = process.argv.includes('--hf');
 const expectedDatadeskTools = withOpenAI ? 10 : 8;
 if (!existsSync(exe)) {
   console.error(`Missing ${exe}. Run: npm run package:dir`);
@@ -86,11 +91,19 @@ try {
         window.datadesk.secrets.set('openai', 'sk-openai-dummy-smoke-key-not-real'),
       );
     }
+    if (withHf) {
+      await page.evaluate(() =>
+        window.datadesk.secrets.set('huggingface', 'hf_dummy_smoke_token_not_real'),
+      );
+    }
     await page.evaluate(() => window.datadesk.agent.send('Which datasets do I have?'));
     let events = [];
     for (let i = 0; i < 90; i++) {
       events = await page.evaluate(() => window.__events);
-      if (events.some((e) => e.kind === 'turn_complete' || e.kind === 'error')) break;
+      // The HF notice is an error event that comes before the session; keep waiting past it.
+      const done = (e) =>
+        e.kind === 'turn_complete' || (e.kind === 'error' && !e.message.includes('Hugging Face'));
+      if (events.some(done)) break;
       await page.waitForTimeout(1000);
     }
     const session = events.find((e) => e.kind === 'session');
@@ -118,7 +131,20 @@ try {
       'datadesk MCP server connected for the agent',
       session?.mcpServers.some((s) => s.name === 'datadesk' && s.status === 'connected') === true,
     );
-    const error = events.find((e) => e.kind === 'error');
+    if (withHf) {
+      const notice = events.find(
+        (e) => e.kind === 'error' && e.message.includes('Hugging Face rejected your token'),
+      );
+      check('HF discovery rejected the dummy token and told the user', notice !== undefined);
+      check(
+        'session started without the hf server or its tools',
+        session !== undefined &&
+          session.mcpServers.every((s) => s.name !== 'hf') &&
+          !session.tools.some((t) => t.startsWith('mcp__hf__')),
+        session?.mcpServers.map((s) => s.name).join(', '),
+      );
+    }
+    const error = events.find((e) => e.kind === 'error' && !e.message.includes('Hugging Face'));
     check(
       'dummy key rejected with a readable error',
       /401|authenticate/i.test(error?.message ?? ''),
