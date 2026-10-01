@@ -18,6 +18,9 @@ export const IpcChannels = {
   agentApprove: 'agent:approve',
   settingsGetAgent: 'settings:getAgent',
   settingsSetAgent: 'settings:setAgent',
+  artifactsGetChart: 'artifacts:getChart',
+  artifactsGetReport: 'artifacts:getReport',
+  artifactsExportReport: 'artifacts:exportReport',
 } as const;
 
 export type IpcChannel = (typeof IpcChannels)[keyof typeof IpcChannels];

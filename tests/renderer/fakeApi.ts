@@ -5,6 +5,7 @@ import {
   type AgentEventInput,
   type AgentSettings,
 } from '../../src/shared/agent';
+import type { ChartArtifact, ReportArtifact } from '../../src/shared/artifacts';
 import type { DatasetSummary, RegisteredDataset } from '../../src/shared/datasets';
 import type { DatadeskApi } from '../../src/shared/ipc/api';
 import type { Provider, SecretsStatus } from '../../src/shared/ipc/contract';
@@ -17,6 +18,44 @@ export const SALES_COLUMNS = [
   { name: 'region', type: 'VARCHAR', nullable: true },
   { name: 'units', type: 'BIGINT', nullable: true },
 ];
+
+export const CHART_ID = '11111111-1111-4111-8111-111111111111';
+export const REPORT_ID = '22222222-2222-4222-8222-222222222222';
+
+export const CHART: ChartArtifact = {
+  id: CHART_ID,
+  kind: 'chart',
+  title: 'Units by region',
+  spec: {
+    mark: 'bar',
+    encoding: {
+      x: { field: 'region', type: 'nominal' },
+      y: { field: 'units', type: 'quantitative' },
+    },
+    data: {
+      values: [
+        { region: 'South', units: 14 },
+        { region: 'East', units: 7 },
+      ],
+    },
+  },
+  sql: 'SELECT region, units FROM sales',
+  rowCount: 2,
+  truncated: false,
+  createdAt: '2026-10-01T00:00:00.000Z',
+};
+
+export const REPORT: ReportArtifact = {
+  id: REPORT_ID,
+  kind: 'report',
+  title: 'Sales summary',
+  markdown: `# Sales summary\n\nSouth leads.\n\n[[chart:${CHART_ID}]]\n\n## Notes\n\n- small sample`,
+  chartIds: [CHART_ID],
+  createdAt: '2026-10-01T00:00:00.000Z',
+};
+
+const notFound = <T>(message: string): Promise<IpcResult<T>> =>
+  Promise.resolve({ ok: false, error: { code: 'REJECTED', message } });
 
 export function summary(name: string, extra: Partial<DatasetSummary> = {}): DatasetSummary {
   return {
@@ -115,6 +154,22 @@ export function createFakeApi(
         agentSettings = next;
         return ok({ ...next });
       }),
+    },
+    artifacts: {
+      getChart: vi.fn((id: string) =>
+        id === CHART_ID ? ok(CHART) : notFound<ChartArtifact>('That chart no longer exists.'),
+      ),
+      getReport: vi.fn((id: string) =>
+        id === REPORT_ID ? ok(REPORT) : notFound<ReportArtifact>('That report no longer exists.'),
+      ),
+      exportReport: vi.fn(
+        (_request: {
+          id: string;
+          format: 'md' | 'pdf';
+          svgs: Record<string, string>;
+          bodyHtml?: string;
+        }) => ok<{ saved: boolean; path: string | null }>({ saved: true, path: 'C:/out/report' }),
+      ),
     },
   } satisfies DatadeskApi;
 

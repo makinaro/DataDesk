@@ -2,7 +2,10 @@ import { join } from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain, safeStorage } from 'electron';
 import { IpcEvents } from '../shared/ipc/channels';
 import { createAgentRuntime } from './agent/agentRuntime';
+import { ArtifactStore } from '../node-shared/artifactStore';
+import { printHtmlToPdf } from './artifacts/printPdf';
 import { registerAgentHandlers } from './ipc/handlers/agent';
+import { registerArtifactHandlers } from './ipc/handlers/artifacts';
 import { registerAppHandlers } from './ipc/handlers/app';
 import { registerDatasetHandlers } from './ipc/handlers/datasets';
 import { registerSecretsHandlers } from './ipc/handlers/secrets';
@@ -105,6 +108,25 @@ function start(): void {
       });
       registerSecretsHandlers(handle, keyStore, async (provider) => {
         if (provider === 'anthropic') await agent.onKeyChanged();
+      });
+      registerArtifactHandlers(handle, {
+        store: new ArtifactStore(join(app.getPath('userData'), 'artifacts')),
+        pickSavePath: async (defaultName, format) => {
+          const options: Electron.SaveDialogOptions = {
+            title: 'Export report',
+            defaultPath: defaultName,
+            filters:
+              format === 'pdf'
+                ? [{ name: 'PDF', extensions: ['pdf'] }]
+                : [{ name: 'Markdown', extensions: ['md'] }],
+          };
+          const owner = BrowserWindow.getFocusedWindow();
+          const result = owner
+            ? await dialog.showSaveDialog(owner, options)
+            : await dialog.showSaveDialog(options);
+          return result.canceled || !result.filePath ? null : result.filePath;
+        },
+        printToPdf: printHtmlToPdf,
       });
       registerAgentHandlers(handle, {
         getOrchestrator: () => agent.get(),

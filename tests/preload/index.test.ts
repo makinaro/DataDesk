@@ -16,6 +16,9 @@ vi.mock('electron', () => ({
   webUtils: { getPathForFile },
 }));
 
+const CHART = '11111111-1111-4111-8111-111111111111';
+const REPORT = '22222222-2222-4222-8222-222222222222';
+
 let api: DatadeskApi;
 
 beforeAll(async () => {
@@ -28,7 +31,15 @@ beforeAll(async () => {
 
 describe('preload bridge', () => {
   it('exposes exactly the whitelisted namespaces and methods', () => {
-    expect(Object.keys(api).sort()).toEqual(['agent', 'app', 'datasets', 'secrets', 'settings']);
+    expect(Object.keys(api).sort()).toEqual([
+      'agent',
+      'app',
+      'artifacts',
+      'datasets',
+      'secrets',
+      'settings',
+    ]);
+    expect(Object.keys(api.artifacts).sort()).toEqual(['exportReport', 'getChart', 'getReport']);
     expect(Object.keys(api.agent).sort()).toEqual(['approve', 'onEvent', 'reset', 'send', 'stop']);
     expect(Object.keys(api.settings).sort()).toEqual(['getAgent', 'setAgent']);
     expect(Object.keys(api.app).sort()).toEqual(['info']);
@@ -84,6 +95,9 @@ describe('preload bridge', () => {
     await api.datasets.schema('sales');
     await api.datasets.preview('sales', 20);
     await api.datasets.registerFile(new File(['a'], 'sales.csv'), 'sales');
+    await api.artifacts.getChart(CHART);
+    await api.artifacts.getReport(REPORT);
+    await api.artifacts.exportReport({ id: REPORT, format: 'md', svgs: {} });
     expect(invoke.mock.calls).toEqual([
       ['secrets:set', { provider: 'openai', key: 'sk-test-12345678' }],
       ['secrets:clear', { provider: 'huggingface' }],
@@ -94,6 +108,9 @@ describe('preload bridge', () => {
       ['datasets:schema', { name: 'sales' }],
       ['datasets:preview', { name: 'sales', limit: 20 }],
       ['datasets:register', { path: 'C:/data/sales.csv', name: 'sales' }],
+      ['artifacts:getChart', { id: CHART }],
+      ['artifacts:getReport', { id: REPORT }],
+      ['artifacts:exportReport', { id: REPORT, format: 'md', svgs: {} }],
     ]);
   });
 
