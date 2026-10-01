@@ -108,6 +108,11 @@ size limit ignores data, and the data has its own row cap shared by server and r
 - Each chart render gets a fresh host element.
 - Tool output and `exportReport` types are derived from zod.
 
+**CI fix after the push:** the PDF e2e failed on the runner only. Its 8.3 temp path
+(`RUNNER~1`) is URL-encoded differently by Node (`%7E`) and Chromium (`~`), so the print
+filter blocked its own file. It now compares decoded paths. Reproduced and verified locally with
+an 8.3 `TEMP`, and a unit test covers both encodings.
+
 **Not fixed, deliberately:**
 
 - **Sibling SVGs overwrite silently** (see gaps).

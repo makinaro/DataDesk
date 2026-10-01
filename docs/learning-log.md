@@ -474,6 +474,11 @@ real thing.
   chart saved fine and then failed to display. Tests with two-row fixtures never noticed.
 - **A session has one `onBeforeRequest` listener.** Two PDF exports at once replaced and then
   cleared each other's filter, so prints are queued.
+- **Compare file _paths_, not file _URLs_.** CI's temp dir is the 8.3 path `C:\Users\RUNNER~1\…`.
+  Node's `pathToFileURL` writes `~` as `%7E` while Chromium requests it literally, so our
+  "only this file" filter blocked the report's own page, but only on CI. The filter now
+  decodes with `fileURLToPath` and compares paths. To reproduce locally, set `TEMP` to an 8.3
+  path (see Phase 1's CI fix, same family of bug).
 - **`printToPDF` works on a window that was never shown.** We weren't sure; the e2e test proved
   it.
 - **Don't send chart data back to the model.** It's slow, costs tokens, and dataset cells are a

@@ -1,3 +1,4 @@
+import { pathToFileURL } from 'node:url';
 import { existsSync } from 'node:fs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -79,7 +80,7 @@ describe('printHtmlToPdf', () => {
 
   it('lets the print page load only its own file and inline images', async () => {
     let decisions: Record<string, boolean> = {};
-    electron.state.loadFile = () => {
+    electron.state.loadFile = (file) => {
       const ask = (url: string) =>
         new Promise<boolean>((resolve) => {
           electron.state.filter?.({ url }, ({ cancel }) => {
@@ -88,6 +89,7 @@ describe('printHtmlToPdf', () => {
         });
       return (async () => {
         decisions = {
+          ownFile: await ask(pathToFileURL(file).toString()),
           https: await ask('https://evil.example/x.png'),
           otherFile: await ask('file:///C:/Users/secret.txt'),
           dataImage: await ask('data:image/svg+xml;base64,PHN2Zy8+'),
@@ -96,11 +98,36 @@ describe('printHtmlToPdf', () => {
       })();
     };
     await printHtmlToPdf('<p>x</p>');
-    expect(decisions).toEqual({ https: true, otherFile: true, dataImage: false, dataHtml: true });
-    expect(isAllowedPrintRequest('file:///C:/t/report.html', 'file:///C:/t/report.html')).toBe(
-      true,
-    );
+    expect(decisions).toEqual({
+      ownFile: false,
+      https: true,
+      otherFile: true,
+      dataImage: false,
+      dataHtml: true,
+    });
   });
+
+  it.runIf(process.platform === 'win32')(
+    'matches its file whether Chromium requests ~ literally or percent-encoded (8.3 temp dirs on CI)',
+    () => {
+      const file = 'C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\datadesk-print-x\\report.html';
+      for (const url of [
+        'file:///C:/Users/RUNNER~1/AppData/Local/Temp/datadesk-print-x/report.html',
+        'file:///C:/Users/RUNNER%7E1/AppData/Local/Temp/datadesk-print-x/report.html',
+        'file:///c:/users/runner~1/appdata/local/temp/datadesk-print-x/report.html',
+      ]) {
+        expect(isAllowedPrintRequest(url, file), url).toBe(true);
+      }
+      for (const url of [
+        'file:///C:/Users/RUNNER~1/AppData/Local/Temp/datadesk-print-x/other.html',
+        'file:///C:/Users/RUNNER~1/AppData/Local/Temp/datadesk-print-x/../secret.txt',
+        'https://evil.example/report.html',
+        'file://evil-host/share/report.html',
+      ]) {
+        expect(isAllowedPrintRequest(url, file), url).toBe(false);
+      }
+    },
+  );
 
   it('cleans up the window, filter and temp file when loading fails', async () => {
     electron.state.loadFile = () => Promise.reject(new Error('load failed'));
