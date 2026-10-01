@@ -2,7 +2,7 @@
 
 /*
  * Vega renders with defaultStyle:false and tooltip.disableDefaultStyle:true because the CSP
- * forbids injected <style> elements (DECISIONS D-015), so the equivalent rules live here.
+ * forbids injected <style> elements (DECISIONS D-016), so the equivalent rules live here.
  */
 .vega-embed {
   position: relative;

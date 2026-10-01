@@ -69,8 +69,8 @@ SDK drives a CLI subprocess.
 - [x] `resources/agent-plugin` loaded via the SDK `plugins` option
 - [x] Skills: `eda-checklist`, `chart-style`, `report-format`
 - [x] MCP tools: `create_chart` (guarded SQL + capped inline data + spec validation), `save_report`
-- [ ] Vega-Lite panel, CSP-safe (`ast: true` + vega-interpreter, no `data.url`, sanitized spec)
-- [ ] Markdown + PDF export (`webContents.printToPDF`)
+- [x] Vega-Lite panel, CSP-safe (`ast: true` + vega-interpreter, no `data.url`, sanitized spec)
+- [x] Markdown + PDF export (`webContents.printToPDF`)
 
 **Done when:** the `init` message lists exactly our skills, tests cover spec sanitizing and export,
 and manually "do EDA on X" invokes `eda-checklist` (visible in the timeline) and yields a chart.

@@ -9,7 +9,7 @@ import { compile, type TopLevelSpec } from 'vega-lite';
  * - no actions menu (its "Open in Vega Editor" posts the spec and data to an external site)
  * - no injected <style> elements (our stylesheet styles .vega-embed and tooltips)
  * - a loader that refuses every external resource (data urls, images, links)
- * See DECISIONS D-015.
+ * See DECISIONS D-016.
  */
 const deny = (): Promise<never> =>
   Promise.reject(new Error('External resources are disabled in DataDesk.'));

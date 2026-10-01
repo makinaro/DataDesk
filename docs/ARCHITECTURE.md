@@ -40,10 +40,12 @@
    response and rejects senders that aren't our app frame.
 3. **Secrets:** `safeStorage` (DPAPI on Windows). Keys never leave main except as env or headers
    for child processes we spawn.
-4. **Agent:** only MCP tools + `Skill` + `Agent`, isolated config dir, and a `system:init` guard
-   (Phase 2).
+4. **Agent:** only MCP tools + `Skill` (+ `Agent` in Phase 4), isolated config dir, skills
+   only from our bundled plugin, and a `system:init` guard (D-013, D-015).
 5. **SQL:** read-only by statement type, one statement, row caps, timeouts, and file access
    restricted to dataset directories (Phase 1).
+6. **Charts and reports:** artifacts are loaded by uuid, specs are sanitized twice, Vega runs
+   without eval, styles or network, and PDFs print from a JS-off hidden window (D-016).
 
 ## Source layout
 
@@ -57,7 +59,7 @@ tests/           mirrors src/, plus tests/e2e and tests/setup
 resources/       agent-plugin (runtime skills), icons
 ```
 
-## Data flow: a question (target design, built across Phases 1–4)
+## Data flow: a question (built across Phases 1–4)
 
 1. The user types in Chat → `agent:send` IPC → main `AgentRuntime` pushes it into the streaming
    `query()` input.
@@ -65,5 +67,8 @@ resources/       agent-plugin (runtime skills), icons
 3. datadesk-mcp validates the SQL (statement type = SELECT), runs it with a row cap and timeout,
    and returns structured rows.
 4. Main maps each SDK message/hook into a `TimelineEvent` → `agent:event` → Timeline drawer.
-5. The final answer, charts (`create_chart`) and reports (`save_report`) are forwarded to the
-   Charts/Report panel.
+5. Skills (`datadesk:eda-checklist`, `chart-style`, `report-format`) load on demand via the
+   `Skill` tool; only their names and descriptions sit in the context up front.
+6. `create_chart` / `save_report` write artifacts to `userData/artifacts` and return ids. Main
+   turns successful results into `artifact` events; the Charts & report panel loads them by id,
+   renders Vega-Lite, and exports Markdown/PDF through `artifacts:exportReport`.
