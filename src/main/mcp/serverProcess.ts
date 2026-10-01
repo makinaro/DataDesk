@@ -34,6 +34,11 @@ export const BLANKED_FOR_AGENT_SERVER = [
 export function buildServerEnv(
   paths: ServerPaths,
   purpose: 'ui' | 'agent',
+  /**
+   * Distinguishes agent servers that may run at the same time (the chat and compare mode, or
+   * two providers): DuckDB must not share a spill directory between processes.
+   */
+  instance?: string,
 ): Record<string, string> {
   const env: Record<string, string> = {
     ELECTRON_RUN_AS_NODE: '1',
@@ -41,7 +46,11 @@ export function buildServerEnv(
     DATADESK_ARTIFACTS_DIR: join(paths.userData, 'artifacts'),
     // Nothing inside DataDesk's own profile (secrets, catalog, logs) may be registered as data.
     DATADESK_DENY_DIRS: paths.userData,
-    DATADESK_TEMP_DIR: join(paths.userData, 'duckdb-tmp', purpose),
+    DATADESK_TEMP_DIR: join(
+      paths.userData,
+      'duckdb-tmp',
+      instance ? `${purpose}-${instance}` : purpose,
+    ),
     // The one folder under userData that load_hf_dataset may write to and register from (D-020).
     DATADESK_HF_DIR: join(paths.userData, 'datasets', 'hf'),
   };

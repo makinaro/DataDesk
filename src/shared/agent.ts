@@ -112,6 +112,14 @@ export type AgentEventInput = AgentEvent extends infer E
     : never
   : never;
 
+/**
+ * OpenAI models the analyst can run on (Phase 7). A fixed list, because the OpenAI SDK reports
+ * tokens, not dollars: cost (and the spend cap) comes from DataDesk's own price table.
+ */
+export const OPENAI_MODELS = ['gpt-5.4-mini', 'gpt-5.4', 'gpt-5.5'] as const;
+export const OpenAIModelSchema = z.enum(OPENAI_MODELS);
+export type OpenAIModel = z.infer<typeof OpenAIModelSchema>;
+
 export const AgentSettingsSchema = z.strictObject({
   /** Model alias or full ID passed to the provider (never starts with '-', so never a CLI flag). */
   model: z

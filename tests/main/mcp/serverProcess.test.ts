@@ -58,4 +58,13 @@ describe('buildServerEnv', () => {
     expect(ui.DATADESK_TEMP_DIR).not.toBe(agent.DATADESK_TEMP_DIR);
     expect(agent).not.toHaveProperty('DATADESK_EXTENSION_DIR');
   });
+
+  it('gives concurrent agent servers their own temp dirs', () => {
+    const dirs = new Set(
+      [undefined, 'openai', 'compare-anthropic', 'compare-openai'].map(
+        (instance) => buildServerEnv(paths, 'agent', instance).DATADESK_TEMP_DIR,
+      ),
+    );
+    expect(dirs.size).toBe(4);
+  });
 });
