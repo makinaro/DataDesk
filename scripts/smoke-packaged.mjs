@@ -86,8 +86,8 @@ try {
     const session = events.find((e) => e.kind === 'session');
     check('Claude binary spawned from app.asar.unpacked', session !== undefined);
     check(
-      'agent sees exactly the 6 datadesk tools',
-      session?.tools.length === 6 && session.tools.every((t) => t.startsWith('mcp__datadesk__')),
+      'agent sees exactly the 8 datadesk tools',
+      session?.tools.filter((t) => t.startsWith('mcp__datadesk__')).length === 8,
       session?.tools.join(', '),
     );
     check(

@@ -5,13 +5,18 @@ export const DATADESK_SERVER = 'datadesk';
 
 const tool = (name: string) => `mcp__${DATADESK_SERVER}__${name}`;
 
-/** Read-only tools: auto-approved. */
+/**
+ * Auto-approved: read-only tools, plus chart/report tools that only write DataDesk artifacts
+ * (no data leaves the app; chart data never returns to the model).
+ */
 export const AUTO_APPROVED_TOOLS = [
   tool('list_datasets'),
   tool('get_schema'),
   tool('sample_rows'),
   tool('profile_column'),
   tool('run_sql'),
+  tool('create_chart'),
+  tool('save_report'),
 ] as const;
 
 /** Tools that exist but always ask the user first (DECISIONS D-010). */

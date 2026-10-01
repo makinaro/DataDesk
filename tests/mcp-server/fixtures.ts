@@ -2,6 +2,7 @@ import { copyFileSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync }
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { Catalog } from '../../src/mcp-server/catalog';
+import { ArtifactStore } from '../../src/node-shared/artifactStore';
 import { DatasetDb, type DbOptions } from '../../src/mcp-server/db/datasetDb';
 import type { CatalogEntry, DatasetFormat } from '../../src/shared/datasets';
 
@@ -32,6 +33,7 @@ export function createWorkspace(options: Partial<DbOptions> = {}) {
     ...options,
   };
   const db = new DatasetDb(catalog, dbOptions);
+  const artifacts = new ArtifactStore(join(root, 'artifacts'));
 
   const entry = (name: string, file: string, format: DatasetFormat): CatalogEntry => {
     const path = join(dataDir, file);
@@ -51,6 +53,7 @@ export function createWorkspace(options: Partial<DbOptions> = {}) {
     catalog,
     db,
     dbOptions,
+    artifacts,
     entry,
     cleanup: () => {
       db.close();

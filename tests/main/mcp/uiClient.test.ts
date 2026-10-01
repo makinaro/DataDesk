@@ -21,6 +21,7 @@ beforeEach(() => {
       const server = buildServer({
         db: ws.db,
         importPolicy: { denyDirs: [join(ws.root, 'userData')], maxFileBytes: 10_000_000 },
+        artifacts: ws.artifacts,
       });
       void server.connect(serverTransport);
       return clientTransport;

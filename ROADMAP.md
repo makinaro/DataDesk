@@ -68,7 +68,7 @@ SDK drives a CLI subprocess.
 
 - [ ] `resources/agent-plugin` loaded via the SDK `plugins` option
 - [ ] Skills: `eda-checklist`, `chart-style`, `report-format`
-- [ ] MCP tools: `create_chart` (guarded SQL + capped inline data + spec validation), `save_report`
+- [x] MCP tools: `create_chart` (guarded SQL + capped inline data + spec validation), `save_report`
 - [ ] Vega-Lite panel, CSP-safe (`ast: true` + vega-interpreter, no `data.url`, sanitized spec)
 - [ ] Markdown + PDF export (`webContents.printToPDF`)
 

@@ -23,6 +23,10 @@ export interface DbOptions {
   maxResultBytes?: number;
   /** String cells longer than this are clipped (default 10 000 characters). */
   maxCellChars?: number;
+  /** Charts need more rows than answers (e.g. scatter plots). Default 5 000. */
+  chartMaxRows?: number;
+  /** Byte budget for chart data (default 5 MB). */
+  chartMaxBytes?: number;
 }
 
 export class QueryTimeoutError extends Error {
@@ -164,6 +168,24 @@ export class DatasetDb {
   }
 
   /**
+   * Model-supplied SQL for a chart: the same guard, lockdown and timeout as `query`, but with
+   * the (larger) chart row and byte caps.
+   */
+  queryForChart(sql: string, signal?: AbortSignal): Promise<QueryResult> {
+    return this.exclusive(async () => {
+      signal?.throwIfAborted();
+      const { connection } = await this.fresh();
+      return this.execute(
+        connection,
+        () => prepareReadOnly(connection, sql),
+        this.options.chartMaxRows ?? 5_000,
+        signal,
+        this.options.chartMaxBytes ?? 5_000_000,
+      );
+    });
+  }
+
+  /**
    * Runs SQL that *our code* built from validated identifiers (schema/profile helpers).
    * Still capped, time-limited and executed on the locked-down instance.
    */
@@ -197,6 +219,7 @@ export class DatasetDb {
     prepare: () => Promise<DuckDBPreparedStatement>,
     maxRows: number,
     signal?: AbortSignal,
+    maxBytes = this.options.maxResultBytes ?? 2_000_000,
   ): Promise<QueryResult> {
     // An object, not a `let`: TS flow analysis can't see the callbacks mutating a local.
     const state = { timedOut: false, cancelled: false };
@@ -218,7 +241,7 @@ export class DatasetDb {
       if (timedOut()) throw new QueryTimeoutError(this.options.queryTimeoutMs);
       const table = await readStream(await prepared.stream(), {
         maxRows,
-        maxBytes: this.options.maxResultBytes ?? 2_000_000,
+        maxBytes,
         maxCellChars: this.options.maxCellChars ?? 10_000,
       });
       if (timedOut()) throw new QueryTimeoutError(this.options.queryTimeoutMs);

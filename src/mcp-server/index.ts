@@ -8,6 +8,7 @@
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { ArtifactStore } from '../node-shared/artifactStore';
 import { Catalog } from './catalog';
 import { loadConfig } from './config';
 import { DatasetDb } from './db/datasetDb';
@@ -35,6 +36,7 @@ async function main(): Promise<void> {
   const server = buildServer({
     db,
     importPolicy: { denyDirs: config.denyDirs, maxFileBytes: config.maxFileBytes },
+    artifacts: new ArtifactStore(config.artifactsDir),
   });
 
   let closing = false;

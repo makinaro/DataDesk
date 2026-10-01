@@ -16,6 +16,7 @@ describe('buildServerEnv', () => {
     try {
       const env = buildServerEnv(paths, 'ui');
       expect(Object.keys(env).sort()).toEqual([
+        'DATADESK_ARTIFACTS_DIR',
         'DATADESK_CATALOG_PATH',
         'DATADESK_DENY_DIRS',
         'DATADESK_EXTENSION_DIR',

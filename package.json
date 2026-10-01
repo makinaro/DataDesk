@@ -35,6 +35,12 @@
     "@modelcontextprotocol/sdk": "1.31.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
+    "react-markdown": "10.1.0",
+    "remark-gfm": "4.0.1",
+    "vega": "6.4.0",
+    "vega-embed": "7.3.0",
+    "vega-interpreter": "2.3.2",
+    "vega-lite": "6.4.3",
     "zod": "4.6.5"
   },
   "devDependencies": {

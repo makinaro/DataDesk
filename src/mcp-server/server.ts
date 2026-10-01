@@ -13,6 +13,8 @@ import { DatasetUnavailableError, QueryTimeoutError, type DatasetDb } from './db
 import { MAX_SQL_LENGTH, ReadOnlyViolation } from './db/readOnlyGuard';
 import { getSchema, listDatasets, profileColumn, registerDataset, sampleRows } from './datasets';
 import { ImportPathError, SUPPORTED_EXTENSIONS, type ImportPolicy } from './fileAccess';
+import { ArtifactInputError, createChart, saveReport } from './charts';
+import type { ArtifactStore } from '../node-shared/artifactStore';
 
 export const SERVER_NAME = 'datadesk';
 export const SERVER_VERSION = '0.1.0';
@@ -24,11 +26,14 @@ export const TOOL_NAMES = [
   'sample_rows',
   'profile_column',
   'run_sql',
+  'create_chart',
+  'save_report',
 ] as const;
 
 export interface ServerDeps {
   db: DatasetDb;
   importPolicy: ImportPolicy;
+  artifacts: ArtifactStore;
 }
 
 // Output schemas come from src/shared/datasets.ts, the single source of truth for these shapes
@@ -55,7 +60,8 @@ function fail(error: unknown): CallToolResult {
     error instanceof ReadOnlyViolation ||
     error instanceof QueryTimeoutError ||
     error instanceof DatasetUnavailableError ||
-    error instanceof ImportPathError
+    error instanceof ImportPathError ||
+    error instanceof ArtifactInputError
   ) {
     message = error.message;
   } else {
@@ -81,7 +87,7 @@ const READ_ONLY = {
 } as const;
 
 /** Builds the datadesk MCP server. Transport-agnostic: stdio in production, in-memory in tests. */
-export function buildServer({ db, importPolicy }: ServerDeps): McpServer {
+export function buildServer({ db, importPolicy, artifacts }: ServerDeps): McpServer {
   const server = new McpServer(
     { name: SERVER_NAME, version: SERVER_VERSION },
     {
@@ -89,7 +95,8 @@ export function buildServer({ db, importPolicy }: ServerDeps): McpServer {
         "DataDesk exposes the user's registered local datasets as DuckDB views (one view per dataset, " +
         'named after the dataset). Start with list_datasets, then get_schema / sample_rows / ' +
         'profile_column to understand the data, then run_sql for answers. SQL is DuckDB dialect, ' +
-        'read-only, single SELECT statement, results are row-capped.',
+        'read-only, single SELECT statement, results are row-capped. Visualize with create_chart and ' +
+        'write up findings with save_report.',
     },
   );
   const { maxRows, queryTimeoutMs } = db.limits;
@@ -235,6 +242,80 @@ export function buildServer({ db, importPolicy }: ServerDeps): McpServer {
         return ok(
           { ...result, elapsedMs },
           `${String(result.rowCount)} row(s) in ${String(elapsedMs)} ms${note}.`,
+        );
+      }),
+  );
+
+  // Charts and reports write artifacts (not data) and return ids; chart data never goes back to
+  // the model's context. Safe to auto-approve: they only write to DataDesk's artifact store.
+  const WRITES_ARTIFACT = {
+    readOnlyHint: false,
+    destructiveHint: false,
+    idempotentHint: false,
+    openWorldHint: false,
+  } as const;
+
+  server.registerTool(
+    'create_chart',
+    {
+      title: 'Create chart',
+      description:
+        'Create a chart the user sees in the Charts panel. Give a read-only SELECT (same rules as ' +
+        'run_sql, but up to 5 000 rows) and a Vega-Lite v6 spec WITHOUT a data property: the query ' +
+        'result becomes the data. Encode only columns the query returns. url/href/data/datasets ' +
+        'are rejected anywhere in the spec. Returns a chartId (reference it in reports as ' +
+        '[[chart:<chartId>]]); the data itself is not returned to you.',
+      inputSchema: {
+        title: z.string().min(1).max(120),
+        sql: z.string().min(1).max(MAX_SQL_LENGTH),
+        spec: z.record(z.string(), z.unknown()).describe('Vega-Lite spec without data.'),
+      },
+      outputSchema: {
+        chartId: z.string(),
+        title: z.string(),
+        rowCount: z.number().int(),
+        truncated: z.boolean(),
+        columns: z.array(z.string()),
+      },
+      annotations: WRITES_ARTIFACT,
+    },
+    ({ title, sql, spec }, extra) =>
+      attempt(async () => {
+        const chart = await createChart(db, artifacts, { title, sql, spec }, extra.signal);
+        const note = chart.truncated ? ' (data truncated at the chart row cap)' : '';
+        return ok(
+          { ...chart },
+          `Chart "${chart.title}" created from ${String(chart.rowCount)} rows${note}. ` +
+            `Reference it as [[chart:${chart.chartId}]].`,
+        );
+      }),
+  );
+
+  server.registerTool(
+    'save_report',
+    {
+      title: 'Save report',
+      description:
+        'Save a Markdown report the user can read in the Report panel and export as Markdown or ' +
+        'PDF. Embed charts with a line containing only [[chart:<chartId>]] (ids from create_chart). ' +
+        'Max 100 000 characters.',
+      inputSchema: {
+        title: z.string().min(1).max(200),
+        markdown: z.string().min(1).max(100_000),
+      },
+      outputSchema: {
+        reportId: z.string(),
+        title: z.string(),
+        chartIds: z.array(z.string()),
+      },
+      annotations: WRITES_ARTIFACT,
+    },
+    ({ title, markdown }) =>
+      attempt(async () => {
+        const report = await saveReport(artifacts, { title, markdown });
+        return ok(
+          { ...report },
+          `Report "${report.title}" saved with ${String(report.chartIds.length)} chart(s).`,
         );
       }),
   );

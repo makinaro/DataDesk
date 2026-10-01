@@ -14,6 +14,7 @@ beforeEach(async () => {
   const server = buildServer({
     db: ws.db,
     importPolicy: { denyDirs: [join(ws.root, 'userData')], maxFileBytes: 10_000_000 },
+    artifacts: ws.artifacts,
   });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   client = new Client({ name: 'test-client', version: '0.0.0' });
@@ -42,11 +43,13 @@ describe('tools/list', () => {
     }
   });
 
-  it('marks every tool except register_dataset as read-only and closed-world', async () => {
+  it('marks query tools read-only; registering and artifact tools write; all closed-world', async () => {
+    const writers = new Set(['register_dataset', 'create_chart', 'save_report']);
     const { tools } = await client.listTools();
     for (const tool of tools) {
       expect(tool.annotations?.openWorldHint, tool.name).toBe(false);
-      expect(tool.annotations?.readOnlyHint, tool.name).toBe(tool.name !== 'register_dataset');
+      expect(tool.annotations?.readOnlyHint, tool.name).toBe(!writers.has(tool.name));
+      expect(tool.annotations?.destructiveHint, tool.name).toBe(false);
     }
   });
 
