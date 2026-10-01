@@ -62,6 +62,9 @@ export type LoadHfDatasetArgs = z.infer<typeof LoadHfDatasetInput>;
 
 export const DEFAULT_HF_REVISION = 'main';
 
+/** Default per-file download cap (datadesk-mcp's DATADESK_HF_MAX_BYTES; shown in the approval). */
+export const HF_MAX_DOWNLOAD_BYTES = 500 * 1024 ** 2;
+
 /** hf_<repo>_<file stem>; the hf_ prefix keeps it apart from the user's local datasets. */
 export function defaultHfDatasetName(repoId: string, path: string): string {
   const repo = repoId.split('/')[1] ?? repoId;

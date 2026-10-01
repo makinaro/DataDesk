@@ -8,10 +8,11 @@ import { PLUGIN_DIR, scriptedQuery, sdk, WORKSPACE } from './fakeSdk';
 function setup(
   turns: Parameters<typeof scriptedQuery>[0],
   opts: Parameters<typeof scriptedQuery>[1] = {},
+  approvalTimeoutMs = 1_000,
 ) {
   const events: AgentEventInput[] = [];
   const emit = (e: AgentEventInput) => events.push(e);
-  const approvals = new ApprovalBroker(emit, 1_000);
+  const approvals = new ApprovalBroker(emit, approvalTimeoutMs);
   const { queryFn, calls } = scriptedQuery(turns, opts);
   let canUseTool: CanUseTool | undefined;
   const createSession = vi.fn(({ canUseTool: c }: { canUseTool: CanUseTool }) => {
@@ -150,8 +151,8 @@ describe('ClaudeOrchestrator', () => {
   });
 
   describe('canUseTool (permission gate)', () => {
-    async function gate() {
-      const t = setup([[]]);
+    async function gate(approvalTimeoutMs?: number) {
+      const t = setup([[]], {}, approvalTimeoutMs);
       t.orchestrator.send('x');
       await t.until(() => t.canUse() !== undefined);
       const canUseTool = t.canUse();
@@ -170,6 +171,67 @@ describe('ClaudeOrchestrator', () => {
       const { call } = await gate();
       await expect(call('Bash', { command: 'dir' })).resolves.toMatchObject({ behavior: 'deny' });
       await expect(call('mcp__evil__x', {})).resolves.toMatchObject({ behavior: 'deny' });
+    });
+
+    describe('load_hf_dataset (always asks; D-020)', () => {
+      const LOAD = 'mcp__datadesk__load_hf_dataset';
+      const input = { repo_id: 'scikit-learn/iris', path: 'Iris.csv' };
+      const request = (t: Awaited<ReturnType<typeof gate>>['t']) => {
+        const req = t.events.findLast((e) => e.kind === 'approval_request');
+        if (req?.kind !== 'approval_request') throw new Error('no approval request');
+        return req;
+      };
+
+      it('shows what will be downloaded, under which name, with the size limit; allow passes it on', async () => {
+        const { t, call } = await gate();
+        const pending = call(LOAD, input);
+        await t.until(() => t.kinds().includes('approval_request'));
+        const req = request(t);
+        expect(req.title).toBe('Download a dataset from Hugging Face?');
+        expect(req.detail).toContain('scikit-learn/iris');
+        expect(req.detail).toContain('https://huggingface.co/datasets/scikit-learn/iris');
+        expect(req.detail).toContain('Iris.csv');
+        expect(req.detail).toContain('Revision: main');
+        expect(req.detail).toMatch(/hf_iris \(replaces any dataset with this name\)/);
+        expect(req.detail).toMatch(/500 MB/);
+        t.approvals.respond(req.requestId, true);
+        // Exactly the validated input goes to the tool: what the user saw is what runs.
+        await expect(pending).resolves.toEqual({ behavior: 'allow', updatedInput: input });
+      });
+
+      it('deny: the tool does not run and the analyst is told not to retry', async () => {
+        const { t, call } = await gate();
+        const pending = call(LOAD, input);
+        await t.until(() => t.kinds().includes('approval_request'));
+        t.approvals.respond(request(t).requestId, false);
+        await expect(pending).resolves.toMatchObject({
+          behavior: 'deny',
+          message: expect.stringMatching(/declined.*Do not retry/) as unknown,
+        });
+      });
+
+      it('timeout: no answer is a denial', async () => {
+        const { t, call } = await gate(50);
+        const result = await call(LOAD, input);
+        expect(result).toMatchObject({ behavior: 'deny' });
+        expect(t.events).toContainEqual(
+          expect.objectContaining({ kind: 'approval_resolved', approved: false }),
+        );
+      });
+
+      it('sub-agents can never ask, and invalid input is denied without asking', async () => {
+        const { t, call } = await gate();
+        await expect(call(LOAD, input, 'agent-1')).resolves.toMatchObject({ behavior: 'deny' });
+        for (const bad of [
+          { ...input, path: '../../keys.json' },
+          { ...input, path: 'model.safetensors' },
+          { ...input, repo_id: 'https://evil.example' },
+          { ...input, extra: 'x' },
+        ]) {
+          await expect(call(LOAD, bad)).resolves.toMatchObject({ behavior: 'deny' });
+        }
+        expect(t.kinds()).not.toContain('approval_request');
+      });
     });
 
     it('denies HF tools outside the allowlist, e.g. one added mid-session (D-019)', async () => {

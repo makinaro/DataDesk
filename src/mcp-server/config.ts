@@ -1,5 +1,6 @@
 import { dirname, join } from 'node:path';
 import { z } from 'zod';
+import { HF_MAX_DOWNLOAD_BYTES } from '../shared/hf';
 
 /**
  * datadesk-mcp is configured only through environment variables, which the parent process
@@ -34,11 +35,7 @@ const EnvSchema = z.object({
   DATADESK_HF_TOKEN: z.string().optional(),
   /** Where load_hf_dataset downloads to. Defaults to datasets/hf next to the catalog. */
   DATADESK_HF_DIR: z.string().min(1).optional(),
-  DATADESK_HF_MAX_BYTES: z.coerce
-    .number()
-    .int()
-    .min(1)
-    .default(500 * 1024 ** 2),
+  DATADESK_HF_MAX_BYTES: z.coerce.number().int().min(1).default(HF_MAX_DOWNLOAD_BYTES),
   /** Embedding cache. Defaults to a "cache" folder next to the catalog. */
   DATADESK_CACHE_DIR: z.string().min(1).optional(),
   DATADESK_MAX_FILE_BYTES: z.coerce

@@ -103,7 +103,7 @@ without a key.
 - [x] Remote HF MCP server (streamable HTTP, `Authorization: Bearer`), URL and tool names verified first
 - [x] Runtime tool discovery + allowlist
 - [x] `load_hf_dataset`: size-capped download to `userData/datasets/hf`, then register
-- [ ] ApprovalBroker + approval dialog (`canUseTool` → IPC → user)
+- [x] ApprovalBroker + approval dialog (`canUseTool` → IPC → user)
 - [ ] `dataset-scout` sub-agent + `evaluating-datasets` skill
 
 **Done when:** tests cover approval allow/deny/timeout and the download cap (mocked). Manually
