@@ -80,7 +80,7 @@ and manually "do EDA on X" invokes `eda-checklist` (visible in the timeline) and
 
 - [x] AgentDefinitions: `profiler`, `sql-analyst`, `report-writer` with scoped tools and preloaded skills
 - [x] Programmatic `PreToolUse` scope hook (defense in depth, e.g. report-writer never gets `run_sql`)
-- [ ] Nested timeline lanes via `parent_tool_use_id`
+- [x] Nested timeline lanes via `parent_tool_use_id`
 - [x] Depth/concurrency caps via env
 
 **Done when:** tests assert each agent's tool set and that the hook denies `run_sql` for

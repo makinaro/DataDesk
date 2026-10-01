@@ -141,4 +141,15 @@ describe('agentReducer', () => {
     ]);
     expect(run([{ kind: 'conversation_reset', reason: 'user' }], s).artifacts).toEqual([]);
   });
+
+  it("routes a sub-agent's messages into its lane, never into the chat", () => {
+    const s = run([
+      { kind: 'tool_call', toolUseId: 'a1', name: 'Agent', input: '{}', parentToolUseId: null },
+      { kind: 'text_delta', messageId: 'x', delta: 'thinking', parentToolUseId: 'a1' },
+      { kind: 'assistant_message', messageId: 'x', text: 'first', parentToolUseId: 'a1' },
+      { kind: 'assistant_message', messageId: 'y', text: 'done: 3 issues', parentToolUseId: 'a1' },
+    ]);
+    expect(s.messages).toEqual([]);
+    expect(s.timeline[0]).toMatchObject({ kind: 'tool', id: 'a1', agentText: 'done: 3 issues' });
+  });
 });
