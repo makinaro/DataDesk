@@ -1,5 +1,6 @@
 import type { SDKSystemMessage } from '@anthropic-ai/claude-agent-sdk';
 import { DATADESK_SERVER, EXPECTED_TOOLS, PLUGIN_NAME, SKILL_NAMES } from './agentOptions';
+import { isSubagentName, SUBAGENT_NAMES } from './subagents';
 
 export type InitMessage = Pick<
   SDKSystemMessage,
@@ -39,8 +40,14 @@ export function checkInit(
   const servers = init.mcp_servers.map((s) => s.name).filter((n) => n !== DATADESK_SERVER);
   if (servers.length > 0) problems.push(`unexpected MCP servers: ${servers.join(', ')}`);
 
-  if ((init.agents ?? []).length > 0) {
-    problems.push(`unexpected agents: ${(init.agents ?? []).join(', ')}`);
+  // Exactly our sub-agents: no built-ins (general-purpose would inherit every tool), and all
+  // of ours present (otherwise the AgentDefinitions didn't apply as intended).
+  const agents = init.agents ?? [];
+  const extraAgents = agents.filter((a) => !isSubagentName(a));
+  if (extraAgents.length > 0) problems.push(`unexpected agents: ${extraAgents.join(', ')}`);
+  const missingAgents = SUBAGENT_NAMES.filter((a) => !agents.includes(a));
+  if (missingAgents.length > 0) {
+    problems.push(`DataDesk sub-agents did not load: ${missingAgents.join(', ')}`);
   }
   if (init.permissionMode !== 'default') {
     problems.push(`permission mode is ${init.permissionMode}, expected default`);

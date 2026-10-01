@@ -40,8 +40,9 @@
    response and rejects senders that aren't our app frame.
 3. **Secrets:** `safeStorage` (DPAPI on Windows). Keys never leave main except as env or headers
    for child processes we spawn.
-4. **Agent:** only MCP tools + `Skill` (+ `Agent` in Phase 4), isolated config dir, skills
-   only from our bundled plugin, and a `system:init` guard (D-013, D-015).
+4. **Agent:** only MCP tools + `Skill` + `Agent` (our three sub-agents only, scoped by one table,
+   a PreToolUse hook and canUseTool), isolated config dir, plugin-only skills, and a
+   `system:init` guard (D-013, D-015, D-017).
 5. **SQL:** read-only by statement type, one statement, row caps, timeouts, and file access
    restricted to dataset directories (Phase 1).
 6. **Charts and reports:** artifacts are loaded by uuid, specs are sanitized twice, Vega runs
@@ -72,3 +73,7 @@ resources/       agent-plugin (runtime skills), icons
 6. `create_chart` / `save_report` write artifacts to `userData/artifacts` and return ids. Main
    turns successful results into `artifact` events; the Charts & report panel loads them by id,
    renders Vega-Lite, and exports Markdown/PDF through `artifacts:exportReport`.
+7. For bigger jobs the analyst delegates through the `Agent` tool: the scope hook checks the
+   sub-agent type and the call shape (canUseTool strips it too), the sub-agent (profiler, sql-analyst, report-writer) runs
+   with only its scoped tools in a fresh context, and the scope hook re-checks every call. Its
+   tool calls and messages arrive with `parent_tool_use_id` and render as a nested timeline lane.

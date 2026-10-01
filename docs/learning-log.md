@@ -501,3 +501,114 @@ eda-checklist` as the first timeline entry, then `get_schema` / `profile_column`
    https://example.com/x.csv". _Expect_ `create_chart` to return an error ("Unsupported top-level
    key" or "\"url\" is not allowed") in the timeline, and the analyst to retry with a clean spec. No
    network request happens: open DevTools → Network to confirm.
+
+## Phase 4: Sub-agents (2026-10-01)
+
+### Concept
+
+A **sub-agent** is a second agent loop that the main agent starts through a tool call (the
+`Agent` tool). It gets its own **fresh context**: its own system prompt, only the tools you
+gave it, and whatever the main agent wrote into the delegation prompt. It never sees the chat.
+When it finishes, only its final answer comes back as the tool result. This buys:
+
+- **context isolation:** a profiler can read 30 columns of stats without filling the main
+  conversation;
+- **specialisation:** a focused prompt plus preloaded skills;
+- **least privilege:** report-writer literally cannot run SQL.
+
+The price is extra tokens and latency, plus a lossy hand-off. The sub-agent knows only what the
+main agent put in the prompt.
+
+Compared with the other two Phase 3/4 ideas:
+
+- a **skill** adds _instructions_ to an agent's context;
+- an **MCP tool** adds a _capability_;
+- a **sub-agent** adds a _separate worker_ with its own context and its own subset of
+  capabilities.
+
+### Where it lives
+
+- Scope table + definitions: [subagents.ts:14](../src/main/agent/claude/subagents.ts#L14)
+  (`SUBAGENT_TOOLS`), [subagents.ts:75](../src/main/agent/claude/subagents.ts#L75)
+  (`buildSubagents`)
+- Delegation check: [subagents.ts:98](../src/main/agent/claude/subagents.ts#L98)
+  (`DelegationInput`), used in
+  [claudeOrchestrator.ts:152](../src/main/agent/claude/claudeOrchestrator.ts#L152)
+- Scope hook: [scopeHook.ts:10](../src/main/agent/claude/scopeHook.ts#L10)
+- Options: [agentOptions.ts:111](../src/main/agent/claude/agentOptions.ts#L111) (`agents`,
+  `hooks`, `forwardSubagentText`). Caps:
+  [agentEnv.ts:45](../src/main/agent/claude/agentEnv.ts#L45)
+- Guard: [initGuard.ts:43](../src/main/agent/claude/initGuard.ts#L43). Lanes:
+  [TimelineDrawer.tsx:171](../src/renderer/src/components/TimelineDrawer.tsx#L171)
+
+### How it works
+
+1. **Startup:** the options pass `agents: { profiler, sql-analyst, report-writer }`, each with
+   `tools` from the scope table, preloaded `skills`, `disallowedTools`, and a turn cap. The env
+   turns off built-in agents, nesting, background runs and forks. The init guard checks the
+   session lists exactly our three agents, and accepts the tool under its init name `Task`.
+2. You ask "Analyze sales and write a short report". The main agent calls
+   `Agent({ subagent_type: 'profiler', description, prompt })`. The **scope hook** sees it first.
+   On the main thread, it denies the call unless it has exactly those three fields with one of
+   our types, so a `model`, `run_in_background` or `isolation` field makes the model retry
+   without it. If the CLI also asks **`canUseTool`** (unverified for this tool), that strips the
+   input to the same three fields.
+3. The CLI starts the profiler in a fresh context, with the EDA checklist preloaded. Each of
+   its tool calls carries `agent_id`/`agent_type`, and the **scope hook** runs first: a
+   `profile_column` from profiler passes, a `save_report` from profiler would be denied with a
+   reason the sub-agent can read.
+4. The profiler's messages stream with `parent_tool_use_id` = the `Agent` call's id. The mapper
+   passes it through, the reducer attaches the calls and text to that call, and the timeline
+   draws them as a nested **lane** (`agent · profiler · Profile sales`). The chat stays clean.
+5. The profiler finishes. Its final message becomes the `Agent` tool result, which is all the
+   main agent sees. The main agent then delegates questions to sql-analyst (which may
+   `create_chart`), and finally hands every number and chartId to report-writer, which can only
+   `save_report`.
+6. Because background tasks are off, the turn ends only after the sub-agents finish, and the
+   turn cost includes them.
+
+### Gotchas
+
+- **The tool has two names.** You request `Agent`, but `init.tools` lists `Task`. Tool calls
+  may use either. Match both everywhere (guard, `canUseTool`, timeline).
+- **Built-in agents are on by default.** `general-purpose` inherits _every_ tool and would sidestep
+  the scope table entirely. `CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS=1` removes them; the probe
+  showed five built-ins without it.
+- **Sub-agents run in the background by default**, so a turn could "complete" while they still
+  work, and nesting defaults to 3 levels. These are env vars, not `Options`, so they live in our
+  explicitly built env.
+- **`allowedTools` is inherited by sub-agents**, so `tools` (what each agent is given) and the hook
+  (what it may run) carry the scoping. Our hook treats a call as main-thread only when both
+  `agent_id` and `agent_type` are absent, so a CLI that drops one fails closed.
+- **`canUseTool` is not a guaranteed gate.** It runs only when the CLI asks for a permission
+  decision, and Claude Code lists the `Agent` tool as needing none. Hooks fire for every call,
+  so anything that must always hold (the delegation shape) lives in the hook. The review caught
+  this: our unit tests called `canUseTool` directly, so they passed either way.
+- **The hand-off is the weak point.** report-writer can't check numbers, so its prompt says never
+  to invent them, and the main prompt says to pass every number and chartId explicitly.
+- **Cost:** every sub-agent re-reads its own system prompt and skills. For "what's the average
+  of X?", delegating is slower and pricier than answering directly, and the prompt says so.
+
+### Experiments
+
+1. **Watch three lanes** (needs your key; Haiku, budget about $0.50). Add
+   `test-data/public/sales.csv`, then ask "Analyze the sales dataset and write a short report
+   with one chart". _Expect_ three lanes in the timeline, in order:
+   - `agent · profiler` with `profile_column`/`run_sql` inside;
+   - `agent · sql-analyst` with `run_sql` + `create_chart`;
+   - `agent · report-writer` with only `save_report`.
+
+   Then a chart tab and a report tab appear. Compare the turn cost with a direct question like
+   "Which region sold the most units?" (no lanes).
+
+2. **See the scope hook deny.** In [subagents.ts](../src/main/agent/claude/subagents.ts), add
+   `tool('run_sql')` to report-writer's `tools` _only in `buildSubagents`_ (not in
+   `SUBAGENT_TOOLS`), so the gates disagree. `npm run dev`, and ask for a report that "double-checks
+   one number with SQL first". _Expect_ a ✗ `datadesk · run_sql` inside the report-writer lane
+   with "report-writer may not use mcp__datadesk__run_sql". The SDK granted it, and the hook
+   still refused. Revert afterwards.
+3. **Trip the guard with a built-in.** In
+   [agentEnv.ts](../src/main/agent/claude/agentEnv.ts), comment out
+   `CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS`, run `npm run dev`, and send anything (a dummy key
+   is enough). _Expect_ "Stopped for safety: … unexpected agents: claude, Explore,
+   general-purpose, Plan, statusline-setup" before any model call. Revert afterwards.

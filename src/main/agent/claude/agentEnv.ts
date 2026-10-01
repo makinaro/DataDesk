@@ -35,6 +35,25 @@ export interface AgentEnvInput {
 }
 
 /**
+ * Sub-agent caps (DECISIONS D-017). The SDK has no Options fields for these, only env vars;
+ * semantics verified against code.claude.com/docs/en/env-vars (2026-10-01) and by probe.
+ */
+export const SUBAGENT_LIMITS = {
+  // Only our three agents: no general-purpose (which inherits every tool), Explore, Plan, …
+  CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS: '1',
+  // 1 = sub-agents can't spawn sub-agents (default 3).
+  CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH: '1',
+  // At most 3 at once (default 20); over the cap the Agent call returns an error result.
+  CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS: '3',
+  // Sub-agents run in the foreground, so a turn ends only after its sub-agents finish (they
+  // would otherwise run in the background by default).
+  CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1',
+  // No "fork" sub-agents (inherit the whole conversation and run in the background). Already
+  // off by default in the SDK; explicit so a CLI default change can't turn it on.
+  CLAUDE_CODE_FORK_SUBAGENT: '0',
+} as const;
+
+/**
  * The complete environment of the Claude Code process. The SDK's `env` option *replaces* the
  * child's environment, so nothing reaches it unless listed here (CLAUDE.md, Security rule 5).
  */
@@ -56,9 +75,7 @@ export function buildAgentEnv({
     CLAUDE_CONFIG_DIR: join(userData, 'claude-config'),
     CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1',
     ENABLE_CLAUDEAI_MCP_SERVERS: 'false',
-    // No built-in general-purpose sub-agent; our own sub-agents arrive in Phase 4.
-    CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS: '1',
-    CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH: '1',
+    ...SUBAGENT_LIMITS,
     // A desktop app embedding the SDK: no telemetry, update checks or other background traffic.
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
     DISABLE_AUTOUPDATER: '1',

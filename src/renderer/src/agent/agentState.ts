@@ -16,6 +16,8 @@ export interface ToolCallItem {
   parentToolUseId: string | null;
   startedAt: number;
   result?: { isError: boolean; output: string; finishedAt: number };
+  /** For sub-agent (Agent/Task) calls: the sub-agent's latest message, shown in its lane. */
+  agentText?: string;
 }
 
 export type TimelineItem =
@@ -148,7 +150,16 @@ export function agentReducer(state: AgentState, action: AgentAction): AgentState
         })),
       };
     case 'assistant_message':
-      if (e.parentToolUseId !== null) return s;
+      // A sub-agent's message goes into its lane in the timeline, not into the chat.
+      if (e.parentToolUseId !== null) {
+        const parent = e.parentToolUseId;
+        return {
+          ...s,
+          timeline: s.timeline.map((item) =>
+            item.kind === 'tool' && item.id === parent ? { ...item, agentText: e.text } : item,
+          ),
+        };
+      }
       return {
         ...s,
         messages: upsertAssistant(s.messages, e.messageId, (m) => ({

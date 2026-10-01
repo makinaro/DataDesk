@@ -135,6 +135,16 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
   maxTurns: 30,
 };
 
+/**
+ * The SDK's sub-agent tool: requested as `Agent`, listed as `Task` in init, and calls may use
+ * either name (probe, DECISIONS D-017).
+ */
+export const SUBAGENT_TOOL_NAMES = ['Agent', 'Task'] as const;
+
+export function isSubagentTool(name: string): boolean {
+  return (SUBAGENT_TOOL_NAMES as readonly string[]).includes(name);
+}
+
 /** Truncates long strings for timeline previews (keeps IPC payloads bounded). */
 export function preview(value: unknown, max = 4_000): string {
   const text =
