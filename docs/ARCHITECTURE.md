@@ -28,7 +28,7 @@
 | Renderer           | untrusted UI | no, only booleans                                                  | main, via typed IPC             |
 | Preload            | bridge       | no                                                                 | exposes explicit functions only |
 | Main               | trusted      | decrypts, passes to children via explicit env/headers              | renderer, SDK, UiMcpClient      |
-| Claude Code binary | agent engine | receives `ANTHROPIC_API_KEY` in env                                | our MCP servers                 |
+| Claude Code binary | agent engine | `ANTHROPIC_API_KEY`, plus the OpenAI key to pass to datadesk-mcp   | our MCP servers                 |
 | datadesk-mcp       | tool server  | agent copy only: `DATADESK_OPENAI_API_KEY` via the CLI env (D-018) | DuckDB, OpenAI (when keyed)     |
 
 ## Security layers
