@@ -11,6 +11,7 @@ test('bridge exposes only whitelisted methods', async ({ page }) => {
     agent: ['approve', 'onEvent', 'reset', 'send', 'stop'],
     app: ['info'],
     artifacts: ['exportReport', 'getChart', 'getReport'],
+    clipboard: ['writeText'],
     compare: ['onEvent', 'reset', 'run', 'stop'],
     datasets: ['list', 'pick', 'preview', 'registerFile', 'schema'],
     secrets: ['clear', 'set', 'status'],
@@ -25,4 +26,10 @@ test('app:info round-trips through the validated IPC router', async ({ page }) =
     expect(result.data.versions.electron).toMatch(/^\d+\./);
     expect(result.data.platform).toBe(process.platform);
   }
+});
+
+test('clipboard:writeText reaches the system clipboard', async ({ electronApp, page }) => {
+  const result = await page.evaluate(() => window.datadesk.clipboard.writeText('SELECT 1;'));
+  expect(result).toEqual({ ok: true, data: { ok: true } });
+  expect(await electronApp.evaluate(({ clipboard }) => clipboard.readText())).toBe('SELECT 1;');
 });

@@ -1,7 +1,14 @@
-import { screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { act, screen, within } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 import { App } from '../../src/renderer/src/App';
+import { CHART_ID } from './fakeApi';
 import { renderWithProviders } from './renderApp';
+
+// Vega needs a real layout engine; charts render for real in the e2e tests.
+vi.mock('../../src/renderer/src/charts/vega', () => ({
+  renderChart: vi.fn(() => Promise.resolve(vi.fn())),
+  chartToSvg: vi.fn(() => Promise.resolve('<svg/>')),
+}));
 
 function renderApp() {
   return renderWithProviders(<App />).user;
@@ -14,6 +21,26 @@ describe('App shell', () => {
     for (const name of ['Datasets', 'Chat', 'Charts & report', 'Agent timeline']) {
       expect(screen.getByRole('region', { name })).toBeInTheDocument();
     }
+  });
+
+  it('brings a chart forward when its chip in an answer is clicked', async () => {
+    const { api, user } = renderWithProviders(<App />);
+    act(() => {
+      api.emit({ kind: 'artifact', artifactKind: 'chart', id: CHART_ID, title: 'Units by region' });
+      api.emit({
+        kind: 'assistant_message',
+        messageId: 'm1',
+        text: `South leads, see [[chart:${CHART_ID}]].`,
+        parentToolUseId: null,
+      });
+    });
+    const chartTab = screen.getByRole('tab', { name: /Units by region/ });
+    await user.click(screen.getByRole('tab', { name: 'Data preview' }));
+    expect(chartTab).toHaveAttribute('aria-selected', 'false');
+
+    const chat = screen.getByRole('list', { name: 'Conversation' });
+    await user.click(within(chat).getByRole('button', { name: 'Show chart: Units by region' }));
+    expect(chartTab).toHaveAttribute('aria-selected', 'true');
   });
 
   it('toggles the timeline drawer', async () => {

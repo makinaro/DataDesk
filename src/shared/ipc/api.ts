@@ -56,6 +56,10 @@ export interface DatadeskApi {
     getAppearance(): Promise<IpcResult<Appearance>>;
     setAppearance(appearance: Appearance): Promise<IpcResult<Appearance>>;
   };
+  /** Write-only: there is deliberately no way to read the clipboard. */
+  clipboard: {
+    writeText(text: string): Promise<IpcResult<{ ok: true }>>;
+  };
   artifacts: {
     getChart(id: string): Promise<IpcResult<ChartArtifact>>;
     getReport(id: string): Promise<IpcResult<ReportArtifact>>;

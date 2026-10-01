@@ -120,6 +120,23 @@ describe('ipcContract', () => {
     });
   });
 
+  describe('clipboard channel', () => {
+    it('is write-only: no channel can read the clipboard', () => {
+      const clipboardChannels = Object.values(IpcChannels).filter((c) =>
+        c.startsWith('clipboard:'),
+      );
+      expect(clipboardChannels).toEqual(['clipboard:writeText']);
+    });
+
+    it('takes only bounded text', () => {
+      const write = ipcContract[IpcChannels.clipboardWriteText].request;
+      expect(write.safeParse({ text: 'SELECT 1;' }).success).toBe(true);
+      expect(write.safeParse({ text: 'x'.repeat(1_000_001) }).success).toBe(false);
+      expect(write.safeParse({ text: 'x', html: '<b>x</b>' }).success).toBe(false);
+      expect(write.safeParse({}).success).toBe(false);
+    });
+  });
+
   describe('appearance channels', () => {
     const set = ipcContract[IpcChannels.settingsSetAppearance].request;
 

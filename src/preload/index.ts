@@ -86,6 +86,9 @@ const api: DatadeskApi = {
     getAppearance: () => invoke(IpcChannels.settingsGetAppearance),
     setAppearance: (appearance) => invoke(IpcChannels.settingsSetAppearance, appearance),
   },
+  clipboard: {
+    writeText: (text) => invoke(IpcChannels.clipboardWriteText, { text }),
+  },
   artifacts: {
     getChart: (id) => invoke(IpcChannels.artifactsGetChart, { id }),
     getReport: (id) => invoke(IpcChannels.artifactsGetReport, { id }),

@@ -35,6 +35,7 @@ describe('preload bridge', () => {
       'agent',
       'app',
       'artifacts',
+      'clipboard',
       'compare',
       'datasets',
       'secrets',
@@ -50,6 +51,7 @@ describe('preload bridge', () => {
     ]);
     expect(Object.keys(api.compare).sort()).toEqual(['onEvent', 'reset', 'run', 'stop']);
     expect(Object.keys(api.app).sort()).toEqual(['info']);
+    expect(Object.keys(api.clipboard)).toEqual(['writeText']);
     expect(Object.keys(api.secrets).sort()).toEqual(['clear', 'set', 'status']);
     expect(Object.keys(api.datasets).sort()).toEqual([
       'list',
@@ -127,6 +129,7 @@ describe('preload bridge', () => {
     await api.compare.reset();
     await api.settings.getAppearance();
     await api.settings.setAppearance({ theme: 'light', layout: 'chat-first' });
+    await api.clipboard.writeText('SELECT 1;');
     expect(invoke.mock.calls).toEqual([
       ['secrets:set', { provider: 'openai', key: 'sk-test-12345678' }],
       ['secrets:clear', { provider: 'huggingface' }],
@@ -145,6 +148,7 @@ describe('preload bridge', () => {
       ['compare:reset', undefined],
       ['settings:getAppearance', undefined],
       ['settings:setAppearance', { theme: 'light', layout: 'chat-first' }],
+      ['clipboard:writeText', { text: 'SELECT 1;' }],
     ]);
   });
 

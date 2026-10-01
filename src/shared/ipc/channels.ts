@@ -26,6 +26,7 @@ export const IpcChannels = {
   artifactsGetChart: 'artifacts:getChart',
   artifactsGetReport: 'artifacts:getReport',
   artifactsExportReport: 'artifacts:exportReport',
+  clipboardWriteText: 'clipboard:writeText',
 } as const;
 
 export type IpcChannel = (typeof IpcChannels)[keyof typeof IpcChannels];

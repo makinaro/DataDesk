@@ -58,6 +58,11 @@
   --dd-scrim: rgb(0 0 0 / 0.6);
   --dd-scrollbar: #363636;
   --dd-scrollbar-hover: #4e4e4e;
+  --dd-hl-keyword: #c4a7f5;
+  --dd-hl-string: #9fd8a4;
+  --dd-hl-number: #f0b884;
+  --dd-hl-title: #8cc4f5;
+  --dd-hl-comment: #7a7a7a;
 }
 
 [data-theme='light'] {
@@ -84,6 +89,11 @@
   --dd-scrim: rgb(0 0 0 / 0.35);
   --dd-scrollbar: #d0d0cf;
   --dd-scrollbar-hover: #acacab;
+  --dd-hl-keyword: #7c3aed;
+  --dd-hl-string: #15803d;
+  --dd-hl-number: #b45309;
+  --dd-hl-title: #1d4ed8;
+  --dd-hl-comment: #737373;
 }
 
 /* The pre-Phase-9 look (slate + sky), kept as an option. */
@@ -111,6 +121,11 @@
   --dd-scrim: rgb(0 0 0 / 0.6);
   --dd-scrollbar: #1e293b;
   --dd-scrollbar-hover: #334155;
+  --dd-hl-keyword: #c4b5fd;
+  --dd-hl-string: #86efac;
+  --dd-hl-number: #fdba74;
+  --dd-hl-title: #7dd3fc;
+  --dd-hl-comment: #64748b;
 }
 
 @layer base {
@@ -296,4 +311,107 @@
   border-left: 3px solid var(--dd-strong);
   padding-left: 0.75rem;
   color: var(--dd-muted);
+}
+
+/* Analyst answers in the chat (ChatMarkdown). */
+.chat-prose {
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.chat-prose > * + * {
+  margin-top: 0.6rem;
+}
+.chat-prose h1,
+.chat-prose h2,
+.chat-prose h3 {
+  font-weight: 600;
+}
+.chat-prose ul {
+  padding-left: 1.25rem;
+  list-style: disc;
+}
+.chat-prose ol {
+  padding-left: 1.25rem;
+  list-style: decimal;
+}
+.chat-prose li + li {
+  margin-top: 0.15rem;
+}
+.chat-prose :not(pre) > code {
+  border-radius: 0.25rem;
+  background: var(--dd-raised);
+  padding: 0.05rem 0.3rem;
+  font-size: 0.85em;
+}
+.chat-prose table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+.chat-prose th,
+.chat-prose td {
+  border: 1px solid var(--dd-line);
+  padding: 0.25rem 0.6rem;
+  text-align: left;
+}
+.chat-prose th {
+  background: var(--dd-raised);
+  font-weight: 600;
+}
+.chat-prose blockquote {
+  border-left: 3px solid var(--dd-strong);
+  padding-left: 0.75rem;
+  color: var(--dd-muted);
+}
+.code-block {
+  overflow: hidden;
+  border: 1px solid var(--dd-line);
+  border-radius: 0.5rem;
+  background: var(--dd-canvas);
+}
+.code-block > div {
+  border-bottom: 1px solid var(--dd-line);
+  background: var(--dd-surface);
+}
+.code-block pre {
+  overflow-x: auto;
+  padding: 0.6rem 0.75rem;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+/* highlight.js token classes (rehype-highlight emits classes only, never inline styles). */
+.hljs-keyword,
+.hljs-built_in,
+.hljs-literal,
+.hljs-type,
+.hljs-selector-tag {
+  color: var(--dd-hl-keyword);
+}
+.hljs-string,
+.hljs-regexp,
+.hljs-symbol,
+.hljs-template-string {
+  color: var(--dd-hl-string);
+}
+.hljs-number,
+.hljs-attr,
+.hljs-variable {
+  color: var(--dd-hl-number);
+}
+.hljs-title,
+.hljs-function,
+.hljs-section,
+.hljs-name,
+.hljs-property {
+  color: var(--dd-hl-title);
+}
+.hljs-comment,
+.hljs-quote,
+.hljs-meta {
+  color: var(--dd-hl-comment);
+  font-style: italic;
 }

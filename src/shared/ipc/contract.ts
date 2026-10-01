@@ -127,6 +127,11 @@ export const ipcContract = {
     /** saved=false when the user cancelled the save dialog. */
     response: z.strictObject({ saved: z.boolean(), path: z.string().nullable() }),
   },
+  [IpcChannels.clipboardWriteText]: {
+    // Write-only: the page may copy text out (e.g. a code block) but never read the clipboard.
+    request: z.strictObject({ text: z.string().max(1_000_000) }),
+    response: z.strictObject({ ok: z.literal(true) }),
+  },
 } as const satisfies Record<IpcChannel, { request: z.ZodType; response: z.ZodType }>;
 
 export type IpcContract = typeof ipcContract;

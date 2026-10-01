@@ -175,6 +175,9 @@ export function createFakeApi(
         return ok({ ...next });
       }),
     },
+    clipboard: {
+      writeText: vi.fn((_text: string) => ok({ ok: true as const })),
+    },
     artifacts: {
       getChart: vi.fn((id: string) =>
         id === CHART_ID ? ok(CHART) : notFound<ChartArtifact>('That chart no longer exists.'),

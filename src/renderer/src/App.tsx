@@ -1,13 +1,14 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { ApprovalDialog } from './components/ApprovalDialog';
 import { ChatPanel } from './components/ChatPanel';
 import { CompareView } from './components/CompareView';
 import { DatasetSidebar } from './components/DatasetSidebar';
-import { ResultsPanel } from './components/ResultsPanel';
+import { ResultsPanel, type FocusRequest } from './components/ResultsPanel';
 import { SettingsDialog } from './components/SettingsDialog';
 import { TimelineDrawer } from './components/TimelineDrawer';
 import { CompareIcon, SettingsIcon, TimelineIcon } from './components/icons';
 import { TitleBar, TitleBarButton } from './components/TitleBar';
+import { ResultsFocusProvider } from './results/ResultsFocus';
 
 export function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -15,6 +16,10 @@ export function App() {
   const [comparing, setComparing] = useState(false);
   const [selectedDataset, setSelectedDataset] = useState<string | null>(null);
   const [datasetsRevision, setDatasetsRevision] = useState(0);
+  const [focus, setFocus] = useState<FocusRequest | null>(null);
+  const focusArtifact = useCallback((id: string) => {
+    setFocus((prev) => ({ id, n: (prev?.n ?? 0) + 1 }));
+  }, []);
 
   return (
     <div className="flex h-screen flex-col text-fg">
@@ -60,10 +65,10 @@ export function App() {
           // The chat stays mounted state-wise (AgentProvider), so its conversation survives.
           <CompareView />
         ) : (
-          <>
+          <ResultsFocusProvider onFocus={focusArtifact}>
             <ChatPanel />
-            <ResultsPanel dataset={selectedDataset} revision={datasetsRevision} />
-          </>
+            <ResultsPanel dataset={selectedDataset} revision={datasetsRevision} focus={focus} />
+          </ResultsFocusProvider>
         )}
       </main>
 

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { useAgent } from '../agent/AgentProvider';
+import { ChatMarkdown } from './ChatMarkdown';
 import { Panel } from './Panel';
 
 const BUSY = new Set(['starting', 'running', 'stopping']);
@@ -57,12 +58,12 @@ export function ChatPanel() {
           {state.messages.map((m) => (
             <li
               key={m.id}
-              className={`max-w-[85%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap ${
-                m.role === 'user' ? 'ml-auto bg-bubble' : 'bg-surface'
+              className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${
+                m.role === 'user' ? 'ml-auto bg-bubble whitespace-pre-wrap' : 'bg-surface'
               }`}
             >
               <span className="sr-only">{m.role === 'user' ? 'You: ' : 'Analyst: '}</span>
-              {m.text}
+              {m.role === 'user' ? m.text : <ChatMarkdown text={m.text} />}
               {m.streaming && <span className="ml-1 animate-pulse text-faint">▍</span>}
             </li>
           ))}

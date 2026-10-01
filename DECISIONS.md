@@ -917,3 +917,48 @@ https://www.electronjs.org/docs/latest/tutorial/custom-title-bar; source of
   e2e test sends native key events with `webContents.sendInputEvent`.
 - No reload or DevTools in packaged builds (neither was reachable before without the menu).
 - `TITLE_BAR_HEIGHT` (main) and `.titlebar { height }` (CSS) must stay equal.
+
+## D-026: Chat markdown with class-only highlighting and a write-only clipboard (2026-10-02)
+
+**Context:** Analyst answers were shown as plain text, so tables, lists and SQL arrived as raw
+markdown. Model output is untrusted (it can echo text from datasets), and the CSP forbids
+inline scripts and injected `<style>`. Verified 2026-10-02 against the installed packages:
+**react-markdown 10.1.0**, **remark-gfm 4.0.1**, **rehype-highlight 7.0.2**
+(`node_modules/rehype-highlight/lib/index.d.ts`: `languages`, `aliases`, `detect`, `plainText`;
+an unknown language only adds a vfile warning), **highlight.js 11.11.2**
+(`types/index.d.ts` declares `highlight.js/lib/languages/*`). Sources:
+https://github.com/remarkjs/react-markdown, https://github.com/rehypejs/rehype-highlight.
+
+**Decision:**
+
+- `ChatMarkdown` uses the same safety rules as `ReportMarkdown`: no `rehype-raw`, so raw HTML
+  shows as text; links are unwrapped to their text; images become their alt text and never an
+  `<img>`. Highlighting runs through rehype-highlight, which emits `hljs-*` classes only. The
+  colours are theme tokens (`--dd-hl-*`), so code follows Dark, Light and Slate.
+- Only eight languages are registered (sql, python, r, json, javascript, typescript, bash,
+  yaml), with `duckdb` as an alias for sql. That keeps the bundle small; other fences stay plain.
+- Streaming needs no special parser. CommonMark already treats an unclosed fence as code to
+  the end of the text, and a GFM table renders once its delimiter row arrives.
+- A tiny remark plugin turns `[[chart:<id>]]` in prose (not in code) into a chip. The chip is
+  named after the chart and, via `ResultsFocusProvider`, brings that chart's tab forward in the
+  Results panel. Ids not in this conversation show as a disabled chip.
+- Copying a code block goes through a new **write-only** `clipboard:writeText` IPC channel
+  (zod-validated, text ≤ 1 MB). `hardenApp.ts` denies every permission check, so
+  `navigator.clipboard` would be rejected.
+
+**Alternatives:**
+
+- Allowing the `clipboard-sanitized-write` permission: this widens a deny-all handler, and the
+  renderer could then also ask for other clipboard permissions. An explicit write-only method
+  is easier to reason about and test.
+- Shiki: it emits inline `style` colours by default, and its WASM engine would need
+  `wasm-unsafe-eval` in the CSP.
+- `lowlight`'s `common` set (~37 languages): a larger bundle for languages an analyst rarely
+  writes.
+
+**Consequences:**
+
+- No IPC channel can read the clipboard. `tests/shared/ipc/contract.test.ts` fails if one is
+  added.
+- A new language needs one import in `ChatMarkdown.tsx`. If the token colours look off for it,
+  extend the `.hljs-*` rules in `styles.css`.

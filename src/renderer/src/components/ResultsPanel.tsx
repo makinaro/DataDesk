@@ -36,7 +36,21 @@ export function visibleTab(artifacts: readonly ArtifactRef[], selection: Selecti
   return PREVIEW;
 }
 
-export function ResultsPanel({ dataset, revision }: { dataset: string | null; revision: number }) {
+/** A request from the chat to show an artifact; `n` makes repeat clicks on one chip count. */
+export interface FocusRequest {
+  id: string;
+  n: number;
+}
+
+export function ResultsPanel({
+  dataset,
+  revision,
+  focus = null,
+}: {
+  dataset: string | null;
+  revision: number;
+  focus?: FocusRequest | null;
+}) {
   const { state } = useAgent();
   const artifacts = state.artifacts;
   const newestId = artifacts.at(-1)?.id ?? null;
@@ -47,6 +61,11 @@ export function ResultsPanel({ dataset, revision }: { dataset: string | null; re
   if (dataset !== prevDataset) {
     setPrevDataset(dataset);
     if (dataset !== null) setSelection({ choice: PREVIEW, seenNewestId: newestId });
+  }
+  const [prevFocus, setPrevFocus] = useState(focus);
+  if (focus !== prevFocus) {
+    setPrevFocus(focus);
+    if (focus) setSelection({ choice: focus.id, seenNewestId: newestId });
   }
   const tab = visibleTab(artifacts, selection);
   const active = artifacts.find((a) => a.id === tab);

@@ -1,5 +1,14 @@
 import { join } from 'node:path';
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, safeStorage } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  clipboard,
+  dialog,
+  ipcMain,
+  Menu,
+  nativeTheme,
+  safeStorage,
+} from 'electron';
 import { IpcEvents } from '../shared/ipc/channels';
 import { createAgentRuntime } from './agent/agentRuntime';
 import { applyTheme, chromeFor } from './appearance';
@@ -10,6 +19,7 @@ import { renderChartSvg } from './artifacts/chartSvg';
 import { registerAgentHandlers } from './ipc/handlers/agent';
 import { registerAppearanceHandlers } from './ipc/handlers/appearance';
 import { registerArtifactHandlers } from './ipc/handlers/artifacts';
+import { registerClipboardHandlers } from './ipc/handlers/clipboard';
 import { registerCompareHandlers } from './ipc/handlers/compare';
 import { registerAppHandlers } from './ipc/handlers/app';
 import { registerDatasetHandlers } from './ipc/handlers/datasets';
@@ -86,6 +96,7 @@ function start(): void {
         },
       });
       registerAppHandlers(handle);
+      registerClipboardHandlers(handle, clipboard);
 
       const appearanceStore = new AppearanceStore(join(app.getPath('userData'), 'appearance.json'));
       let theme = (await appearanceStore.get()).theme;
