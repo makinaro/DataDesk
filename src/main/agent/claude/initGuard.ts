@@ -1,6 +1,13 @@
 import type { SDKSystemMessage } from '@anthropic-ai/claude-agent-sdk';
-import { DATADESK_SERVER, expectedTools, PLUGIN_NAME, SKILL_NAMES } from './agentOptions';
-import { isSubagentName, SUBAGENT_NAMES } from './subagents';
+import {
+  DATADESK_SERVER,
+  expectedTools,
+  PLUGIN_NAME,
+  SKILL_NAMES,
+  type SessionTools,
+} from './agentOptions';
+import { HF_SERVER } from './hfTools';
+import { subagentNames } from './subagents';
 
 export type InitMessage = Pick<
   SDKSystemMessage,
@@ -31,22 +38,25 @@ function samePath(a: string, b: string): boolean {
  */
 export function checkInit(
   init: InitMessage,
-  expected: { cwd: string; pluginDir: string; openaiTools: boolean },
+  expected: { cwd: string; pluginDir: string } & SessionTools,
 ): string[] {
   const problems: string[] = [];
-  const allowed = expectedTools(expected.openaiTools);
+  const allowed = expectedTools(expected);
   const unexpectedTools = init.tools.filter((t) => !allowed.has(t));
   if (unexpectedTools.length > 0) problems.push(`unexpected tools: ${unexpectedTools.join(', ')}`);
 
-  const servers = init.mcp_servers.map((s) => s.name).filter((n) => n !== DATADESK_SERVER);
+  // The hf server may be failed (bad token, offline): its tools are then simply absent.
+  const ourServers = expected.hfTools ? [DATADESK_SERVER, HF_SERVER] : [DATADESK_SERVER];
+  const servers = init.mcp_servers.map((s) => s.name).filter((n) => !ourServers.includes(n));
   if (servers.length > 0) problems.push(`unexpected MCP servers: ${servers.join(', ')}`);
 
   // Exactly our sub-agents: no built-ins (general-purpose would inherit every tool), and all
   // of ours present (otherwise the AgentDefinitions didn't apply as intended).
   const agents = init.agents ?? [];
-  const extraAgents = agents.filter((a) => !isSubagentName(a));
+  const ours: readonly string[] = subagentNames(expected);
+  const extraAgents = agents.filter((a) => !ours.includes(a));
   if (extraAgents.length > 0) problems.push(`unexpected agents: ${extraAgents.join(', ')}`);
-  const missingAgents = SUBAGENT_NAMES.filter((a) => !agents.includes(a));
+  const missingAgents = ours.filter((a) => !agents.includes(a));
   if (missingAgents.length > 0) {
     problems.push(`DataDesk sub-agents did not load: ${missingAgents.join(', ')}`);
   }

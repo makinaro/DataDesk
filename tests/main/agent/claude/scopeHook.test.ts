@@ -39,6 +39,12 @@ describe('scope hook: sub-agent calls', () => {
     await expect(run(pre(t('run_sql'), {}, { id: 'a2', type: 'sql-analyst' }))).resolves.toEqual(
       {},
     );
+    const toolInput = { operations: [{ cmd: 'ls', args: ['hf://datasets/o/r'] }] };
+    for (const tool of ['mcp__hf__hub_repo_search', 'mcp__hf__hf_fs', t('list_datasets')]) {
+      expect(
+        scopeViolation({ agentId: 'a3', agentType: 'dataset-scout', toolName: tool, toolInput }),
+      ).toBe(null);
+    }
   });
 
   it.each([
@@ -48,6 +54,14 @@ describe('scope hook: sub-agent calls', () => {
     ['sql-analyst', 'Skill'],
     ['report-writer', 'Agent'],
     ['general-purpose', t('list_datasets')],
+    // The scout reads the Hub but never local rows, SQL or downloads; others never the Hub.
+    ['dataset-scout', t('run_sql')],
+    ['dataset-scout', t('sample_rows')],
+    ['dataset-scout', t('load_hf_dataset')],
+    ['dataset-scout', 'mcp__hf__create_repo'],
+    ['sql-analyst', 'mcp__hf__hub_repo_search'],
+    ['profiler', 'mcp__hf__hf_fs'],
+    ['report-writer', 'mcp__hf__hub_repo_details'],
   ])('%s may not use %s', (agentType, toolName) => {
     expect(scopeViolation({ agentId: 'a', agentType, toolName })).not.toBeNull();
   });
@@ -60,6 +74,45 @@ describe('scope hook: sub-agent calls', () => {
     expect(
       scopeViolation({ agentId: undefined, agentType: 'report-writer', toolName: t('run_sql') }),
     ).toMatch(/report-writer may not use/);
+  });
+});
+
+describe('scope hook: Hugging Face tools (D-019)', () => {
+  const scout = { agentId: 'a', agentType: 'dataset-scout' };
+  const fs = 'mcp__hf__hf_fs';
+  const ops = (...cmds: string[]) => ({
+    operations: cmds.map((cmd) => ({ cmd, args: ['hf://datasets/o/r'] })),
+  });
+
+  it('keeps Hub tools out of the main analyst (its context holds the user rows)', () => {
+    for (const toolName of ['mcp__hf__hub_repo_search', 'mcp__hf__hub_repo_details', fs]) {
+      expect(
+        scopeViolation({
+          agentId: undefined,
+          agentType: undefined,
+          toolName,
+          toolInput: ops('ls'),
+        }),
+      ).toMatch(/only inside dataset-scout/);
+    }
+  });
+
+  it('lets dataset-scout run read commands only through hf_fs', () => {
+    expect(scopeViolation({ ...scout, toolName: fs, toolInput: ops('ls', 'find', 'cat') })).toBe(
+      null,
+    );
+    expect(scopeViolation({ ...scout, toolName: fs, toolInput: ops('stat', 'search') })).toBe(null);
+  });
+
+  it.each([
+    ['a write command', ops('ls', 'rm')],
+    ['an upload', ops('cp')],
+    ['an image attachment', ops('attach')],
+    ['an unknown field', { operations: [{ cmd: 'ls', args: [], force: true }] }],
+    ['no operations', { operations: [] }],
+    ['a non-object', 'ls hf://datasets'],
+  ])('refuses hf_fs with %s, whoever calls it', (_label, toolInput) => {
+    expect(scopeViolation({ ...scout, toolName: fs, toolInput })).toMatch(/hf_fs: only/);
   });
 });
 
@@ -83,7 +136,7 @@ describe('scope hook: main-thread delegations', () => {
     ['a non-object input', 'profiler'],
   ])('denies a delegation with %s', async (_label, input) => {
     await expect(run(pre('Agent', input))).resolves.toEqual(
-      denied(/only subagent_type \(profiler, sql-analyst, report-writer\)/),
+      denied(/only subagent_type \(profiler, sql-analyst, report-writer, dataset-scout\)/),
     );
   });
 });

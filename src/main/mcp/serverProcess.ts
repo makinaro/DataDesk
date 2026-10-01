@@ -42,6 +42,8 @@ export function buildServerEnv(
     // Nothing inside DataDesk's own profile (secrets, catalog, logs) may be registered as data.
     DATADESK_DENY_DIRS: paths.userData,
     DATADESK_TEMP_DIR: join(paths.userData, 'duckdb-tmp', purpose),
+    // The one folder under userData that load_hf_dataset may write to and register from (D-020).
+    DATADESK_HF_DIR: join(paths.userData, 'datasets', 'hf'),
   };
   if (paths.extensionDir) env.DATADESK_EXTENSION_DIR = paths.extensionDir;
   if (purpose === 'agent') {

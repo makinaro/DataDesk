@@ -121,3 +121,34 @@ test('with DATADESK_OPENAI_API_KEY the stdio server adds the OpenAI tools (liste
   expect(log).toContain('OpenAI tools: on');
   expect(log).not.toContain('sk-e2e-fake-key-not-real');
 });
+
+test('with DATADESK_HF_TOKEN the stdio server adds load_hf_dataset (listed, never called)', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'datadesk-stdio-'));
+  const stderr: string[] = [];
+  const transport = new StdioClientTransport({
+    command: electronPath as unknown as string,
+    args: [resolve('out/main/mcp-server.js')],
+    env: {
+      ELECTRON_RUN_AS_NODE: '1',
+      DATADESK_CATALOG_PATH: join(root, 'catalog.json'),
+      DATADESK_TEMP_DIR: join(root, 'tmp'),
+      // A fake token: listing tools makes no Hugging Face request.
+      DATADESK_HF_TOKEN: 'hf_e2e_fake_token_not_real',
+    },
+    stderr: 'pipe',
+  });
+  transport.stderr?.on('data', (chunk: Buffer) => stderr.push(chunk.toString()));
+  const client = new Client({ name: 'e2e', version: '0.0.0' });
+  try {
+    await client.connect(transport);
+    const { tools } = await client.listTools();
+    expect(tools.map((t) => t.name)).toContain('load_hf_dataset');
+    expect(tools).toHaveLength(9);
+  } finally {
+    await client.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+  const log = stderr.join('');
+  expect(log).toContain('HF tools: on');
+  expect(log).not.toContain('hf_e2e_fake_token_not_real');
+});

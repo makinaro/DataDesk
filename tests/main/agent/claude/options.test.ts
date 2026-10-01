@@ -7,6 +7,7 @@ import {
   FORBIDDEN_BUILTINS,
   SKILL_NAMES,
 } from '../../../../src/main/agent/claude/agentOptions';
+import { hfDisallowedTools } from '../../../../src/main/agent/claude/hfTools';
 import { checkInit } from '../../../../src/main/agent/claude/initGuard';
 import { neutralizeSlashCommand } from '../../../../src/main/agent/claude/inputQueue';
 import { scopeHook } from '../../../../src/main/agent/claude/scopeHook';
@@ -16,19 +17,22 @@ const KEY = 'sk-ant-test-key-0123456789';
 const USER_DATA = 'C:/Users/me/AppData/Roaming/DataDesk';
 const WORKSPACE = `${USER_DATA}/agent-workspace`;
 const PLUGIN = 'C:/Program Files/DataDesk/resources/agent-plugin';
-const expected = { cwd: WORKSPACE, pluginDir: PLUGIN, openaiTools: false };
+const expected = { cwd: WORKSPACE, pluginDir: PLUGIN, openaiTools: false, hfTools: false };
 
-function options(openaiTools = false) {
-  return buildAgentOptions({
-    settings: DEFAULT_AGENT_SETTINGS,
-    openaiTools,
-    workspaceDir: WORKSPACE,
-    env: { ANTHROPIC_API_KEY: KEY },
-    mcpServer: { command: 'electron.exe', args: ['mcp-server.js'], env: { X: '1' } },
-    canUseTool: () => Promise.resolve({ behavior: 'deny', message: 'no' }),
-    abortController: new AbortController(),
-    pluginDir: PLUGIN,
-  });
+const baseInput = {
+  settings: DEFAULT_AGENT_SETTINGS,
+  openaiTools: false,
+  hfTools: false,
+  workspaceDir: WORKSPACE,
+  env: { ANTHROPIC_API_KEY: KEY },
+  mcpServer: { command: 'electron.exe', args: ['mcp-server.js'], env: { X: '1' } },
+  canUseTool: () => Promise.resolve({ behavior: 'deny' as const, message: 'no' }),
+  abortController: new AbortController(),
+  pluginDir: PLUGIN,
+};
+
+function options(openaiTools = false, hfTools = false) {
+  return buildAgentOptions({ ...baseInput, openaiTools, hfTools });
 }
 
 describe('buildAgentOptions (the whole capability surface of the in-app agent)', () => {
@@ -220,5 +224,105 @@ describe('OpenAI tools (only with a key)', () => {
     };
     expect(checkInit(init, { ...expected, openaiTools: true })).toEqual([]);
     expect(checkInit(init, expected).join('\n')).toMatch(/unexpected tools: .*search_columns/);
+  });
+});
+
+describe('Hugging Face server (only with a token)', () => {
+  const HF = ['mcp__hf__hub_repo_search', 'mcp__hf__hub_repo_details', 'mcp__hf__hf_fs'];
+  const init = {
+    tools: [
+      'Task',
+      'Skill',
+      ...AUTO_APPROVED_TOOLS,
+      ...APPROVAL_TOOLS,
+      ...HF,
+      'mcp__datadesk__load_hf_dataset',
+    ],
+    skills: [...SKILL_NAMES],
+    plugins: [{ name: 'datadesk', path: PLUGIN }],
+    mcp_servers: [
+      { name: 'datadesk', status: 'connected' },
+      { name: 'hf', status: 'connected' },
+    ],
+    agents: ['profiler', 'sql-analyst', 'report-writer', 'dataset-scout'],
+    permissionMode: 'default' as const,
+    apiKeySource: 'ANTHROPIC_API_KEY' as const,
+    cwd: WORKSPACE,
+  };
+  const withHf = { ...expected, hfTools: true };
+
+  it('is a remote http server whose header is only an env placeholder, connected before init', () => {
+    const hf = options(false, true).mcpServers?.hf;
+    expect(hf).toEqual({
+      type: 'http',
+      url: 'https://huggingface.co/mcp?no_image_content=true',
+      headers: { Authorization: 'Bearer ${DATADESK_HF_TOKEN}' },
+      alwaysLoad: true,
+    });
+    // ?login would start HF's OAuth flow.
+    expect(JSON.stringify(hf)).not.toContain('login');
+  });
+
+  it('auto-approves only the three read-only tools and explains the Hub is untrusted', () => {
+    const o = options(false, true);
+    expect(o.allowedTools?.filter((t) => t.startsWith('mcp__hf__'))).toEqual(HF);
+    expect(o.systemPrompt).toMatch(/untrusted/);
+  });
+
+  it('hides every discovered tool outside the allowlist, named as Claude Code names them', () => {
+    expect(
+      hfDisallowedTools([
+        'hub_repo_search',
+        'hf_fs',
+        'create_repo',
+        'gr1.image gen',
+        'create_repo',
+      ]),
+    ).toEqual(['mcp__hf__create_repo', 'mcp__hf__gr1_image_gen']);
+    const o = buildAgentOptions({
+      ...baseInput,
+      hfTools: true,
+      hfDisallowedTools: ['mcp__hf__create_repo'],
+    });
+    expect(o.disallowedTools).toContain('mcp__hf__create_repo');
+    // Without HF the list has no effect.
+    expect(
+      buildAgentOptions({ ...baseInput, hfDisallowedTools: ['mcp__hf__x'] }).disallowedTools,
+    ).not.toContain('mcp__hf__x');
+  });
+
+  it('is absent without a token', () => {
+    const o = options();
+    expect(Object.keys(o.mcpServers ?? {})).toEqual(['datadesk']);
+    expect(o.allowedTools?.some((t) => t.startsWith('mcp__hf__'))).toBe(false);
+    expect(o.systemPrompt).not.toContain('hub_repo_search');
+  });
+
+  it('the guard accepts the hf server and its allowlisted tools only when a token was set', () => {
+    expect(checkInit(init, withHf)).toEqual([]);
+    // A failed hf server (bad token, offline) just means no HF tools.
+    const failed = { ...init, tools: init.tools.filter((t) => !HF.includes(t)) };
+    expect(checkInit({ ...failed, mcp_servers: [...init.mcp_servers] }, withHf)).toEqual([]);
+    const problems = checkInit(init, expected).join('\n');
+    expect(problems).toMatch(/unexpected tools: .*hub_repo_search/);
+    expect(problems).toMatch(/unexpected MCP servers: hf/);
+    expect(problems).toMatch(/load_hf_dataset/);
+    expect(problems).toMatch(/unexpected agents: dataset-scout/);
+    // With HF on, the scout must be there.
+    const noScout = { ...init, agents: ['profiler', 'sql-analyst', 'report-writer'] };
+    expect(checkInit(noScout, withHf).join('\n')).toMatch(/did not load: dataset-scout/);
+    // load_hf_dataset is never auto-approved: it must ask.
+    expect(options(false, true).allowedTools).not.toContain('mcp__datadesk__load_hf_dataset');
+  });
+
+  it.each([
+    'mcp__hf__create_repo',
+    'mcp__hf__hf_jobs',
+    'mcp__hf__dynamic_space',
+    'mcp__hf__hf_whoami',
+  ])('the guard refuses a session that offers %s', (tool) => {
+    expect(checkInit({ ...init, tools: [...init.tools, tool] }, withHf).join('\n')).toMatch(
+      `unexpected tools: ${tool}`,
+    );
   });
 });

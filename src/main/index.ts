@@ -107,10 +107,8 @@ function start(): void {
           console.error(`[agent] ${message}`, detail ?? '');
         },
       });
-      registerSecretsHandlers(handle, keyStore, async (provider) => {
-        // Both keys shape the session (the OpenAI key adds tools), so either change resets it.
-        if (provider === 'anthropic' || provider === 'openai') await agent.onKeyChanged();
-      });
+      // Every key shapes the session (OpenAI and Hugging Face add tools), so any change resets it.
+      registerSecretsHandlers(handle, keyStore, () => agent.onKeyChanged());
       registerArtifactHandlers(handle, {
         store: new ArtifactStore(join(app.getPath('userData'), 'artifacts')),
         pickSavePath: async (defaultName, format) => {

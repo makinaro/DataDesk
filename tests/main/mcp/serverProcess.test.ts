@@ -21,6 +21,7 @@ describe('buildServerEnv', () => {
         'DATADESK_CATALOG_PATH',
         'DATADESK_DENY_DIRS',
         'DATADESK_EXTENSION_DIR',
+        'DATADESK_HF_DIR',
         'DATADESK_TEMP_DIR',
         'ELECTRON_RUN_AS_NODE',
       ]);
@@ -35,6 +36,7 @@ describe('buildServerEnv', () => {
     const env = buildServerEnv(paths, 'ui');
     expect(env.DATADESK_CATALOG_PATH).toMatch(/DataDesk[\\/]catalog\.json$/);
     expect(env.DATADESK_DENY_DIRS).toBe(paths.userData);
+    expect(env.DATADESK_HF_DIR).toMatch(/DataDesk[\\/]datasets[\\/]hf$/);
     expect(env.ELECTRON_RUN_AS_NODE).toBe('1');
   });
 

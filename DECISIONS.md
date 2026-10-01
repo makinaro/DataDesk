@@ -472,3 +472,138 @@ installed `.d.ts` and are exercised by tests that run the real SDK over an injec
 - Column samples and small query results leave the machine when the tools are used.
 - Model ids are constants; changing them invalidates the cache only for the embedding model,
   because the model is part of the key.
+
+## D-019: Remote Hugging Face MCP server: token via CLI env, tools discovered then allowlisted (2026-10-01)
+
+**Context:** Phase 6 attaches Hugging Face's hosted MCP server so the analyst can find public
+datasets. Verified 2026-10-01 from huggingface.co/docs/hub/hf-mcp-server, the
+github.com/huggingface/hf-mcp-server source (`tool-ids.ts`, `settings.ts`, `bouquet-presets.ts`),
+a live anonymous `tools/list`, and dummy-key probes of `@anthropic-ai/claude-agent-sdk` 0.3.286
+(CLI 2.1.286) against a local fake MCP server:
+
+- The server is `https://huggingface.co/mcp`, stateless streamable HTTP, with an optional
+  `Authorization: Bearer <token>`. Anonymous use offers `hf_whoami`, `hub_repo_search`,
+  `hub_repo_details` and `hf_fs`. **A signed-in user with default settings also gets write,
+  compute and Gradio tools** (`create_repo`, `hf_jobs`, `dynamic_space`, sandbox tools, a
+  Gradio Space). `?login` starts HF's OAuth flow; `?no_image_content=true` keeps results text.
+  `?bouquet=`/`?mix=` narrow the set, but no combination yields exactly the three we want.
+- The SDK passes `mcpServers` to the CLI as a `--mcp-config <JSON>` argument (D-018), so a
+  literal header would put the token on the command line.
+- **Probe:** `headers: { Authorization: 'Bearer ${VAR}' }` in the SDK's `mcpServers` is
+  expanded by the CLI from **its own env**; the fake server received the token. The docs only
+  promise this for `.mcp.json`.
+- **Probe:** with an explicit header, a 401 marks the server `failed`. No OAuth discovery
+  request is made and nothing opens a browser.
+- **Probe:** `disallowedTools` removes named remote tools (and `mcp__hf__*`) from `init.tools`,
+  so from the model's context. The per-server `tools: [{ name, permission_policy }]` field
+  filtered nothing.
+- `alwaysLoad: true` makes the CLI wait (up to 5 s) for the server before init, so its tools are
+  in the init message.
+
+**Decision:**
+
+- **Token route:** the HF token goes into the agent CLI's explicitly built env as
+  `DATADESK_HF_TOKEN`. The `hf` server config carries only `Bearer ${DATADESK_HF_TOKEN}`. The
+  same variable reaches datadesk-mcp through the CLI's env (D-014), where `scrubSecrets` keeps
+  it for `load_hf_dataset`.
+- **Opt-in:** the server is attached only when the user saved a Hugging Face token. Changing any
+  key now resets the session. An unreadable token starts the session without HF.
+- **Allowlist (three layers):**
+  1. Only `hub_repo_search`, `hub_repo_details` and `hf_fs` are auto-approved; every other tool
+     reaches `canUseTool`, which denies it.
+  2. Before each session, main lists the server's tools itself with the token and passes every
+     tool outside the allowlist as `disallowedTools`, so write/compute/Gradio tools and
+     `hf_whoami` never reach the model's context.
+  3. The init guard accepts the `hf` server only when a token was set, and refuses any HF tool
+     outside the allowlist. A `failed` hf server is accepted (its tools are simply absent).
+- **`hf_fs` verbs:** its live schema (anonymous `tools/list`, 2026-10-01) allows only
+  `ls|cat|attach|stat|find|search`, all reads. A token could change what the server offers, so the
+  PreToolUse hook enforces `ls|cat|stat|find|search` itself with a strict schema (`HfFsInput` in
+  `hfTools.ts`). `attach` returns images, which we don't need.
+- **Scout only:** the HF tools are auto-approved, but the hook denies them on the main thread. Only
+  `dataset-scout` reads the Hub, so Hub text and the user's rows never share one context, and
+  stray local values are less likely to end up in Hub search words. The analyst passes the scout a
+  question, not data.
+- The system prompt labels everything from the Hub as untrusted text.
+
+**Alternatives:**
+
+- Token as a literal header: on the command line.
+- An in-process `type: 'sdk'` proxy server in main: keeps the token out of the CLI, but the CLI
+  already holds the Anthropic key, and the phase is about a _remote_ MCP server.
+- A bouquet only: can't express our set, and HF's settings may override it.
+- Fail the session on any unknown HF tool without discovery: a new HF default tool would break
+  DataDesk until updated.
+
+**Consequences:**
+
+- `${…}` expansion via `--mcp-config` is observed CLI behaviour, not documented. If a CLI update
+  drops it, HF requests carry the literal placeholder, get a 401, and the server shows `failed`.
+  The token still never reaches the command line.
+- Session start makes one extra request to HF when a token is set.
+- Tools HF adds _during_ a session (`tools/list_changed`) aren't in `disallowedTools` and the
+  guard has already run; `canUseTool` still denies them.
+
+## D-020: load_hf_dataset downloads into userData/datasets/hf through a narrow exception (2026-10-01)
+
+**Context:** The analyst can find datasets on the Hub (D-019), but to query one, a file must be
+on disk and registered. datadesk-mcp denies registering anything under userData
+(`DATADESK_DENY_DIRS`), because that folder holds the encrypted keys, the catalog and logs.
+Verified 2026-10-01 from the HF OpenAPI description, the huggingface.js `file-download-info` and
+`list-files` sources, and a live anonymous probe (Node 24 `fetch`, `redirect: 'manual'`):
+
+- `https://huggingface.co/datasets/{repo}/resolve/{revision}/{path}` serves a file. Small files
+  get a **relative** 307 to `/api/resolve-cache/…`. Large files get a 302 to a CDN host
+  (`us.aws.cdn.hf.co`, `cas-bridge.xethub.hf.co`; observed, not documented) with the real size in
+  `X-Linked-Size`. A 200 may have no `Content-Length`.
+- Errors carry `X-Error-Code` (`GatedRepo`, `RepoNotFound`, `EntryNotFound`). Gated access can
+  only be granted in a browser.
+- `@huggingface/hub` 2.17.5 exists, but plain `fetch` covers one-file downloads. The library's
+  extra is Xet chunked transfer (WASM), not needed for files of this size.
+
+**Decision:**
+
+- **Tool:** `load_hf_dataset({ repo_id, path, revision?, name? })` in datadesk-mcp, registered
+  only when `DATADESK_HF_TOKEN` is set. One file per call, `.csv/.tsv/.parquet/.json/.jsonl/
+.ndjson` only. The input schema lives in `src/shared/hf.ts`, so main's approval dialog and the
+  tool validate the same thing. The default name is `hf_<repo>_<file>`, so a Hub dataset doesn't
+  silently replace a local one.
+- **Location:** `userData/datasets/hf/<owner>/<repo>/<revision>-<hash>/<path>`, with each segment
+  made file-system safe and the result checked to stay inside the folder. The hash covers the
+  exact repo, revision and path: the safe-name mapping and case-insensitive NTFS would otherwise
+  let two Hub files share one local file, so one download could replace the data behind another
+  dataset.
+- **Input rules:** no `refs/pr/*` revisions, because anyone can author a Hub pull request; the
+  dialog points out any other non-`main` revision. Paths may not contain controls, bidi or
+  separator characters (they would make the dialog misleading), nor names Windows can't store
+  (trailing dot or space, device names, segments over 255 characters).
+- **Exception:** `ImportPolicy.allowDirs` lets a path inside a denied directory through only if
+  it is inside an allowed one. Only `load_hf_dataset` passes `allowDirs: [hfDir]`, for the file
+  it just wrote. `register_dataset` (model or UI) still refuses all of userData, the HF folder
+  included.
+- **Cap:** 500 MB per file by default (`DATADESK_HF_MAX_BYTES`), and never more than the import
+  cap. It's checked against `X-Linked-Size` and `Content-Length` before the body, and enforced on
+  the bytes actually received. The download goes to a `.part` file that is renamed only when
+  complete; on any failure, cancel or timeout (20 minutes) it is deleted.
+- **Redirects by hand:** follow at most 5, over https only, to `huggingface.co`,
+  `*.huggingface.co` or `*.hf.co`. The token is sent to `huggingface.co` only, never to the CDN.
+- **Approval:** always asks the user, main analyst only (see the approval route in
+  `claudeOrchestrator.ts`).
+- **Client seam:** the tool takes `fetch` as a dependency; tests script a fake Hub.
+
+**Alternatives:**
+
+- A download folder outside userData (e.g. Documents): it would need a new user-visible setting,
+  and the roadmap asks for app-managed storage.
+- Lifting the userData deny for the whole agent server: `register_dataset` could then point at
+  the key file.
+- `@huggingface/hub`: an extra dependency (plus WASM) for one HTTP GET.
+- Letting fetch follow redirects: whether the Authorization header is stripped on a cross-origin
+  redirect depends on the fetch implementation, and the hosts would be unchecked.
+
+**Consequences:**
+
+- Downloaded files stay in userData until removed by hand; there's no cleanup UI yet.
+- If HF moves its CDN outside `*.hf.co`, downloads fail with "not a Hugging Face host" until the
+  list is updated. That fails closed.
+- A file is downloaded again each time it is loaded; there is no cache by ETag.

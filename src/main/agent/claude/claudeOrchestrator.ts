@@ -10,7 +10,14 @@ import { isSubagentTool, preview, type ResetReason } from '../../../shared/agent
 import { DatasetNameSchema } from '../../../shared/datasets';
 import type { ApprovalBroker } from '../approvals';
 import type { EmitAgentEvent, Orchestrator } from '../orchestrator';
-import { APPROVAL_TOOLS } from './agentOptions';
+import {
+  DEFAULT_HF_REVISION,
+  defaultHfDatasetName,
+  HF_MAX_DOWNLOAD_BYTES,
+  LoadHfDatasetInput,
+} from '../../../shared/hf';
+import { APPROVAL_TOOLS, type SessionTools } from './agentOptions';
+import { HF_APPROVAL_TOOLS } from './datadeskTools';
 import { checkInit } from './initGuard';
 import { InputQueue } from './inputQueue';
 import { createSdkMapper } from './sdkMapper';
@@ -26,14 +33,14 @@ export type QueryFn = (params: {
   options: Options;
 }) => QueryLike;
 
-export interface SessionSetup {
+export interface SessionSetup extends SessionTools {
   options: Options;
   /** The agent workspace; the init guard checks the CLI really runs there. */
   workspaceDir: string;
   /** The skills plugin; the init guard checks exactly this plugin loaded. */
   pluginDir: string;
-  /** Whether this session's datadesk-mcp exposes the OpenAI tools (the guard expects them). */
-  openaiTools: boolean;
+  /** Non-fatal problems to show in the chat (e.g. Hugging Face could not be attached). */
+  notices?: string[];
 }
 
 export interface ClaudeOrchestratorDeps {
@@ -66,6 +73,72 @@ const RegisterInput = z.object({
   name: DatasetNameSchema.optional(),
   sheet: z.string().max(100).optional(),
 });
+
+interface ApprovalQuestion {
+  title: string;
+  lines: string[];
+  /** Exactly what the tool receives if the user approves (validated and stripped). */
+  input: Record<string, unknown>;
+  /** Told to the analyst on a denial. */
+  declined: string;
+}
+
+/** Anything but the main branch is pointed out: users rarely read the revision line. */
+function revisionNote(revision: string): string {
+  if (revision === DEFAULT_HF_REVISION) return revision;
+  if (revision === 'refs/convert/parquet') return `${revision} (the Hub's automatic Parquet copy)`;
+  return `${revision} (NOT the main branch: only allow it if you expected this version)`;
+}
+
+const mb = (bytes: number) => `${String(Math.round(bytes / 1024 ** 2))} MB`;
+
+/**
+ * Tools that always ask the user (D-010, D-020): how to validate the input and what to show.
+ * Returns undefined for input the tool would reject. load_hf_dataset is only registered with an
+ * HF token; without one the tool doesn't exist and the guard refuses it.
+ */
+const APPROVALS: Record<string, ((input: unknown) => ApprovalQuestion | undefined) | undefined> = {
+  [APPROVAL_TOOLS[0]]: (input) => {
+    const parsed = RegisterInput.safeParse(input);
+    if (!parsed.success) return undefined;
+    const { path, name, sheet } = parsed.data;
+    return {
+      title: 'Add a dataset?',
+      lines: [
+        'The analyst wants to register this file so it can query it:',
+        '',
+        `File:  ${path}`,
+        ...(name ? [`Name:  ${name} (replaces any dataset with this name)`] : []),
+        ...(sheet ? [`Sheet: ${sheet}`] : []),
+      ],
+      input: parsed.data,
+      declined: 'The user declined to add this file.',
+    };
+  },
+  [HF_APPROVAL_TOOLS[0]]: (input) => {
+    // Strict: an unknown key means the model sent something the dialog wouldn't show.
+    const parsed = LoadHfDatasetInput.strict().safeParse(input);
+    if (!parsed.success) return undefined;
+    const { repo_id, path, revision, name } = parsed.data;
+    return {
+      title: 'Download a dataset from Hugging Face?',
+      lines: [
+        'The analyst wants to download this file from the Hugging Face Hub and add it as a dataset:',
+        '',
+        `Dataset:  ${repo_id}`,
+        `          https://huggingface.co/datasets/${repo_id}`,
+        `File:     ${path}`,
+        `Revision: ${revisionNote(revision ?? DEFAULT_HF_REVISION)}`,
+        `Name:     ${name ?? defaultHfDatasetName(repo_id, path)} (replaces any dataset with this name)`,
+        '',
+        `It is saved in DataDesk's data folder. Files over ${mb(HF_MAX_DOWNLOAD_BYTES)} are refused.`,
+        'Anyone can publish on the Hub: the contents are treated as untrusted data.',
+      ],
+      input: parsed.data,
+      declined: 'The user declined to download this dataset.',
+    };
+  },
+};
 
 function firstLine(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
@@ -164,7 +237,9 @@ export class ClaudeOrchestrator implements Orchestrator {
         }
         return { behavior: 'allow', updatedInput: delegation.data };
       }
-      if (!(APPROVAL_TOOLS as readonly string[]).includes(toolName)) {
+      // hasOwn: a plain object would also resolve prototype keys such as "constructor".
+      const ask = Object.hasOwn(APPROVALS, toolName) ? APPROVALS[toolName] : undefined;
+      if (!ask) {
         return { behavior: 'deny', message: `${toolName} is not available in DataDesk.` };
       }
       if (agentID !== undefined) {
@@ -174,39 +249,35 @@ export class ClaudeOrchestrator implements Orchestrator {
         };
       }
       // Validate before asking: never show the user (or pass on) input the tool would reject.
-      const parsed = RegisterInput.safeParse(input);
-      if (!parsed.success) {
-        return { behavior: 'deny', message: 'Invalid register_dataset input; nothing was asked.' };
+      const question = ask(input);
+      if (!question) {
+        return { behavior: 'deny', message: `Invalid ${toolName} input; nothing was asked.` };
       }
-      const { path, name, sheet } = parsed.data;
-      const lines = [
-        'The analyst wants to register this file so it can query it:',
-        '',
-        `File:  ${path}`,
-        ...(name ? [`Name:  ${name} (replaces any dataset with this name)`] : []),
-        ...(sheet ? [`Sheet: ${sheet}`] : []),
-      ];
       const approved = await this.deps.approvals.request({
         toolName,
-        title: 'Add a dataset?',
-        detail: preview(lines.join('\n')),
+        title: question.title,
+        detail: preview(question.lines.join('\n')),
         signal,
         scope: String(generation),
       });
       const result: PermissionResult = approved
-        ? { behavior: 'allow', updatedInput: parsed.data }
-        : { behavior: 'deny', message: 'The user declined to add this file. Do not retry.' };
+        ? { behavior: 'allow', updatedInput: question.input }
+        : { behavior: 'deny', message: `${question.declined} Do not retry.` };
       return result;
     };
   }
 
   private async start(generation: number): Promise<Session> {
     const abortController = new AbortController();
-    const { options, workspaceDir, pluginDir, openaiTools } = await this.deps.createSession({
-      abortController,
-      canUseTool: this.canUseToolFor(generation),
-    });
+    const { options, workspaceDir, pluginDir, openaiTools, hfTools, notices } =
+      await this.deps.createSession({
+        abortController,
+        canUseTool: this.canUseToolFor(generation),
+      });
     if (generation !== this.generation) throw new SupersededError();
+    for (const message of notices ?? []) {
+      this.deps.emit({ kind: 'error', message: preview(message, 2_000) });
+    }
     const input = new InputQueue();
     const query = this.deps.query({ prompt: input, options });
     const session: Session = {
@@ -218,13 +289,13 @@ export class ClaudeOrchestrator implements Orchestrator {
       done: Promise.resolve(),
     };
     this.live = session;
-    session.done = this.consume(session, { cwd: workspaceDir, pluginDir, openaiTools });
+    session.done = this.consume(session, { cwd: workspaceDir, pluginDir, openaiTools, hfTools });
     return session;
   }
 
   private async consume(
     session: Session,
-    expected: { cwd: string; pluginDir: string; openaiTools: boolean },
+    expected: { cwd: string; pluginDir: string } & SessionTools,
   ): Promise<void> {
     const map = createSdkMapper();
     // Only this session's events, and only until it starts ending.

@@ -79,6 +79,23 @@ describe('validateImportPath', () => {
     ).rejects.toThrow(/not allowed/);
   });
 
+  it('allows only the excepted folder inside a denied directory (load_hf_dataset, D-020)', async () => {
+    const hfDir = join(deniedDir, 'datasets', 'hf');
+    mkdirSync(join(hfDir, 'o', 'r'), { recursive: true });
+    writeFileSync(join(hfDir, 'o', 'r', 'x.csv'), 'a\n1\n');
+    const withException = { ...policy(), allowDirs: [hfDir] };
+    await expect(
+      validateImportPath(join(hfDir, 'o', 'r', 'x.csv'), withException),
+    ).resolves.toMatchObject({ format: 'csv' });
+    // The rest of userData stays denied, and without the exception so does the HF folder.
+    await expect(
+      validateImportPath(join(deniedDir, 'settings.json'), withException),
+    ).rejects.toThrow(/not allowed/);
+    await expect(validateImportPath(join(hfDir, 'o', 'r', 'x.csv'), policy())).rejects.toThrow(
+      /not allowed/,
+    );
+  });
+
   it('rejects symlinks and junctions that point elsewhere', async (ctx) => {
     const link = join(ws.dataDir, 'link.json');
     const junction = join(ws.dataDir, 'junction');

@@ -1,4 +1,5 @@
 import { join } from 'node:path';
+import { HF_TOKEN_ENV } from './hfTools';
 
 /**
  * OS variables the Claude Code binary needs on Windows (it must be able to locate PowerShell,
@@ -31,6 +32,8 @@ export interface AgentEnvInput {
   apiKey: string;
   /** Optional: enables datadesk-mcp's OpenAI tools (D-018). */
   openaiApiKey?: string | undefined;
+  /** Optional: enables the remote Hugging Face MCP server and load_hf_dataset (D-019). */
+  hfToken?: string | undefined;
   userData: string;
   appVersion: string;
   parentEnv: NodeJS.ProcessEnv;
@@ -62,6 +65,7 @@ export const SUBAGENT_LIMITS = {
 export function buildAgentEnv({
   apiKey,
   openaiApiKey,
+  hfToken,
   userData,
   appVersion,
   parentEnv,
@@ -77,6 +81,10 @@ export function buildAgentEnv({
     // For datadesk-mcp, which the CLI spawns with the CLI's own env. Passing it in the server's
     // `env` config instead would put it on the CLI's command line (--mcp-config JSON; D-018).
     ...(openaiApiKey ? { DATADESK_OPENAI_API_KEY: openaiApiKey } : {}),
+    // One variable, two readers: the CLI expands it into the hf server's Authorization header
+    // (the config carries only the placeholder; probe, D-019), and datadesk-mcp inherits it for
+    // load_hf_dataset.
+    ...(hfToken ? { [HF_TOKEN_ENV]: hfToken } : {}),
     // Isolation (DECISIONS D-004): own config dir, no auto memory, no claude.ai connectors.
     CLAUDE_CONFIG_DIR: join(userData, 'claude-config'),
     CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1',

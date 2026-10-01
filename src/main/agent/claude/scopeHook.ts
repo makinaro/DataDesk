@@ -1,5 +1,6 @@
 import type { HookCallback, HookJSONOutput } from '@anthropic-ai/claude-agent-sdk';
 import { isSubagentTool } from '../../../shared/agent';
+import { hfInputViolation, isHfTool } from './hfTools';
 import { DelegationInput, isSubagentName, SUBAGENT_NAMES, SUBAGENT_TOOLS } from './subagents';
 
 /**
@@ -21,7 +22,14 @@ export function scopeViolation(call: {
   toolName: string;
   toolInput?: unknown;
 }): string | null {
+  const badInput = hfInputViolation(call.toolName, call.toolInput);
+  if (badInput !== null) return badInput;
   if (call.agentId === undefined && call.agentType === undefined) {
+    // Hub text stays out of the context that holds the user's rows (D-019): only dataset-scout
+    // reads the Hub.
+    if (isHfTool(call.toolName)) {
+      return 'Hugging Face tools run only inside dataset-scout: delegate the search to it.';
+    }
     if (!isSubagentTool(call.toolName)) return null;
     return DelegationInput.strict().safeParse(call.toolInput).success
       ? null
