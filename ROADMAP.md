@@ -89,7 +89,7 @@ report-writer. Manually, "analyze and write a report" shows three sub-agent lane
 
 ## Phase 5: OpenAI tools inside our MCP server
 
-- [ ] Injectable `OpenAIClient` interface (mockable)
+- [x] Injectable `OpenAIClient` interface (mockable)
 - [ ] `search_columns`: embeddings over column name/type/samples, content-hash cache, cosine ranking
 - [ ] `second_opinion`: structured critique of question + SQL + result
 - [ ] Key passed to datadesk-mcp via explicit env; tools hidden when no key
