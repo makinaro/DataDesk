@@ -49,6 +49,7 @@ const api: DatadeskApi = {
     pick: () => invoke(IpcChannels.datasetsPick),
     schema: (name) => invoke(IpcChannels.datasetsSchema, { name }),
     preview: (name, limit) => invoke(IpcChannels.datasetsPreview, { name, limit }),
+    remove: (name) => invoke(IpcChannels.datasetsRemove, { name }),
   },
   agent: {
     send: (text) => invoke(IpcChannels.agentSend, { text }),

@@ -30,6 +30,8 @@ export interface DatadeskApi {
     pick(): Promise<IpcResult<RegisteredDataset | null>>;
     schema(name: string): Promise<IpcResult<ColumnInfo[]>>;
     preview(name: string, limit: number): Promise<IpcResult<DatasetPreview>>;
+    /** Forgets a dataset; deletes its file only if DataDesk downloaded it (D-029). */
+    remove(name: string): Promise<IpcResult<IpcResponse<typeof IpcChannels.datasetsRemove>>>;
   };
   agent: {
     send(text: string): Promise<IpcResult<{ accepted: true }>>;

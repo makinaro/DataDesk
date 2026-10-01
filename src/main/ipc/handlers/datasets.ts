@@ -4,7 +4,7 @@ import { IpcUserError } from '../errors';
 import type { IpcHandle } from '../router';
 
 export interface DatasetHandlerDeps {
-  client: Pick<UiMcpClient, 'listDatasets' | 'register' | 'schema' | 'preview'>;
+  client: Pick<UiMcpClient, 'listDatasets' | 'register' | 'schema' | 'preview' | 'remove'>;
   /** Shows the OS open-file dialog (main process); resolves to a path or null if cancelled. */
   pickFile: () => Promise<string | null>;
 }
@@ -40,4 +40,6 @@ export function registerDatasetHandlers(
   handle(IpcChannels.datasetsPreview, ({ name, limit }) =>
     mapErrors(() => client.preview(name, limit)),
   );
+
+  handle(IpcChannels.datasetsRemove, ({ name }) => mapErrors(() => client.remove(name)));
 }

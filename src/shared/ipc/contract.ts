@@ -5,6 +5,7 @@ import {
   DatasetPreviewSchema,
   DatasetSummarySchema,
   RegisteredDatasetSchema,
+  RemovedDatasetSchema,
 } from '../datasets';
 import { AgentSettingsSchema } from '../agent';
 import { AppearanceSchema, ResolvedThemeSchema } from '../appearance';
@@ -67,6 +68,10 @@ export const ipcContract = {
   [IpcChannels.datasetsSchema]: {
     request: z.strictObject({ name: DatasetNameSchema }),
     response: z.array(ColumnInfoSchema).max(10_000),
+  },
+  [IpcChannels.datasetsRemove]: {
+    request: z.strictObject({ name: DatasetNameSchema }),
+    response: RemovedDatasetSchema,
   },
   [IpcChannels.datasetsPreview]: {
     request: z.strictObject({

@@ -120,6 +120,16 @@ describe('ipcContract', () => {
     });
   });
 
+  describe('dataset remove channel', () => {
+    it('takes only a valid dataset name', () => {
+      const req = ipcContract[IpcChannels.datasetsRemove].request;
+      expect(req.safeParse({ name: 'sales_2024' }).success).toBe(true);
+      expect(req.safeParse({ name: 'C:/Users/me/sales.csv' }).success).toBe(false);
+      expect(req.safeParse({ name: 'x'.repeat(500) }).success).toBe(false);
+      expect(req.safeParse({ name: 'sales', path: 'C:/x' }).success).toBe(false);
+    });
+  });
+
   describe('chart export channel', () => {
     const req = ipcContract[IpcChannels.artifactsExportChart].request;
     const id = '11111111-1111-4111-8111-111111111111';

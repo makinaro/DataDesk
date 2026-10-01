@@ -8,6 +8,7 @@ import {
   DatasetSummarySchema,
   QueryTableSchema,
   RegisteredDatasetSchema,
+  RemovedDatasetSchema,
 } from '../shared/datasets';
 import { DatasetUnavailableError, QueryTimeoutError, type DatasetDb } from './db/datasetDb';
 import { MAX_SQL_LENGTH, ReadOnlyViolation } from './db/readOnlyGuard';
@@ -202,7 +203,7 @@ export function buildServer({
           'Remove a dataset from DataDesk. The file is deleted only if DataDesk downloaded it ' +
           '(Hugging Face) and no other dataset uses it. Files the user added are never deleted.',
         inputSchema: { name: DatasetNameSchema.describe('The dataset to remove.') },
-        outputSchema: { removed: z.literal(true), deletedFile: z.boolean() },
+        outputSchema: RemovedDatasetSchema.shape,
         annotations: {
           readOnlyHint: false,
           destructiveHint: true,

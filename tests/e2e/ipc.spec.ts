@@ -13,7 +13,7 @@ test('bridge exposes only whitelisted methods', async ({ page }) => {
     artifacts: ['exportChart', 'exportReport', 'getChart', 'getReport'],
     clipboard: ['writeText'],
     compare: ['onEvent', 'reset', 'run', 'stop'],
-    datasets: ['list', 'pick', 'preview', 'registerFile', 'schema'],
+    datasets: ['list', 'pick', 'preview', 'registerFile', 'remove', 'schema'],
     secrets: ['clear', 'set', 'status'],
     settings: ['getAgent', 'getAppearance', 'setAgent', 'setAppearance'],
   });

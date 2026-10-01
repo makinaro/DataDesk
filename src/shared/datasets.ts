@@ -61,6 +61,13 @@ export const RegisteredDatasetSchema = z.object({
 });
 export type RegisteredDataset = z.infer<typeof RegisteredDatasetSchema>;
 
+/** remove_dataset's result. deletedFile is true only for DataDesk's own downloads (D-029). */
+export const RemovedDatasetSchema = z.strictObject({
+  removed: z.literal(true),
+  deletedFile: z.boolean(),
+});
+export type RemovedDataset = z.infer<typeof RemovedDatasetSchema>;
+
 /** A query result as returned by run_sql and sample_rows (and shown as previews). */
 export const QueryTableSchema = z.object({
   columns: z.array(z.object({ name: z.string(), type: z.string() })),

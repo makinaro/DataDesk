@@ -139,6 +139,12 @@ export function createFakeApi(
           clippedCells: 0,
         }),
       ),
+      remove: vi.fn((name: string) => {
+        const index = registered.findIndex((d) => d.name === name);
+        if (index < 0) return notFound<{ removed: true; deletedFile: boolean }>('Not registered.');
+        registered.splice(index, 1);
+        return ok({ removed: true as const, deletedFile: false });
+      }),
     },
     agent: {
       send: vi.fn((_text: string) => ok({ accepted: true as const })),
@@ -209,5 +215,9 @@ export function createFakeApi(
     const full = { provider, event: { ...event, seq: compareSeq[provider]++, at: Date.now() } };
     for (const l of [...compareListeners]) l(full);
   };
-  return Object.assign(api, { emit, emitCompare });
+  /** A dataset registered behind the UI's back (by the analyst), visible on the next list. */
+  const addDataset = (summary: DatasetSummary) => {
+    registered.push(summary);
+  };
+  return Object.assign(api, { emit, emitCompare, addDataset });
 }

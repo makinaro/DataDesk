@@ -26,6 +26,7 @@ function wire(overrides: Partial<DatasetHandlerDeps['client']> = {}, picked: str
     preview: vi.fn(() =>
       Promise.resolve({ columns: [], rows: [], rowCount: 0, truncated: false, clippedCells: 0 }),
     ),
+    remove: vi.fn(() => Promise.resolve({ removed: true as const, deletedFile: false })),
     ...overrides,
   };
   const pickFile = vi.fn(() => Promise.resolve(picked));
@@ -40,6 +41,23 @@ function wire(overrides: Partial<DatasetHandlerDeps['client']> = {}, picked: str
 }
 
 describe('dataset IPC handlers', () => {
+  it('removes a dataset by validated name through the UI MCP client', async () => {
+    const { call, client } = wire();
+    await expect(call('datasets:remove', { name: 'sales' })).resolves.toEqual({
+      ok: true,
+      data: { removed: true, deletedFile: false },
+    });
+    expect(client.remove).toHaveBeenCalledWith('sales');
+    await expect(call('datasets:remove', { name: '../catalog' })).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'INVALID_REQUEST' },
+    });
+    await expect(
+      call('datasets:remove', { name: 'sales', deleteFile: true }),
+    ).resolves.toMatchObject({ ok: false, error: { code: 'INVALID_REQUEST' } });
+    expect(client.remove).toHaveBeenCalledTimes(1);
+  });
+
   it('registers a path and returns the validated dataset', async () => {
     const { call, client } = wire();
     await expect(

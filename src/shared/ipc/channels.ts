@@ -12,6 +12,7 @@ export const IpcChannels = {
   datasetsPick: 'datasets:pick',
   datasetsSchema: 'datasets:schema',
   datasetsPreview: 'datasets:preview',
+  datasetsRemove: 'datasets:remove',
   agentSend: 'agent:send',
   agentStop: 'agent:stop',
   agentReset: 'agent:reset',

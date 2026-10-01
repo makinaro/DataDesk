@@ -63,6 +63,7 @@ describe('preload bridge', () => {
       'pick',
       'preview',
       'registerFile',
+      'remove',
       'schema',
     ]);
   });
@@ -125,6 +126,7 @@ describe('preload bridge', () => {
     await api.datasets.pick();
     await api.datasets.schema('sales');
     await api.datasets.preview('sales', 20);
+    await api.datasets.remove('sales');
     await api.datasets.registerFile(new File(['a'], 'sales.csv'), 'sales');
     await api.artifacts.getChart(CHART);
     await api.artifacts.getReport(REPORT);
@@ -145,6 +147,7 @@ describe('preload bridge', () => {
       ['datasets:pick', undefined],
       ['datasets:schema', { name: 'sales' }],
       ['datasets:preview', { name: 'sales', limit: 20 }],
+      ['datasets:remove', { name: 'sales' }],
       ['datasets:register', { path: 'C:/data/sales.csv', name: 'sales' }],
       ['artifacts:getChart', { id: CHART }],
       ['artifacts:getReport', { id: REPORT }],
