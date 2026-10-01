@@ -1,4 +1,5 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
+import { changesCatalog } from '../../shared/agent';
 import type { Layout } from '../../shared/appearance';
 import { ApprovalDialog } from './components/ApprovalDialog';
 import { ChatPanel } from './components/ChatPanel';
@@ -9,6 +10,7 @@ import { SettingsDialog } from './components/SettingsDialog';
 import { TimelineDrawer } from './components/TimelineDrawer';
 import { CompareIcon, SettingsIcon, TimelineIcon } from './components/icons';
 import { TitleBar, TitleBarButton } from './components/TitleBar';
+import { useAgent } from './agent/AgentProvider';
 import { useAppearance } from './appearance/AppearanceProvider';
 import { PANEL_LIMITS, usePanelSizes, type PanelKey } from './layout/panelSizes';
 import { Splitter } from './layout/Splitter';
@@ -25,6 +27,21 @@ export function App() {
   const [selectedDataset, setSelectedDataset] = useState<string | null>(null);
   const [datasetsRevision, setDatasetsRevision] = useState(0);
   const [focus, setFocus] = useState<FocusRequest | null>(null);
+  const { state: agent } = useAgent();
+  // The analyst can register datasets too (register_dataset, load_hf_dataset). Each one that
+  // succeeds refreshes the sidebar, adjusting state during render rather than in an effect.
+  const catalogChanges = useMemo(
+    () =>
+      agent.timeline.filter(
+        (t) => t.kind === 'tool' && t.result && !t.result.isError && changesCatalog(t.name),
+      ).length,
+    [agent.timeline],
+  );
+  const [seenCatalogChanges, setSeenCatalogChanges] = useState(catalogChanges);
+  if (catalogChanges !== seenCatalogChanges) {
+    setSeenCatalogChanges(catalogChanges);
+    if (catalogChanges > seenCatalogChanges) setDatasetsRevision((r) => r + 1);
+  }
   const { appearance } = useAppearance();
   const layout = appearance.layout;
   const timelineOpen = timelineByLayout[layout];

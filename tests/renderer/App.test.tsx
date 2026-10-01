@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { App } from '../../src/renderer/src/App';
 import { DEFAULT_SIZES } from '../../src/renderer/src/layout/panelSizes';
 import type { Layout } from '../../src/shared/appearance';
-import { CHART_ID, createFakeApi } from './fakeApi';
+import { CHART_ID, createFakeApi, summary } from './fakeApi';
 import { renderWithProviders } from './renderApp';
 
 // Vega needs a real layout engine; charts render for real in the e2e tests.
@@ -126,6 +126,42 @@ describe('App shell', () => {
     await renderLayout('chat-first');
     const results = screen.getByRole('region', { name: 'Charts & report' });
     expect(parseInt(results.style.width, 10)).toBe(DEFAULT_SIZES['chat-first'].side);
+  });
+
+  it('shows a dataset the analyst registered (e.g. from Hugging Face) without a refresh', async () => {
+    const { api } = renderWithProviders(<App />);
+    expect(await screen.findByText('No datasets yet.')).toBeInTheDocument();
+    act(() => {
+      api.emit({
+        kind: 'tool_call',
+        toolUseId: 'hf1',
+        name: 'mcp__datadesk__load_hf_dataset',
+        input: '{"repoId":"acme/cars"}',
+        parentToolUseId: null,
+      });
+    });
+    api.addDataset(summary('cars'));
+    act(() => {
+      api.emit({ kind: 'tool_result', toolUseId: 'hf1', isError: false, output: 'Registered' });
+    });
+    const list = await screen.findByRole('list', { name: 'Registered datasets' });
+    expect(within(list).getByText('cars')).toBeInTheDocument();
+  });
+
+  it('does not refetch datasets for failed or unrelated tool calls', async () => {
+    const { api } = renderWithProviders(<App />);
+    await screen.findByText('No datasets yet.');
+    const before = api.datasets.list.mock.calls.length;
+    act(() => {
+      for (const [id, name, isError] of [
+        ['a', 'mcp__datadesk__run_sql', false],
+        ['b', 'mcp__datadesk__register_dataset', true],
+      ] as const) {
+        api.emit({ kind: 'tool_call', toolUseId: id, name, input: '{}', parentToolUseId: null });
+        api.emit({ kind: 'tool_result', toolUseId: id, isError, output: '' });
+      }
+    });
+    expect(api.datasets.list.mock.calls.length).toBe(before);
   });
 
   it('brings a chart forward when its chip in an answer is clicked', async () => {
