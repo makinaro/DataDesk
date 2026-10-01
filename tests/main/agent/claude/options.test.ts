@@ -244,7 +244,7 @@ describe('Hugging Face server (only with a token)', () => {
       { name: 'datadesk', status: 'connected' },
       { name: 'hf', status: 'connected' },
     ],
-    agents: ['profiler', 'sql-analyst', 'report-writer'],
+    agents: ['profiler', 'sql-analyst', 'report-writer', 'dataset-scout'],
     permissionMode: 'default' as const,
     apiKeySource: 'ANTHROPIC_API_KEY' as const,
     cwd: WORKSPACE,
@@ -307,6 +307,10 @@ describe('Hugging Face server (only with a token)', () => {
     expect(problems).toMatch(/unexpected tools: .*hub_repo_search/);
     expect(problems).toMatch(/unexpected MCP servers: hf/);
     expect(problems).toMatch(/load_hf_dataset/);
+    expect(problems).toMatch(/unexpected agents: dataset-scout/);
+    // With HF on, the scout must be there.
+    const noScout = { ...init, agents: ['profiler', 'sql-analyst', 'report-writer'] };
+    expect(checkInit(noScout, withHf).join('\n')).toMatch(/did not load: dataset-scout/);
     // load_hf_dataset is never auto-approved: it must ask.
     expect(options(false, true).allowedTools).not.toContain('mcp__datadesk__load_hf_dataset');
   });

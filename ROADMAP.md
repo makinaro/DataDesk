@@ -104,7 +104,7 @@ without a key.
 - [x] Runtime tool discovery + allowlist
 - [x] `load_hf_dataset`: size-capped download to `userData/datasets/hf`, then register
 - [x] ApprovalBroker + approval dialog (`canUseTool` → IPC → user)
-- [ ] `dataset-scout` sub-agent + `evaluating-datasets` skill
+- [x] `dataset-scout` sub-agent + `evaluating-datasets` skill
 
 **Done when:** tests cover approval allow/deny/timeout and the download cap (mocked). Manually
 you can find a dataset, approve it, load it, and query it.

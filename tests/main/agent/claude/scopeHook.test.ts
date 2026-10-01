@@ -39,6 +39,11 @@ describe('scope hook: sub-agent calls', () => {
     await expect(run(pre(t('run_sql'), {}, { id: 'a2', type: 'sql-analyst' }))).resolves.toEqual(
       {},
     );
+    for (const tool of ['mcp__hf__hub_repo_search', 'mcp__hf__hf_fs', t('list_datasets')]) {
+      expect(scopeViolation({ agentId: 'a3', agentType: 'dataset-scout', toolName: tool })).toBe(
+        null,
+      );
+    }
   });
 
   it.each([
@@ -48,6 +53,14 @@ describe('scope hook: sub-agent calls', () => {
     ['sql-analyst', 'Skill'],
     ['report-writer', 'Agent'],
     ['general-purpose', t('list_datasets')],
+    // The scout reads the Hub but never local rows, SQL or downloads; others never the Hub.
+    ['dataset-scout', t('run_sql')],
+    ['dataset-scout', t('sample_rows')],
+    ['dataset-scout', t('load_hf_dataset')],
+    ['dataset-scout', 'mcp__hf__create_repo'],
+    ['sql-analyst', 'mcp__hf__hub_repo_search'],
+    ['profiler', 'mcp__hf__hf_fs'],
+    ['report-writer', 'mcp__hf__hub_repo_details'],
   ])('%s may not use %s', (agentType, toolName) => {
     expect(scopeViolation({ agentId: 'a', agentType, toolName })).not.toBeNull();
   });
@@ -83,7 +96,7 @@ describe('scope hook: main-thread delegations', () => {
     ['a non-object input', 'profiler'],
   ])('denies a delegation with %s', async (_label, input) => {
     await expect(run(pre('Agent', input))).resolves.toEqual(
-      denied(/only subagent_type \(profiler, sql-analyst, report-writer\)/),
+      denied(/only subagent_type \(profiler, sql-analyst, report-writer, dataset-scout\)/),
     );
   });
 });

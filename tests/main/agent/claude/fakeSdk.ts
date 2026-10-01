@@ -25,6 +25,7 @@ export const sdk = {
         'datadesk:chart-style',
         'datadesk:eda-checklist',
         'datadesk:report-format',
+        'datadesk:evaluating-datasets',
         'doctor',
       ],
       plugins: [

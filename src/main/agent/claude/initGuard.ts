@@ -7,7 +7,7 @@ import {
   type SessionTools,
 } from './agentOptions';
 import { HF_SERVER } from './hfTools';
-import { isSubagentName, SUBAGENT_NAMES } from './subagents';
+import { subagentNames } from './subagents';
 
 export type InitMessage = Pick<
   SDKSystemMessage,
@@ -53,9 +53,10 @@ export function checkInit(
   // Exactly our sub-agents: no built-ins (general-purpose would inherit every tool), and all
   // of ours present (otherwise the AgentDefinitions didn't apply as intended).
   const agents = init.agents ?? [];
-  const extraAgents = agents.filter((a) => !isSubagentName(a));
+  const ours: readonly string[] = subagentNames(expected);
+  const extraAgents = agents.filter((a) => !ours.includes(a));
   if (extraAgents.length > 0) problems.push(`unexpected agents: ${extraAgents.join(', ')}`);
-  const missingAgents = SUBAGENT_NAMES.filter((a) => !agents.includes(a));
+  const missingAgents = ours.filter((a) => !agents.includes(a));
   if (missingAgents.length > 0) {
     problems.push(`DataDesk sub-agents did not load: ${missingAgents.join(', ')}`);
   }

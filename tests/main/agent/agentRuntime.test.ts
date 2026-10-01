@@ -35,7 +35,13 @@ function runtime(opts: RuntimeOpts = {}) {
   const delivered: AgentEvent[] = [];
   const workspace = join(userData, 'agent-workspace');
   const { queryFn, calls } = scriptedQuery([[sdk.result(0.01)]], {
-    initFirst: sdk.init({ cwd: workspace }),
+    initFirst: sdk.init({
+      cwd: workspace,
+      // With HF attached the guard also requires the scout.
+      ...(opts.hfToken !== undefined && (opts.hfDiscovery?.ok ?? true)
+        ? { agents: ['profiler', 'sql-analyst', 'report-writer', 'dataset-scout'] }
+        : {}),
+    }),
   });
   const unreadable = () =>
     Promise.reject(new Error('Error while decrypting the ciphertext provided'));
