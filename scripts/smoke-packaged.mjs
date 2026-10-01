@@ -50,32 +50,20 @@ const check = (name, ok, detail = '') => {
 
 const { version } = JSON.parse(readFileSync('package.json', 'utf8'));
 const installer = resolve(`release/DataDesk-Setup-${version}-x64.exe`);
-// A space in the path: every child-process path (claude.exe, mcp-server.js) must cope with it.
-const installDir = withInstaller
-  ? join(mkdtempSync(join(tmpdir(), 'datadesk-install-')), 'Data Desk')
-  : undefined;
 const startMenuShortcut = join(
   process.env.APPDATA ?? join(homedir(), 'AppData', 'Roaming'),
   'Microsoft/Windows/Start Menu/Programs/DataDesk.lnk',
 );
+const desktopShortcut = join(homedir(), 'Desktop', 'DataDesk.lnk');
+// electron-builder's installer copies itself here; build/installer.nsh removes it (D-023).
+const updaterCache = join(
+  process.env.LOCALAPPDATA ?? join(homedir(), 'AppData', 'Local'),
+  'datadesk-updater',
+);
 
-/** NSIS wants `/D=<dir>` last and unquoted, so the command line is built verbatim. */
-function runVerbatim(file, args) {
-  return spawnSync(`"${file}" ${args}`, {
-    shell: true,
-    windowsVerbatimArguments: true,
-    timeout: 300_000,
-  });
-}
-
-if (installDir) {
-  if (!existsSync(installer)) {
-    console.error(`Missing ${installer}. Run: npm run package`);
-    process.exit(1);
-  }
-  // The installer replaces an existing installation of the same app, so never run where DataDesk
-  // is really installed.
-  const existing = spawnSync('reg', [
+/** Whether Windows lists DataDesk as installed for this user (HKCU uninstall entry). */
+function uninstallEntryExists() {
+  const query = spawnSync('reg', [
     'query',
     'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall',
     '/s',
@@ -83,16 +71,25 @@ if (installDir) {
     'DataDesk',
     '/d',
   ]);
-  if (existing.status === 0) {
-    console.error('DataDesk is installed on this machine; --installer would replace it. Aborting.');
-    process.exit(1);
-  }
+  return query.status === 0;
+}
+
+/**
+ * NSIS wants `/D=<dir>` last and unquoted, so the arguments are passed verbatim (no cmd.exe:
+ * characters like & or % in a path must not be interpreted).
+ */
+function runNsis(file, args) {
+  return spawnSync(file, args, { windowsVerbatimArguments: true, timeout: 300_000 });
+}
+
+/** Installs silently and checks the layout; returns the installed exe. */
+function install(installDir) {
   const started = Date.now();
-  const install = runVerbatim(installer, `/S /D=${installDir}`);
+  const run = runNsis(installer, ['/S', `/D=${installDir}`]);
   check(
     'installer ran silently',
-    install.status === 0,
-    `${String(Math.round((Date.now() - started) / 1000))} s, exit ${String(install.status)}`,
+    run.status === 0,
+    `${String(Math.round((Date.now() - started) / 1000))} s, exit ${String(run.status)}`,
   );
   for (const [name, path] of [
     ['app', 'DataDesk.exe'],
@@ -108,20 +105,57 @@ if (installDir) {
     check(`installed: ${name}`, existsSync(join(installDir, path)));
   }
   check('installed: Start-menu shortcut', existsSync(startMenuShortcut));
+  check('installed: uninstall entry', uninstallEntryExists());
+  check('no leftover installer copy (datadesk-updater)', !existsSync(updaterCache));
+  return join(installDir, 'DataDesk.exe');
 }
 
-const exe = installDir
-  ? join(installDir, 'DataDesk.exe')
-  : resolve('release/win-unpacked/DataDesk.exe');
-if (!existsSync(exe)) {
-  console.error(`Missing ${exe}. Run: npm run package:dir`);
-  process.exit(1);
+/** Uninstalls silently and checks that nothing is left; always runs after an install attempt. */
+async function uninstall(installDir) {
+  const uninstaller = join(installDir, 'Uninstall DataDesk.exe');
+  if (existsSync(uninstaller)) runNsis(uninstaller, ['/S']);
+  // The per-user uninstaller copies itself to TEMP and returns early, so wait for the removal.
+  const leftovers = () =>
+    [
+      existsSync(join(installDir, 'DataDesk.exe')) && 'app',
+      existsSync(startMenuShortcut) && 'Start-menu shortcut',
+      existsSync(desktopShortcut) && 'desktop shortcut',
+      existsSync(updaterCache) && 'datadesk-updater',
+      uninstallEntryExists() && 'uninstall entry',
+    ].filter(Boolean);
+  let left = leftovers();
+  for (let i = 0; i < 60 && left.length > 0; i++) {
+    await new Promise((r) => setTimeout(r, 1000));
+    left = leftovers();
+  }
+  check(
+    'uninstaller removed app, shortcuts, uninstall entry and cache',
+    left.length === 0,
+    left.join(', '),
+  );
+  try {
+    rmSync(join(installDir, '..'), { recursive: true, force: true });
+  } catch (error) {
+    console.log(`note: could not delete the temp install folder (${String(error)})`);
+  }
 }
 
-const profile = mkdtempSync(join(tmpdir(), 'datadesk-smoke-'));
+/** The app, dataset and agent checks, against whichever exe was built or installed. */
+async function checkApp(exe) {
+  const profile = mkdtempSync(join(tmpdir(), 'datadesk-smoke-'));
+  let app;
+  try {
+    app = await electron.launch({ executablePath: exe, args: [`--user-data-dir=${profile}`] });
+    await checkLaunchedApp(app, profile);
+  } catch (error) {
+    check('smoke run', false, String(error));
+  } finally {
+    await app?.close().catch(() => undefined);
+    rmSync(profile, { recursive: true, force: true });
+  }
+}
 
-const app = await electron.launch({ executablePath: exe, args: [`--user-data-dir=${profile}`] });
-try {
+async function checkLaunchedApp(app, profile) {
   const userData = await app.evaluate(({ app: a }) => a.getPath('userData'));
   if (resolve(userData).toLowerCase() !== resolve(profile).toLowerCase()) {
     throw new Error(
@@ -278,23 +312,34 @@ try {
       error?.message,
     );
   }
-} catch (error) {
-  check('smoke run', false, String(error));
-} finally {
-  await app.close().catch(() => undefined);
-  rmSync(profile, { recursive: true, force: true });
 }
 
-if (installDir) {
-  // The per-user uninstaller copies itself to TEMP and returns early, so wait for the removal.
-  runVerbatim(join(installDir, 'Uninstall DataDesk.exe'), '/S');
-  let removed = false;
-  for (let i = 0; i < 60 && !removed; i++) {
-    removed = !existsSync(join(installDir, 'DataDesk.exe')) && !existsSync(startMenuShortcut);
-    if (!removed) await new Promise((r) => setTimeout(r, 1000));
+if (withInstaller) {
+  if (!existsSync(installer)) {
+    console.error(`Missing ${installer}. Run: npm run package`);
+    process.exit(1);
   }
-  check('uninstaller removed the app and its shortcut', removed);
-  rmSync(join(installDir, '..'), { recursive: true, force: true });
+  // The installer replaces an existing installation of the same app, so never run where DataDesk
+  // is really installed.
+  if (uninstallEntryExists()) {
+    console.error('DataDesk is installed on this machine; --installer would replace it. Aborting.');
+    process.exit(1);
+  }
+  // A space in the path: every child-process path (claude.exe, mcp-server.js) must cope with it.
+  const installDir = join(mkdtempSync(join(tmpdir(), 'datadesk-install-')), 'Data Desk');
+  try {
+    const exe = install(installDir);
+    if (existsSync(exe)) await checkApp(exe);
+  } finally {
+    await uninstall(installDir);
+  }
+} else {
+  const exe = resolve('release/win-unpacked/DataDesk.exe');
+  if (!existsSync(exe)) {
+    console.error(`Missing ${exe}. Run: npm run package:dir`);
+    process.exit(1);
+  }
+  await checkApp(exe);
 }
 
 const failed = results.filter((r) => !r.ok).length;

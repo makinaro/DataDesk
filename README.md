@@ -34,10 +34,11 @@ analyst sends to the model provider you chose leaves it.
 (`claude.exe`, which is signed by Anthropic). If the analyst says its runtime is missing, restore
 the file from quarantine or reinstall.
 
-**Uninstall:** Windows Settings → Apps → DataDesk → Uninstall. Your data is kept in
-`%APPDATA%\DataDesk`: encrypted keys, the dataset list, charts, reports and any downloaded Hugging
-Face datasets. Your own data files are never copied there. Delete that folder to remove
-everything.
+**Uninstall:** Windows Settings → Apps → DataDesk → Uninstall. This removes the program, its
+shortcuts and its entry in Apps. Your data is kept in `%APPDATA%\DataDesk`: encrypted keys,
+settings, the dataset list, charts, reports, any downloaded Hugging Face datasets, and the
+analyst's private workspace and config. Your own data files are never copied there. Delete that
+folder too to remove everything.
 
 **Updates:** there is no auto-update yet. Install a newer version over the old one; your settings
 and keys are kept.
