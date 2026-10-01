@@ -1,3 +1,5 @@
+import { rm, rmdir } from 'node:fs/promises';
+import { dirname, resolve, sep } from 'node:path';
 import {
   suggestDatasetName,
   type Cell,
@@ -6,9 +8,9 @@ import {
   type ColumnProfile,
   type DatasetSummary,
 } from '../shared/datasets';
-import type { DatasetDb, QueryResult } from './db/datasetDb';
+import { DatasetUnavailableError, type DatasetDb, type QueryResult } from './db/datasetDb';
 import { quoteIdent } from './db/sql';
-import { validateImportPath, type ImportPolicy } from './fileAccess';
+import { isRealFileInside, validateImportPath, type ImportPolicy } from './fileAccess';
 
 /**
  * Tool logic, independent of the MCP SDK so it can be unit-tested directly.
@@ -63,6 +65,42 @@ export async function listDatasets(db: DatasetDb): Promise<DatasetSummary[]> {
     }
   }
   return summaries;
+}
+
+/**
+ * Removes a dataset from the catalog. Its file is deleted only when DataDesk owns it (a
+ * download inside `ownedDir`, the HF folder) and no other dataset still points at it. The
+ * user's own files are never touched; they are only forgotten.
+ */
+export async function removeDataset(
+  db: DatasetDb,
+  name: string,
+  ownedDir: string,
+): Promise<{ removed: true; deletedFile: boolean }> {
+  // Not assertAvailable(): a broken dataset (say, its file was deleted) must still be removable.
+  const all = (await db.datasets()).map((d) => d.entry);
+  const entry = all.find((e) => e.name === name);
+  if (!entry || !(await db.unregister(name))) {
+    throw new DatasetUnavailableError(name, 'not registered. Call list_datasets.');
+  }
+  const fold = (p: string) => (process.platform === 'linux' ? p : p.toLowerCase());
+  const shared = all.some((e) => e.name !== name && fold(e.path) === fold(entry.path));
+  if (shared || !(await isRealFileInside(entry.path, ownedDir))) {
+    return { removed: true, deletedFile: false };
+  }
+  await rm(entry.path, { force: true });
+  // Download folders (owner/repo/revision) that are now empty go too; stop at the first that
+  // isn't, and never remove ownedDir itself.
+  const root = resolve(ownedDir);
+  for (let dir = dirname(entry.path); fold(dir) !== fold(root); dir = dirname(dir)) {
+    if (!fold(dir).startsWith(fold(root + sep))) break;
+    try {
+      await rmdir(dir);
+    } catch {
+      break;
+    }
+  }
+  return { removed: true, deletedFile: true };
 }
 
 export async function getSchema(db: DatasetDb, name: string): Promise<ColumnInfo[]> {

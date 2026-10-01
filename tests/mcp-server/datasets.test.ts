@@ -1,3 +1,4 @@
+import { copyFileSync, existsSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -5,6 +6,7 @@ import {
   listDatasets,
   profileColumn,
   registerDataset,
+  removeDataset,
   sampleRows,
 } from '../../src/mcp-server/datasets';
 import { createWorkspace } from './fixtures';
@@ -96,5 +98,62 @@ describe('profileColumn', () => {
       /not found/,
     );
     await expect(getSchema(ws.db, 'sales')).resolves.toHaveLength(7);
+  });
+});
+
+describe('removeDataset', () => {
+  const owned = () => join(ws.root, 'userData', 'datasets', 'hf');
+  /** Puts a copy of sales.csv where load_hf_dataset would, and registers it. */
+  async function download(name: string, folder = join('acme', 'cars', 'main-abc')) {
+    const dir = join(owned(), folder);
+    mkdirSync(dir, { recursive: true });
+    const file = join(dir, 'cars.csv');
+    copyFileSync(join(ws.dataDir, 'sales.csv'), file);
+    await registerDataset(ws.db, { ...policy(), allowDirs: [owned()] }, { path: file, name });
+    return file;
+  }
+
+  it("forgets the user's own file but never deletes it", async () => {
+    await expect(removeDataset(ws.db, 'sales', owned())).resolves.toEqual({
+      removed: true,
+      deletedFile: false,
+    });
+    expect(await listDatasets(ws.db)).toEqual([]);
+    expect(existsSync(join(ws.dataDir, 'sales.csv'))).toBe(true);
+  });
+
+  it('deletes a DataDesk download and its now-empty folders, but not the HF folder', async () => {
+    const file = await download('cars');
+    await expect(removeDataset(ws.db, 'cars', owned())).resolves.toEqual({
+      removed: true,
+      deletedFile: true,
+    });
+    expect(existsSync(file)).toBe(false);
+    expect(existsSync(join(owned(), 'acme'))).toBe(false);
+    expect(existsSync(owned())).toBe(true);
+  });
+
+  it('keeps a downloaded file that another dataset still uses', async () => {
+    const file = await download('cars');
+    await registerDataset(
+      ws.db,
+      { ...policy(), allowDirs: [owned()] },
+      { path: file, name: 'cars_copy' },
+    );
+    await expect(removeDataset(ws.db, 'cars', owned())).resolves.toMatchObject({
+      deletedFile: false,
+    });
+    expect(existsSync(file)).toBe(true);
+  });
+
+  it('can remove a dataset whose file is already gone', async () => {
+    const file = await download('cars');
+    rmSync(file);
+    await expect(removeDataset(ws.db, 'cars', owned())).resolves.toMatchObject({ removed: true });
+    expect((await listDatasets(ws.db)).map((d) => d.name)).toEqual(['sales']);
+  });
+
+  it('refuses an unknown dataset', async () => {
+    await expect(removeDataset(ws.db, 'nope', owned())).rejects.toThrow(/not registered/);
   });
 });

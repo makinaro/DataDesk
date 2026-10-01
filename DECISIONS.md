@@ -1041,3 +1041,39 @@ https://vega.github.io/vega-lite/docs/size.html, https://vega.github.io/vega-lit
   model's selections.
 - `.vega-embed` is now `display: block`. An inline-block container measures its own content,
   so container-width charts would never grow.
+
+## D-029: Removing datasets is a UI-only MCP tool (2026-10-02)
+
+**Context:** The owner asked for a way to delete a dataset from the sidebar. The sidebar reaches
+data only through its own datadesk-mcp process (D-003), and `DatasetDb.unregister` already
+existed, but no tool exposed it. Removing data is the user's decision, not the analyst's: a
+prompt-injected dataset must never be able to make the agent delete other datasets.
+
+**Decision:**
+
+- A `remove_dataset` tool, registered only when `DATADESK_UI_TOOLS=1`. Main's `buildServerEnv`
+  sets it to `'1'` for the UI server and to `''` for every agent server (Claude and OpenAI,
+  chat and compare). Blank rather than absent, because the Claude CLI merges its own env first,
+  as with the blanked secrets (D-014). As a second layer, the Claude agent's `system:init`
+  guard already stops a session that lists any tool it didn't expect.
+- It removes the catalog entry. It deletes the file only if (a) its real path is inside
+  DataDesk's HF download folder (the one folder DataDesk writes to, D-020), (b) it is a regular
+  file (not a symlink or junction), and (c) no other dataset points at it. The now-empty
+  `owner/repo/revision` folders go too, but never the HF folder itself. The user's own files
+  are never deleted, only forgotten.
+- Broken datasets (their file is missing) can still be removed.
+- The tool uses the existing `@modelcontextprotocol/sdk` 1.31.0 `registerTool` shape, the same
+  as the server's other 11 tools (D-005), with `destructiveHint: true`.
+
+**Alternatives:**
+
+- Main editing `catalog.json` directly: two writers, and main would need its own copy of the
+  catalog lock and validation. The MCP server already owns both.
+- Giving the agent the tool behind an approval prompt: it isn't needed for analysis, and a
+  "delete" prompt the user might click through is worse than the capability not existing.
+
+**Consequences:**
+
+- The tool list differs between the UI server and agent servers. Tests assert both: the
+  default server has no `remove_dataset`, and the UI env turns it on while every agent env
+  turns it off.

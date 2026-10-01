@@ -144,6 +144,10 @@ layouts A (Chat-first) and C (Results-first, default); charts stay Vega-Lite.
 - [x] Resizable panels with keyboard-accessible handles; sizes remembered per layout
 - [x] Layouts: Results-first (default) and Chat-first, with inline tool steps in Results-first
 - [x] Interactive, theme-aware charts: tooltips, zoom/pan, legend filter, reset, save PNG/SVG
+- [ ] Datasets the analyst registers (e.g. from Hugging Face) appear in the sidebar at once
+- [ ] Remove a dataset from the sidebar (right-click or keyboard); only DataDesk's own
+      downloads are deleted from disk, the user's files are just forgotten
+- [ ] Closable result tabs (data preview, charts, reports), like VS Code
 
 **Done when:** every theme and both layouts work in the dev and packaged app with zero CSP
 violations; chat renders GFM markdown (including partial streams) with no raw HTML or navigating

@@ -11,7 +11,14 @@ import {
 } from '../shared/datasets';
 import { DatasetUnavailableError, QueryTimeoutError, type DatasetDb } from './db/datasetDb';
 import { MAX_SQL_LENGTH, ReadOnlyViolation } from './db/readOnlyGuard';
-import { getSchema, listDatasets, profileColumn, registerDataset, sampleRows } from './datasets';
+import {
+  getSchema,
+  listDatasets,
+  profileColumn,
+  registerDataset,
+  removeDataset,
+  sampleRows,
+} from './datasets';
 import { ImportPathError, SUPPORTED_EXTENSIONS, type ImportPolicy } from './fileAccess';
 import { ChartTitleSchema, ReportTitleSchema } from '../shared/artifacts';
 import {
@@ -58,6 +65,9 @@ export const OPENAI_TOOL_NAMES = ['search_columns', 'second_opinion'] as const;
 /** Registered only when a Hugging Face token was provided (DECISIONS D-020). */
 export const HF_TOOL_NAMES = ['load_hf_dataset'] as const;
 
+/** Registered only in the UI's own server, never an agent's (DECISIONS D-029). */
+export const UI_TOOL_NAMES = ['remove_dataset'] as const;
+
 export interface ServerDeps {
   db: DatasetDb;
   importPolicy: ImportPolicy;
@@ -66,6 +76,11 @@ export interface ServerDeps {
   openai?: { client: OpenAIClient; cache: EmbeddingCache } | undefined;
   /** Present only when the user set a Hugging Face token; otherwise load_hf_dataset doesn't exist. */
   hf?: HfDownloadConfig | undefined;
+  /**
+   * Present only for the UI's server: the user removes datasets, the analyst never does.
+   * `ownedDir` is the one folder whose files DataDesk created and may delete (HF downloads).
+   */
+  ui?: { ownedDir: string } | undefined;
 }
 
 // Output schemas come from src/shared/datasets.ts, the single source of truth for these shapes
@@ -121,7 +136,14 @@ const READ_ONLY = {
 } as const;
 
 /** Builds the datadesk MCP server. Transport-agnostic: stdio in production, in-memory in tests. */
-export function buildServer({ db, importPolicy, artifacts, openai, hf }: ServerDeps): McpServer {
+export function buildServer({
+  db,
+  importPolicy,
+  artifacts,
+  openai,
+  hf,
+  ui,
+}: ServerDeps): McpServer {
   const server = new McpServer(
     { name: SERVER_NAME, version: SERVER_VERSION },
     {
@@ -170,6 +192,34 @@ export function buildServer({ db, importPolicy, artifacts, openai, hf }: ServerD
         );
       }),
   );
+
+  if (ui) {
+    server.registerTool(
+      'remove_dataset',
+      {
+        title: 'Remove dataset',
+        description:
+          'Remove a dataset from DataDesk. The file is deleted only if DataDesk downloaded it ' +
+          '(Hugging Face) and no other dataset uses it. Files the user added are never deleted.',
+        inputSchema: { name: DatasetNameSchema.describe('The dataset to remove.') },
+        outputSchema: { removed: z.literal(true), deletedFile: z.boolean() },
+        annotations: {
+          readOnlyHint: false,
+          destructiveHint: true,
+          idempotentHint: false,
+          openWorldHint: false,
+        },
+      },
+      ({ name }) =>
+        attempt(async () => {
+          const result = await removeDataset(db, name, ui.ownedDir);
+          return ok(
+            result,
+            `Removed "${name}"${result.deletedFile ? ' and deleted its downloaded file' : ''}.`,
+          );
+        }),
+    );
+  }
 
   server.registerTool(
     'list_datasets',

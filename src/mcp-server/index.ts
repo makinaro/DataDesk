@@ -57,6 +57,7 @@ async function main(): Promise<void> {
           fetch: globalThis.fetch,
         }
       : undefined,
+    ui: config.uiTools ? { ownedDir: config.hfDir } : undefined,
   });
 
   let closing = false;
