@@ -61,3 +61,32 @@ describe('rowsToValues', () => {
     ]);
   });
 });
+
+describe('sanitizeVegaLiteSpec (limits and derived fields)', () => {
+  it('measures the size without data (stored specs carry the rows)', () => {
+    const values = Array.from({ length: 5_000 }, (_, i) => ({ region: `r${String(i)}`, units: i }));
+    expect(sanitizeVegaLiteSpec({ ...bar, data: { values } }).ok).toBe(true);
+    expect(sanitizeVegaLiteSpec({ ...bar, description: 'x'.repeat(50_001) }).ok).toBe(false);
+  });
+
+  it('reports fields the spec creates with transforms', () => {
+    const r = sanitizeVegaLiteSpec({
+      ...bar,
+      transform: [
+        { calculate: 'datum.units * 2', as: 'double' },
+        { fold: ['a', 'b'] },
+        { window: [{ op: 'rank', as: 'rank' }] },
+        { fold: ['c'], as: ['k', 'v'] },
+      ],
+    });
+    expect(r.ok && [...r.derived].sort()).toEqual(['double', 'k', 'key', 'rank', 'v', 'value']);
+  });
+
+  it('rejects input bindings that target arbitrary DOM elements', () => {
+    const r = sanitizeVegaLiteSpec({
+      ...bar,
+      params: [{ name: 'p', bind: { input: 'range', element: '#chat' } }],
+    });
+    expect(r).toMatchObject({ ok: false, error: expect.stringContaining('"element"') as string });
+  });
+});

@@ -148,3 +148,18 @@ describe('errors come back as tool results the model can act on', () => {
     expect(text(r)).toMatch(/truncated/);
   });
 });
+
+describe('artifact titles', () => {
+  it('rejects multi-line titles at the tool boundary', async () => {
+    await register();
+    const r = await call('create_chart', {
+      title: 'Sales\nby region',
+      sql: 'SELECT region, units FROM sales',
+      spec: { mark: 'bar', encoding: { x: { field: 'region', type: 'nominal' } } },
+    });
+    expect(r.isError).toBe(true);
+    expect(text(r)).toMatch(/single line/);
+    const report = await call('save_report', { title: 'A\u0007B', markdown: '# x' });
+    expect(report.isError).toBe(true);
+  });
+});

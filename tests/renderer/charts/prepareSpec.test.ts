@@ -33,3 +33,21 @@ describe('prepareSpec (renderer re-sanitizing)', () => {
     expect(r.ok).toBe(false);
   });
 });
+
+describe('prepareSpec data limits', () => {
+  it('accepts a full-size chart (data does not count toward the spec size limit)', () => {
+    const values = Array.from({ length: 5_000 }, (_, i) => ({
+      a: `row-${String(i)}`,
+      units: i * 1.5,
+    }));
+    expect(prepareSpec({ ...base, data: { values } }).ok).toBe(true);
+  });
+
+  it('rejects more rows than the chart cap', () => {
+    const values = Array.from({ length: 5_001 }, () => ({ a: 'x' }));
+    expect(prepareSpec({ ...base, data: { values } })).toEqual({
+      ok: false,
+      error: 'Chart data exceeds 5000 rows.',
+    });
+  });
+});

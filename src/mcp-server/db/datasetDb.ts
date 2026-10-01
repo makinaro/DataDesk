@@ -5,6 +5,7 @@ import {
   type DuckDBPreparedStatement,
 } from '@duckdb/node-api';
 import type { CatalogEntry } from '../../shared/datasets';
+import { CHART_MAX_ROWS } from '../../shared/vegaSpec';
 import type { Catalog } from '../catalog';
 import { readStream, type Table } from './convert';
 import { prepareReadOnly } from './readOnlyGuard';
@@ -178,7 +179,7 @@ export class DatasetDb {
       return this.execute(
         connection,
         () => prepareReadOnly(connection, sql),
-        this.options.chartMaxRows ?? 5_000,
+        this.options.chartMaxRows ?? CHART_MAX_ROWS,
         signal,
         this.options.chartMaxBytes ?? 5_000_000,
       );

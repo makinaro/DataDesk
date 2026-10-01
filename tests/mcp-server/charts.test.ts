@@ -118,4 +118,51 @@ describe('saveReport', () => {
     expect(readdirSync(join(ws.root, 'artifacts', 'charts'))).toEqual([`${chart.chartId}.json`]);
     await expect(ws.artifacts.getChart('../../catalog')).rejects.toThrow();
   });
+
+  it('rejects malformed chart ids and too many charts with a message the model can use', async () => {
+    const dashes = `[[chart:${'-'.repeat(36)}]]`;
+    await expect(saveReport(ws.artifacts, { title: 'Bad', markdown: dashes })).rejects.toThrow(
+      new ArtifactInputError(
+        `These chart references are not valid chart ids: ${'-'.repeat(36)}. Use the chartId returned by create_chart.`,
+      ),
+    );
+    const many = Array.from(
+      { length: 51 },
+      (_, i) => `[[chart:00000000-0000-4000-8000-${String(i).padStart(12, '0')}]]`,
+    ).join('\n');
+    await expect(saveReport(ws.artifacts, { title: 'Big', markdown: many })).rejects.toThrow(
+      /at most 50 charts \(found 51\)/,
+    );
+  });
+});
+
+describe('createChart with transforms', () => {
+  it('accepts fields the spec derives itself (calculate/aggregate as, fold)', async () => {
+    const derived = await createChart(ws.db, ws.artifacts, {
+      title: 'Derived',
+      sql,
+      spec: {
+        transform: [{ calculate: 'datum.units * 2', as: 'double' }],
+        mark: 'bar',
+        encoding: {
+          x: { field: 'region', type: 'nominal' },
+          y: { field: 'double', type: 'quantitative' },
+        },
+      },
+    });
+    expect(derived.rowCount).toBe(4);
+    const folded = await createChart(ws.db, ws.artifacts, {
+      title: 'Folded',
+      sql,
+      spec: {
+        transform: [{ fold: ['units'] }],
+        mark: 'bar',
+        encoding: {
+          x: { field: 'key', type: 'nominal' },
+          y: { field: 'value', type: 'quantitative' },
+        },
+      },
+    });
+    expect(folded.rowCount).toBe(4);
+  });
 });

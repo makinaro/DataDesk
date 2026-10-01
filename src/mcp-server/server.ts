@@ -13,7 +13,14 @@ import { DatasetUnavailableError, QueryTimeoutError, type DatasetDb } from './db
 import { MAX_SQL_LENGTH, ReadOnlyViolation } from './db/readOnlyGuard';
 import { getSchema, listDatasets, profileColumn, registerDataset, sampleRows } from './datasets';
 import { ImportPathError, SUPPORTED_EXTENSIONS, type ImportPolicy } from './fileAccess';
-import { ArtifactInputError, createChart, saveReport } from './charts';
+import { ChartTitleSchema, ReportTitleSchema } from '../shared/artifacts';
+import {
+  ArtifactInputError,
+  createChart,
+  CreatedChartSchema,
+  saveReport,
+  SavedReportSchema,
+} from './charts';
 import type { ArtifactStore } from '../node-shared/artifactStore';
 
 export const SERVER_NAME = 'datadesk';
@@ -263,20 +270,15 @@ export function buildServer({ db, importPolicy, artifacts }: ServerDeps): McpSer
         'Create a chart the user sees in the Charts panel. Give a read-only SELECT (same rules as ' +
         'run_sql, but up to 5 000 rows) and a Vega-Lite v6 spec WITHOUT a data property: the query ' +
         'result becomes the data. Encode only columns the query returns. url/href/data/datasets ' +
-        'are rejected anywhere in the spec. Returns a chartId (reference it in reports as ' +
+        'are rejected anywhere in the spec. Fields created by the spec’s own transforms (as) are fine; ' +
+        'avoid dots in column names (Vega-Lite reads them as nested access). Returns a chartId (reference it in reports as ' +
         '[[chart:<chartId>]]); the data itself is not returned to you.',
       inputSchema: {
-        title: z.string().min(1).max(120),
+        title: ChartTitleSchema,
         sql: z.string().min(1).max(MAX_SQL_LENGTH),
         spec: z.record(z.string(), z.unknown()).describe('Vega-Lite spec without data.'),
       },
-      outputSchema: {
-        chartId: z.string(),
-        title: z.string(),
-        rowCount: z.number().int(),
-        truncated: z.boolean(),
-        columns: z.array(z.string()),
-      },
+      outputSchema: CreatedChartSchema.shape,
       annotations: WRITES_ARTIFACT,
     },
     ({ title, sql, spec }, extra) =>
@@ -300,14 +302,10 @@ export function buildServer({ db, importPolicy, artifacts }: ServerDeps): McpSer
         'PDF. Embed charts with a line containing only [[chart:<chartId>]] (ids from create_chart). ' +
         'Max 100 000 characters.',
       inputSchema: {
-        title: z.string().min(1).max(200),
+        title: ReportTitleSchema,
         markdown: z.string().min(1).max(100_000),
       },
-      outputSchema: {
-        reportId: z.string(),
-        title: z.string(),
-        chartIds: z.array(z.string()),
-      },
+      outputSchema: SavedReportSchema.shape,
       annotations: WRITES_ARTIFACT,
     },
     ({ title, markdown }) =>

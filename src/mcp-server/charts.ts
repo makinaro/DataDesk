@@ -1,7 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { compile } from 'vega-lite';
+import { z } from 'zod';
 import type { ArtifactStore } from '../node-shared/artifactStore';
-import { chartRefs, type ChartArtifact, type ReportArtifact } from '../shared/artifacts';
+import {
+  ArtifactIdSchema,
+  chartRefs,
+  type ChartArtifact,
+  type ReportArtifact,
+} from '../shared/artifacts';
 import { rowsToValues, sanitizeVegaLiteSpec } from '../shared/vegaSpec';
 import type { DatasetDb } from './db/datasetDb';
 
@@ -19,13 +25,14 @@ export interface CreateChartInput {
   spec: Record<string, unknown>;
 }
 
-export interface CreatedChart {
-  chartId: string;
-  title: string;
-  rowCount: number;
-  truncated: boolean;
-  columns: string[];
-}
+export const CreatedChartSchema = z.object({
+  chartId: z.string(),
+  title: z.string(),
+  rowCount: z.number().int(),
+  truncated: z.boolean(),
+  columns: z.array(z.string()),
+});
+export type CreatedChart = z.infer<typeof CreatedChartSchema>;
 
 /**
  * Runs the (guarded) SQL, inlines its rows into the sanitized spec, compile-checks it with
@@ -45,7 +52,7 @@ export async function createChart(
   if (result.rowCount === 0) {
     throw new ArtifactInputError('The chart query returned no rows; nothing to plot.');
   }
-  const missing = clean.fields.filter((f) => !columns.includes(f));
+  const missing = clean.fields.filter((f) => !columns.includes(f) && !clean.derived.includes(f));
   if (missing.length > 0) {
     throw new ArtifactInputError(
       `The spec uses fields the query doesn't return: ${missing.join(', ')}. ` +
@@ -88,11 +95,14 @@ export async function createChart(
   };
 }
 
-export interface SavedReport {
-  reportId: string;
-  title: string;
-  chartIds: string[];
-}
+export const SavedReportSchema = z.object({
+  reportId: z.string(),
+  title: z.string(),
+  chartIds: z.array(z.string()),
+});
+export type SavedReport = z.infer<typeof SavedReportSchema>;
+
+const MAX_REPORT_CHARTS = 50;
 
 /** Stores a Markdown report after checking every [[chart:<id>]] reference exists. */
 export async function saveReport(
@@ -100,6 +110,18 @@ export async function saveReport(
   input: { title: string; markdown: string },
 ): Promise<SavedReport> {
   const ids = chartRefs(input.markdown);
+  const malformed = ids.filter((id) => !ArtifactIdSchema.safeParse(id).success);
+  if (malformed.length > 0) {
+    throw new ArtifactInputError(
+      `These chart references are not valid chart ids: ${malformed.join(', ')}. ` +
+        'Use the chartId returned by create_chart.',
+    );
+  }
+  if (ids.length > MAX_REPORT_CHARTS) {
+    throw new ArtifactInputError(
+      `A report can embed at most ${String(MAX_REPORT_CHARTS)} charts (found ${String(ids.length)}).`,
+    );
+  }
   const found = await Promise.all(ids.map((id) => store.getChart(id)));
   const unknown = ids.filter((_, i) => found[i] === undefined);
   if (unknown.length > 0) {
