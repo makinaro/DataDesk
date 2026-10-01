@@ -824,3 +824,126 @@ just like `mcp__datadesk__run_sql`. What changes is everything around it:
 3. **Trip the cap.** Ask the analyst to load a Parquet file over 500 MB (e.g. one shard of
    `HuggingFaceFW/fineweb`) and approve it. Expect a "larger than the 500.0 MB download limit"
    error before any bytes are written, and nothing new under `%APPDATA%/DataDesk/datasets/hf`.
+
+## Phase 7: A second agent SDK (OpenAI) and compare mode (2026-10-01)
+
+### Concept
+
+An "agent SDK" packages one idea: a loop that calls a model, runs the tools it asks for, feeds
+the results back, and repeats until the model answers. Phase 7 runs the same analyst on a second
+vendor's loop, the **OpenAI Agents SDK**, and shows the two side by side. Where the two SDKs
+differ is the lesson:
+
+|                     | Claude Agent SDK                              | OpenAI Agents SDK                                           |
+| ------------------- | --------------------------------------------- | ----------------------------------------------------------- |
+| Where the loop runs | a separate Claude Code process                | inside our main process                                     |
+| Conversation memory | the CLI keeps it                              | we replay the history every turn                            |
+| Sub-agents          | `agents` + the `Agent` tool                   | agents-as-tools (`agent.asTool()`)                          |
+| Skills              | built in (plugin `SKILL.md`)                  | none: we serve the same files ourselves                     |
+| Approvals           | `canUseTool` callback                         | interrupt + resume, which we replace with an inline `await` |
+| Cost                | reported in USD                               | tokens only: we price them                                  |
+| Tool lists          | the CLI connects MCP servers; we guard `init` | we build the tool list ourselves                            |
+
+The trick that makes this cheap is the **provider seam** from Phase 2: the chat, timeline,
+approval dialog and IPC only consume provider-neutral `AgentEvent`s. A second orchestrator has to
+emit the same events, and a test proves it does by playing one scripted conversation through both.
+
+### Where it lives
+
+- The orchestrator: [openaiOrchestrator.ts:86](../src/main/agent/openai/openaiOrchestrator.ts#L86).
+  Session start and the allowlist check are at [:156](../src/main/agent/openai/openaiOrchestrator.ts#L156)
+  and [:168](../src/main/agent/openai/openaiOrchestrator.ts#L168), one turn is at
+  [:191](../src/main/agent/openai/openaiOrchestrator.ts#L191), the run at
+  [:318](../src/main/agent/openai/openaiOrchestrator.ts#L318), and the privacy settings at
+  [:55](../src/main/agent/openai/openaiOrchestrator.ts#L55).
+- The agent tree and our tool wrappers: [analystAgents.ts:233](../src/main/agent/openai/analystAgents.ts#L233)
+  (agents-as-tools at [:246](../src/main/agent/openai/analystAgents.ts#L246)), the approval
+  gate at [:152](../src/main/agent/openai/analystAgents.ts#L152), and the `Skill` tool at
+  [:199](../src/main/agent/openai/analystAgents.ts#L199).
+- Events: [openaiMapper.ts:38](../src/main/agent/openai/openaiMapper.ts#L38). The delegation is
+  normalised at [:90](../src/main/agent/openai/openaiMapper.ts#L90).
+- The session (datadesk-mcp over `MCPServerStdio`, the pinned client):
+  [openaiSession.ts:59](../src/main/agent/openai/openaiSession.ts#L59) and
+  [:38](../src/main/agent/openai/openaiSession.ts#L38). Prices are in
+  [pricing.ts:31](../src/main/agent/openai/pricing.ts#L31).
+- Shared with Claude: [approvalQuestions.ts:95](../src/main/agent/approvalQuestions.ts#L95) and
+  the scope table [subagents.ts](../src/main/agent/claude/subagents.ts).
+- Provider switch: [agent.ts:140](../src/shared/agent.ts#L140) and
+  [agentRuntime.ts:211](../src/main/agent/agentRuntime.ts#L211).
+- Compare mode: [compareRuntime.ts:20](../src/main/agent/compareRuntime.ts#L20),
+  [CompareView.tsx:100](../src/renderer/src/components/CompareView.tsx#L100), and
+  [laneSummary.ts:37](../src/renderer/src/compare/laneSummary.ts#L37).
+- The cross-provider test: [sameConversation.test.ts:64](../tests/main/agent/sameConversation.test.ts#L64)
+  with the script in [conversationFixture.ts:24](../tests/main/agent/conversationFixture.ts#L24).
+
+### How it works
+
+"Which region sold the most units?" with Provider: OpenAI, model gpt-5.4-mini:
+
+1. `agent:send` reaches `agentRuntime.get()`. The settings say `openai` and the OpenAI key is
+   set, so main creates an `OpenAIOrchestrator`. `send()` queues the turn.
+2. The first turn starts a session. Main spawns datadesk-mcp through `MCPServerStdio`. Its env is
+   `buildServerEnv(…, 'agent', 'openai')` plus `DATADESK_OPENAI_API_KEY`, and the SDK adds only an
+   OS allowlist. Main lists the server's tools and checks that every expected one exists, then
+   reads the three skills from `resources/agent-plugin`.
+3. For this turn main builds the agent tree. The **analyst** gets `Skill`,
+   `mcp__datadesk__list_datasets`, `…run_sql` and the other datadesk tools, and the tools
+   **profiler**, **sql_analyst** and **report_writer**. Each of those runs a nested agent with only
+   its scope-table row and its skill text in its instructions.
+4. `Runner.run(analyst, [...history, user(question)], { stream: true, maxTurns, signal })` sends
+   one Responses API request (`store: false`, tracing off). The model streams "Let me check…" and
+   a `function_call` to `mcp__datadesk__run_sql`.
+5. The SDK calls our wrapper's `invoke()`. It is not an approval tool, so it calls datadesk-mcp's
+   `run_sql` over stdio and returns the text result. Errors are recorded by `callId`.
+6. Every stream event goes through `openaiMapper`. The text delta becomes `text_delta`,
+   `tool_called` becomes `tool_call`, `tool_output` becomes `tool_result`, and `response_done`
+   adds `responseCostUsd(...)` to the session's cost and checks the spend cap.
+7. The model answers "West sold the most units (512)". The run completes, `result.history`
+   becomes the new history, and main emits `turn_complete` with cost and duration. The chat shows
+   the same things it shows for Claude.
+8. In **compare mode** the same question goes to two fresh lanes, a Claude runtime and an OpenAI
+   runtime. Their events arrive on `compare:event`, and each lane runs through the chat's own
+   reducer, so the two columns can't be measured differently.
+
+### Gotchas
+
+- **The SDK renames agent tools.** `sql-analyst` reaches the model as `sql_analyst`. Our first
+  version named the tools after the agents and lost the delegation for every hyphenated name;
+  the test that caught it was the one asserting the exact tool list. Now we name them ourselves
+  and map them back.
+- **`MCPServerStdio` has two clocks.** `clientSessionTimeoutSeconds` bounds start-up and tool
+  listing, while `timeout` (default 60 s) bounds each tool call. Setting only the first one capped
+  every tool call at 60 s and let a hung server block session start for 25 minutes. The reviewer
+  found it by reading the SDK source; the option names suggest otherwise.
+- **Usage from nested runs is merged.** A probe with fake models showed `result.state.usage`
+  already includes the sub-agents' usage, and `onStream` sees their `response_done` too. We price
+  each `response_done` once (from the analyst's stream or a sub-agent's), so nothing is counted
+  twice.
+- **"Interrupt and resume" vs "await".** The SDK's documented human-in-the-loop ends the run with
+  `interruptions`, then resumes from a `RunState`. Awaiting `ApprovalBroker` inside the tool keeps
+  one stream per turn and works the same inside sub-agents. The cost: approval isn't visible to
+  the SDK's own tracing (which is off anyway).
+- **Never await a starting session in `reset()`.** The Claude orchestrator already had this rule;
+  the OpenAI one broke it at first, so settings, key changes and quit could hang until datadesk-mcp
+  finished starting.
+- **One provider swap, one reset marker.** The renderer adds the user's message before main
+  answers. A second `conversation_reset` after that would wipe it, which is why the swap happens
+  in `onSettingsChanged`, synchronously, and not on the next send.
+- **A stopped OpenAI turn leaves no trace.** It is not added to the replayed history. On Claude,
+  the CLI keeps the interrupted turn in its context.
+
+### Experiments
+
+1. **Run the fixture with a wrong mapping.** In `openaiMapper.ts`, report sub-agent calls under
+   their raw name instead of `Agent`. Run `npx vitest run tests/main/agent/sameConversation.test.ts`.
+   Expected: the cross-provider test fails on `call call_profile: Agent profiler`. That diff is
+   what "provider-neutral" means in practice.
+2. **Watch the price table work.** In compare mode (both keys), ask "How many rows does sales
+   have?". Expected: both lanes show a cost; the OpenAI one is tokens × our price table
+   (gpt-5.4-mini: $0.75 in / $4.50 out per million). Then switch the OpenAI model to gpt-5.5 and
+   ask again: about 6.7× the mini cost for a similar number of tokens. Compare "Turn (SDK)" with
+   "Time to answer": the gap is the session start (the Claude CLI process, or spawning datadesk-mcp).
+3. **See what reaches the child.** With Provider: OpenAI, start a conversation and run
+   `Get-CimInstance Win32_Process | Where-Object CommandLine -like '*mcp-server.js*' | Select-Object CommandLine`.
+   Expected: the datadesk-mcp command line has no key in it; the key lives only in that process's
+   environment (D-021).
