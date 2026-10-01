@@ -122,10 +122,10 @@ works manually.
 
 ## Phase 8: Packaging
 
-- [ ] `electron-builder.yml`: NSIS x64, `asarUnpack` (DuckDB, Claude binary, MCP bundle), `extraResources` (agent-plugin, DuckDB extensions)
-- [ ] Packaged path resolution (`pathToClaudeCodeExecutable`, resources)
-- [ ] Playwright smoke against the built app
-- [ ] README install notes (unsigned build, SmartScreen)
+- [x] `electron-builder.yml`: NSIS x64, `asarUnpack` (DuckDB, Claude binary; the MCP bundle stays in asar, D-023), `extraResources` (agent-plugin, DuckDB extensions)
+- [x] Packaged path resolution (`pathToClaudeCodeExecutable`, resources)
+- [x] Playwright smoke against the built app
+- [x] README install notes (unsigned build, SmartScreen)
 
 **Done when:** the installer installs, the app launches, a dataset registers and queries, and the
 agent starts after a manual key entry.

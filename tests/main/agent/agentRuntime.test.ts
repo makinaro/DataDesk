@@ -321,4 +321,69 @@ describe('createAgentRuntime', () => {
       expect(await rt.get()).toBe(before);
     });
   });
+
+  it('a packaged build without its Claude binary says so instead of failing to spawn', async () => {
+    const delivered: AgentEvent[] = [];
+    const query = vi.fn(() => {
+      throw new Error('must not spawn');
+    });
+    const packaged = createAgentRuntime({
+      keyStore: {
+        status: () => Promise.resolve({ anthropic: true, openai: false, huggingface: false }),
+        getKey: (provider: string) => Promise.resolve(provider === 'anthropic' ? KEY : undefined),
+      },
+      settings: { getAgent: () => Promise.resolve(DEFAULT_AGENT_SETTINGS) },
+      paths: {
+        userData,
+        mainDir: 'C:/app/out/main',
+        extensionDir: undefined,
+        agentPluginDir: PLUGIN_DIR,
+      },
+      deliver: (e) => delivered.push(e),
+      app: { isPackaged: true, version: '0.1.0', resourcesPath: join(userData, 'no-such-install') },
+      log: () => undefined,
+      query,
+    });
+    (await packaged.get()).send('hello');
+    await vi.waitFor(() => {
+      expect(delivered.some((e) => e.kind === 'error')).toBe(true);
+    });
+    expect(delivered.find((e) => e.kind === 'error')).toMatchObject({
+      message: expect.stringMatching(/Claude runtime is missing .*reinstall DataDesk/) as unknown,
+    });
+    expect(query).not.toHaveBeenCalled();
+  });
+
+  it('the OpenAI provider refuses to start without the skills plugin (partial install)', async () => {
+    const delivered: AgentEvent[] = [];
+    const createOpenAISession = vi.fn();
+    const rt = createAgentRuntime({
+      keyStore: {
+        status: () => Promise.resolve({ anthropic: false, openai: true, huggingface: false }),
+        getKey: (provider: string) =>
+          Promise.resolve(provider === 'openai' ? 'sk-openai-runtime-000000' : undefined),
+      },
+      settings: {
+        getAgent: () => Promise.resolve({ ...DEFAULT_AGENT_SETTINGS, provider: 'openai' }),
+      },
+      paths: {
+        userData,
+        mainDir: 'C:/app/out/main',
+        extensionDir: undefined,
+        agentPluginDir: join(userData, 'no-such-plugin'),
+      },
+      deliver: (e) => delivered.push(e),
+      app: { isPackaged: true, version: '0.1.0', resourcesPath: userData },
+      log: () => undefined,
+      createOpenAISession,
+    });
+    (await rt.get()).send('hello');
+    await vi.waitFor(() => {
+      expect(delivered.some((e) => e.kind === 'error')).toBe(true);
+    });
+    expect(delivered.find((e) => e.kind === 'error')).toMatchObject({
+      message: expect.stringMatching(/analyst skills are missing .*Reinstall DataDesk/) as unknown,
+    });
+    expect(createOpenAISession).not.toHaveBeenCalled();
+  });
 });

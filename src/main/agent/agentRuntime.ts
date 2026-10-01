@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { AgentEvent, AnalystProvider } from '../../shared/agent';
 import { IpcUserError } from '../ipc/errors';
+import { missingRuntimeFiles } from '../resourcePaths';
 import { buildServerEnv, type ServerPaths } from '../mcp/serverProcess';
 import { bearerTransport, discoverTools, type ToolDiscovery } from '../mcp/toolDiscovery';
 import type { KeyStore } from '../secrets/keyStore';
@@ -80,6 +81,8 @@ export function createAgentRuntime(deps: AgentRuntimeDeps) {
       createSession: async () => {
         const apiKey = await deps.keyStore.getKey('openai');
         if (!apiKey) throw new Error('Add your OpenAI API key in Settings.');
+        const missing = missingRuntimeFiles({ agentPluginDir: deps.paths.agentPluginDir });
+        if (missing) throw new Error(missing);
         const settings = await deps.settings.getAgent();
         mkdirSync(workspaceDir, { recursive: true });
         return (deps.createOpenAISession ?? createOpenAISession)({
@@ -102,6 +105,17 @@ export function createAgentRuntime(deps: AgentRuntimeDeps) {
       createSession: async ({ abortController, canUseTool }) => {
         const apiKey = await deps.keyStore.getKey('anthropic');
         if (!apiKey) throw new Error('Add your Anthropic API key in Settings.');
+        const pathToClaudeCodeExecutable = claudeExecutablePath({
+          isPackaged: deps.app.isPackaged,
+          resourcesPath: deps.app.resourcesPath,
+          platform: process.platform,
+          arch: process.arch,
+        });
+        const missing = missingRuntimeFiles({
+          claudeExecutable: pathToClaudeCodeExecutable,
+          agentPluginDir: deps.paths.agentPluginDir,
+        });
+        if (missing) throw new Error(missing);
         // Optional: an unreadable OpenAI key (e.g. encrypted under another Windows profile)
         // must not stop the analyst. Start without the OpenAI tools instead.
         const openaiApiKey = await deps.keyStore.getKey('openai').catch(() => {
@@ -156,12 +170,7 @@ export function createAgentRuntime(deps: AgentRuntimeDeps) {
           canUseTool,
           abortController,
           pluginDir: deps.paths.agentPluginDir,
-          pathToClaudeCodeExecutable: claudeExecutablePath({
-            isPackaged: deps.app.isPackaged,
-            resourcesPath: deps.app.resourcesPath,
-            platform: process.platform,
-            arch: process.arch,
-          }),
+          pathToClaudeCodeExecutable,
           ...(deps.app.isPackaged
             ? {}
             : {

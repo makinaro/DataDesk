@@ -15,37 +15,147 @@
 //                                      runs the analyst on the OpenAI provider with a DUMMY key:
 //                                      datadesk-mcp over the SDK's MCPServerStdio must connect, then
 //                                      one request to OpenAI fails with 401 (D-021; manual use only)
+//   npm run smoke:packaged -- --installer [other flags]
+//                                      instead of release/win-unpacked, silently installs
+//                                      release/DataDesk-Setup-<version>-x64.exe (npm run package)
+//                                      into a temp folder with a space in its path, runs the same
+//                                      checks against the installed app, then uninstalls it and
+//                                      checks nothing is left (D-023). The per-user install
+//                                      briefly adds Start-menu/desktop shortcuts and an HKCU
+//                                      uninstall entry; the uninstaller removes them.
 //
 // Uses a throwaway profile via Chromium's --user-data-dir and aborts if that isn't honoured,
 // so it never touches the real DataDesk profile.
 
 /* global window -- page.evaluate callbacks run inside the app's renderer. */
 
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { spawnSync } from 'node:child_process';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { _electron as electron } from '@playwright/test';
 
-const exe = resolve('release/win-unpacked/DataDesk.exe');
+const withInstaller = process.argv.includes('--installer');
 const withAgent = process.argv.includes('--agent');
 const withOpenAI = process.argv.includes('--openai');
 const withHf = process.argv.includes('--hf');
 const withOpenAIAgent = process.argv.includes('--openai-agent');
 const expectedDatadeskTools = withOpenAI ? 10 : 8;
-if (!existsSync(exe)) {
-  console.error(`Missing ${exe}. Run: npm run package:dir`);
-  process.exit(1);
-}
 
-const profile = mkdtempSync(join(tmpdir(), 'datadesk-smoke-'));
 const results = [];
 const check = (name, ok, detail = '') => {
   results.push({ name, ok });
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? `  (${detail})` : ''}`);
 };
 
-const app = await electron.launch({ executablePath: exe, args: [`--user-data-dir=${profile}`] });
-try {
+const { version } = JSON.parse(readFileSync('package.json', 'utf8'));
+const installer = resolve(`release/DataDesk-Setup-${version}-x64.exe`);
+const startMenuShortcut = join(
+  process.env.APPDATA ?? join(homedir(), 'AppData', 'Roaming'),
+  'Microsoft/Windows/Start Menu/Programs/DataDesk.lnk',
+);
+const desktopShortcut = join(homedir(), 'Desktop', 'DataDesk.lnk');
+// electron-builder's installer copies itself here; build/installer.nsh removes it (D-023).
+const updaterCache = join(
+  process.env.LOCALAPPDATA ?? join(homedir(), 'AppData', 'Local'),
+  'datadesk-updater',
+);
+
+/** Whether Windows lists DataDesk as installed for this user (HKCU uninstall entry). */
+function uninstallEntryExists() {
+  const query = spawnSync('reg', [
+    'query',
+    'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall',
+    '/s',
+    '/f',
+    'DataDesk',
+    '/d',
+  ]);
+  return query.status === 0;
+}
+
+/**
+ * NSIS wants `/D=<dir>` last and unquoted, so the arguments are passed verbatim (no cmd.exe:
+ * characters like & or % in a path must not be interpreted).
+ */
+function runNsis(file, args) {
+  return spawnSync(file, args, { windowsVerbatimArguments: true, timeout: 300_000 });
+}
+
+/** Installs silently and checks the layout; returns the installed exe. */
+function install(installDir) {
+  const started = Date.now();
+  const run = runNsis(installer, ['/S', `/D=${installDir}`]);
+  check(
+    'installer ran silently',
+    run.status === 0,
+    `${String(Math.round((Date.now() - started) / 1000))} s, exit ${String(run.status)}`,
+  );
+  for (const [name, path] of [
+    ['app', 'DataDesk.exe'],
+    ['uninstaller', 'Uninstall DataDesk.exe'],
+    ['skills plugin', 'resources/agent-plugin/.claude-plugin/plugin.json'],
+    ['DuckDB extensions', 'resources/duckdb-extensions'],
+    [
+      'Claude binary (unpacked)',
+      'resources/app.asar.unpacked/node_modules/@anthropic-ai/claude-agent-sdk-win32-x64/claude.exe',
+    ],
+    ['DuckDB binding (unpacked)', 'resources/app.asar.unpacked/node_modules/@duckdb'],
+  ]) {
+    check(`installed: ${name}`, existsSync(join(installDir, path)));
+  }
+  check('installed: Start-menu shortcut', existsSync(startMenuShortcut));
+  check('installed: uninstall entry', uninstallEntryExists());
+  check('no leftover installer copy (datadesk-updater)', !existsSync(updaterCache));
+  return join(installDir, 'DataDesk.exe');
+}
+
+/** Uninstalls silently and checks that nothing is left; always runs after an install attempt. */
+async function uninstall(installDir) {
+  const uninstaller = join(installDir, 'Uninstall DataDesk.exe');
+  if (existsSync(uninstaller)) runNsis(uninstaller, ['/S']);
+  // The per-user uninstaller copies itself to TEMP and returns early, so wait for the removal.
+  const leftovers = () =>
+    [
+      existsSync(join(installDir, 'DataDesk.exe')) && 'app',
+      existsSync(startMenuShortcut) && 'Start-menu shortcut',
+      existsSync(desktopShortcut) && 'desktop shortcut',
+      existsSync(updaterCache) && 'datadesk-updater',
+      uninstallEntryExists() && 'uninstall entry',
+    ].filter(Boolean);
+  let left = leftovers();
+  for (let i = 0; i < 60 && left.length > 0; i++) {
+    await new Promise((r) => setTimeout(r, 1000));
+    left = leftovers();
+  }
+  check(
+    'uninstaller removed app, shortcuts, uninstall entry and cache',
+    left.length === 0,
+    left.join(', '),
+  );
+  try {
+    rmSync(join(installDir, '..'), { recursive: true, force: true });
+  } catch (error) {
+    console.log(`note: could not delete the temp install folder (${String(error)})`);
+  }
+}
+
+/** The app, dataset and agent checks, against whichever exe was built or installed. */
+async function checkApp(exe) {
+  const profile = mkdtempSync(join(tmpdir(), 'datadesk-smoke-'));
+  let app;
+  try {
+    app = await electron.launch({ executablePath: exe, args: [`--user-data-dir=${profile}`] });
+    await checkLaunchedApp(app, profile);
+  } catch (error) {
+    check('smoke run', false, String(error));
+  } finally {
+    await app?.close().catch(() => undefined);
+    rmSync(profile, { recursive: true, force: true });
+  }
+}
+
+async function checkLaunchedApp(app, profile) {
   const userData = await app.evaluate(({ app: a }) => a.getPath('userData'));
   if (resolve(userData).toLowerCase() !== resolve(profile).toLowerCase()) {
     throw new Error(
@@ -202,11 +312,34 @@ try {
       error?.message,
     );
   }
-} catch (error) {
-  check('smoke run', false, String(error));
-} finally {
-  await app.close().catch(() => undefined);
-  rmSync(profile, { recursive: true, force: true });
+}
+
+if (withInstaller) {
+  if (!existsSync(installer)) {
+    console.error(`Missing ${installer}. Run: npm run package`);
+    process.exit(1);
+  }
+  // The installer replaces an existing installation of the same app, so never run where DataDesk
+  // is really installed.
+  if (uninstallEntryExists()) {
+    console.error('DataDesk is installed on this machine; --installer would replace it. Aborting.');
+    process.exit(1);
+  }
+  // A space in the path: every child-process path (claude.exe, mcp-server.js) must cope with it.
+  const installDir = join(mkdtempSync(join(tmpdir(), 'datadesk-install-')), 'Data Desk');
+  try {
+    const exe = install(installDir);
+    if (existsSync(exe)) await checkApp(exe);
+  } finally {
+    await uninstall(installDir);
+  }
+} else {
+  const exe = resolve('release/win-unpacked/DataDesk.exe');
+  if (!existsSync(exe)) {
+    console.error(`Missing ${exe}. Run: npm run package:dir`);
+    process.exit(1);
+  }
+  await checkApp(exe);
 }
 
 const failed = results.filter((r) => !r.ok).length;

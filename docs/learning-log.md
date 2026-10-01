@@ -947,3 +947,113 @@ emit the same events, and a test proves it does by playing one scripted conversa
    `Get-CimInstance Win32_Process | Where-Object CommandLine -like '*mcp-server.js*' | Select-Object CommandLine`.
    Expected: the datadesk-mcp command line has no key in it; the key lives only in that process's
    environment (D-021).
+
+## Phase 8: Packaging: asar, native code, and shipping an agent runtime (2026-10-01)
+
+### Concept
+
+An Electron app is shipped as a folder: `DataDesk.exe` (a renamed Electron), plus `resources\`.
+Your code goes in **`app.asar`**, a single read-only archive file. Electron patches Node's `fs`
+so that `require` and `readFile` can look inside it, as if it were a folder. That works for
+JavaScript. It does **not** work for:
+
+- **Native code:** Windows' loader opens `.node` and `.exe` files from real disk paths. So
+  DuckDB's binding and the 234 MB `claude.exe` must be **unpacked** into `app.asar.unpacked\`.
+- **Other programs:** the Claude Code CLI isn't Electron, so it can't see inside the archive.
+  Anything it reads (our skills plugin) ships next to it as an **extra resource**.
+
+The **installer** (NSIS) copies that folder to the user's machine, adds shortcuts and an entry in
+Apps, and can remove it all again. Because this build is **unsigned**, Windows SmartScreen warns
+on first run. The README explains that, rather than hiding it.
+
+Shipping an _agent runtime_ adds one more consideration. The biggest file in the install is the
+Claude binary the Agent SDK drives. That one is **signed by Anthropic**, and we must not re-sign or
+modify it.
+
+### Where it lives
+
+- Builder config: [electron-builder.yml:21](../electron-builder.yml#L21) (`asarUnpack`),
+  [:24](../electron-builder.yml#L24) (`extraResources`), [:42](../electron-builder.yml#L42)
+  (NSIS options); custom install/uninstall hooks [installer.nsh:8](../build/installer.nsh#L8).
+- Paths at runtime: [resourcePaths.ts:23](../src/main/resourcePaths.ts#L23) (plugin and
+  extensions from `resources\`), [executable.ts:9](../src/main/agent/claude/executable.ts#L9)
+  (`claude.exe` in `app.asar.unpacked`), and [paths.ts:12](../src/main/paths.ts#L12) (`mainDir`,
+  which is inside app.asar when packaged).
+- Readable failures: [resourcePaths.ts:44](../src/main/resourcePaths.ts#L44), checked before
+  each session at [agentRuntime.ts:84](../src/main/agent/agentRuntime.ts#L84) (OpenAI) and
+  [agentRuntime.ts:114](../src/main/agent/agentRuntime.ts#L114) (Claude).
+- The real-installer smoke: [smoke-packaged.mjs:86](../scripts/smoke-packaged.mjs#L86) (install),
+  [:114](../scripts/smoke-packaged.mjs#L114) (uninstall), [:317](../scripts/smoke-packaged.mjs#L317)
+  (the flow).
+- Icon source: [make-icon.mjs](../scripts/make-icon.mjs).
+
+### How it works
+
+What happens between double-clicking the installer and the first answer:
+
+1. `npm run package` runs `electron-vite build` (main, preload, renderer and `mcp-server.js` into
+   `out/`), then electron-builder:
+   - It packs `out/` plus the runtime `dependencies` into `app.asar`. React and friends are
+     already in the renderer bundle, so they're devDependencies and stay out.
+   - It moves `@duckdb/**` and `claude-agent-sdk-win32-x64/**` into `app.asar.unpacked`, copies
+     `agent-plugin` and `duckdb-extensions` into `resources\`, and wraps it all in an NSIS
+     installer.
+2. The user runs `DataDesk-Setup-0.0.1-x64.exe`. It is a per-user install, so there is no admin
+   prompt; it goes to `%LOCALAPPDATA%\Programs\DataDesk`. Our `customInstall` hook deletes the
+   copy of the installer that electron-builder leaves in `%LOCALAPPDATA%\datadesk-updater`.
+3. The user starts DataDesk. `serverPaths()` sees `app.isPackaged` and resolves the plugin and
+   the extensions under `process.resourcesPath`. `mainDir` stays inside `resources\app.asar\out\main`.
+4. The sidebar's datadesk-mcp is started as `DataDesk.exe resources\app.asar\out\main\mcp-server.js`
+   with `ELECTRON_RUN_AS_NODE=1`. In Node mode, Electron still reads from the asar archive.
+   DuckDB's `require` of its `.node` file is redirected by Electron to the `app.asar.unpacked`
+   copy.
+5. The user saves an Anthropic key and asks a question. Main computes
+   `…\app.asar.unpacked\node_modules\@anthropic-ai\claude-agent-sdk-win32-x64\claude.exe`, checks
+   it and the plugin manifest exist, and passes it as `pathToClaudeCodeExecutable`. The CLI loads
+   the plugin from `resources\agent-plugin`, a real folder it can read.
+6. Uninstall removes the program, the shortcuts, the Apps entry and (our `customUnInstall` hook)
+   the updater folder. `%APPDATA%\DataDesk` (keys, settings, catalog, artifacts) stays until the
+   user deletes it.
+
+### Gotchas
+
+- **The roadmap said to unpack the MCP bundle, but that wasn't needed.** An asar is only opaque
+  to _non-Electron_ processes. datadesk-mcp runs under Electron in Node mode, so it reads its
+  own bundle from the archive. Only the files the Claude CLI touches (`claude.exe` itself, the
+  plugin) must be real files.
+- **electron-builder keeps a 215 MB copy of your installer.** It does this for
+  `electron-updater`, there is no option to turn it off, and the uninstaller never deletes it. The
+  code review found it by reading the NSIS templates, after the smoke had already left one behind
+  on this machine. It is fixed with the two NSIS hooks.
+- **"signing with signtool.exe" in the build log doesn't mean anything was signed.** Without a
+  certificate the exe stays unsigned (`Get-AuthenticodeSignature`). `claude.exe` keeps Anthropic's
+  signature. If a certificate is ever added, make sure electron-builder doesn't re-sign that
+  binary.
+- **NSIS's `/D=` must be the last argument and must not be quoted, even with spaces.** Node
+  quotes arguments that contain spaces, so the smoke passes them with
+  `windowsVerbatimArguments`. A first version went through `cmd.exe`, where `&` or `%` in a path
+  would have been interpreted.
+- **A per-user uninstaller returns before it has finished.** It copies itself to TEMP and
+  continues there, so the smoke polls until the files, shortcuts and registry entry are gone.
+- **The installer replaces an existing install with the same app id.** That's why the smoke
+  refuses to run on a machine where DataDesk is really installed.
+
+### Experiments
+
+1. **Look inside the archive.** After `npm run package:dir`, run
+   `npx @electron/asar list release/win-unpacked/resources/app.asar | Select-String -SimpleMatch '\node_modules\react\'`.
+   Expected: no output, because React is only inside `out/renderer` (the listing uses
+   backslashes). The same command with `'\node_modules\vega-lite\'` does print files, because main
+   renders charts for PDF export. Then compare
+   `release/win-unpacked/resources/app.asar.unpacked/node_modules` with what's listed: only DuckDB
+   and the Claude binary are there as real files.
+2. **Break the runtime on purpose.** In `release/win-unpacked`, rename
+   `resources\app.asar.unpacked\node_modules\@anthropic-ai\claude-agent-sdk-win32-x64\claude.exe`,
+   start `DataDesk.exe`, save any Anthropic key and send a message. Expected: "DataDesk's Claude
+   runtime is missing (…). It may have been quarantined by antivirus software; reinstall
+   DataDesk." No spawn error appears. Rename it back afterwards.
+3. **Watch an install from the outside.** Run `npm run package`, then
+   `npm run smoke:packaged -- --installer --agent`. While it runs, open
+   `%TEMP%\datadesk-install-*\Data Desk` and Windows' Apps list. Expected: the folder (with a
+   space in its name) and a "DataDesk" entry appear, then both disappear, and the last line reads
+   "uninstaller removed app, shortcuts, uninstall entry and cache".
