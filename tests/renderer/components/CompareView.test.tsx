@@ -127,4 +127,25 @@ describe('CompareView', () => {
     unmount();
     expect(api.compare.reset).toHaveBeenCalledOnce();
   });
+
+  it('a double Enter runs the comparison once', async () => {
+    const user = userEvent.setup();
+    const api = createFakeApi({ anthropic: true, openai: true });
+    let accept: () => void = () => undefined;
+    api.compare.run.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          accept = () => {
+            resolve({ ok: true, data: { accepted: true } });
+          };
+        }),
+    );
+    renderView(api);
+    await user.type(screen.getByLabelText('Question to compare'), 'q{Enter}{Enter}');
+    expect(api.compare.run).toHaveBeenCalledOnce();
+    await act(async () => {
+      accept();
+      await Promise.resolve();
+    });
+  });
 });

@@ -104,8 +104,10 @@ export function CompareView() {
   const [draft, setDraft] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [startedAt, setStartedAt] = useState<number | null>(null);
+  // Until the lanes report 'starting', only this stops a double Enter from running twice.
+  const [submitting, setSubmitting] = useState(false);
   const lanes = { anthropic: summarizeLane(anthropic), openai: summarizeLane(openai) };
-  const busy = lanes.anthropic.busy || lanes.openai.busy;
+  const busy = submitting || lanes.anthropic.busy || lanes.openai.busy;
 
   useEffect(() => {
     const unsubscribe = api.compare.onEvent(({ provider, event }) => {
@@ -124,11 +126,14 @@ export function CompareView() {
     dispatchOpenAI({ type: 'reset' });
     setError(null);
     setStartedAt(Date.now());
+    setSubmitting(true);
     try {
       const result = await api.compare.run(text);
       if (!result.ok) setError(result.error.message);
     } catch {
       setError('Could not reach the app backend.');
+    } finally {
+      setSubmitting(false);
     }
   }
 
