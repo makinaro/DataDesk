@@ -1,6 +1,11 @@
 import type { CanUseTool, Options } from '@anthropic-ai/claude-agent-sdk';
 import { SUBAGENT_TOOL_NAMES, type AgentSettings } from '../../../shared/agent';
-import { DATADESK_SERVER, datadeskTool as tool, OPENAI_TOOLS } from './datadeskTools';
+import {
+  DATADESK_SERVER,
+  datadeskTool as tool,
+  HF_APPROVAL_TOOLS,
+  OPENAI_TOOLS,
+} from './datadeskTools';
 import { HF_ALLOWED_TOOLS, HF_MCP_URL, HF_SERVER, HF_TOKEN_ENV } from './hfTools';
 import { scopeHook } from './scopeHook';
 import { buildSubagents } from './subagents';
@@ -52,8 +57,18 @@ export function autoApprovedTools({ openaiTools, hfTools }: SessionTools): strin
 }
 
 /** Every tool the analyst may see. The init guard aborts the session on anything else. */
+/** Tools that always ask the user first: register_dataset, plus load_hf_dataset with HF on. */
+export function approvalTools({ hfTools }: SessionTools): string[] {
+  return [...APPROVAL_TOOLS, ...(hfTools ? HF_APPROVAL_TOOLS : [])];
+}
+
 export function expectedTools(tools: SessionTools): ReadonlySet<string> {
-  return new Set(['Skill', ...SUBAGENT_TOOL_NAMES, ...autoApprovedTools(tools), ...APPROVAL_TOOLS]);
+  return new Set([
+    'Skill',
+    ...SUBAGENT_TOOL_NAMES,
+    ...autoApprovedTools(tools),
+    ...approvalTools(tools),
+  ]);
 }
 
 /** Built-in Claude Code tools the analyst must never get (belt and braces with `tools: []`). */

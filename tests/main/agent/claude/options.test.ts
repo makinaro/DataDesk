@@ -230,7 +230,14 @@ describe('OpenAI tools (only with a key)', () => {
 describe('Hugging Face server (only with a token)', () => {
   const HF = ['mcp__hf__hub_repo_search', 'mcp__hf__hub_repo_details', 'mcp__hf__hf_fs'];
   const init = {
-    tools: ['Task', 'Skill', ...AUTO_APPROVED_TOOLS, ...APPROVAL_TOOLS, ...HF],
+    tools: [
+      'Task',
+      'Skill',
+      ...AUTO_APPROVED_TOOLS,
+      ...APPROVAL_TOOLS,
+      ...HF,
+      'mcp__datadesk__load_hf_dataset',
+    ],
     skills: [...SKILL_NAMES],
     plugins: [{ name: 'datadesk', path: PLUGIN }],
     mcp_servers: [
@@ -299,6 +306,9 @@ describe('Hugging Face server (only with a token)', () => {
     const problems = checkInit(init, expected).join('\n');
     expect(problems).toMatch(/unexpected tools: .*hub_repo_search/);
     expect(problems).toMatch(/unexpected MCP servers: hf/);
+    expect(problems).toMatch(/load_hf_dataset/);
+    // load_hf_dataset is never auto-approved: it must ask.
+    expect(options(false, true).allowedTools).not.toContain('mcp__datadesk__load_hf_dataset');
   });
 
   it.each([

@@ -24,6 +24,11 @@ export const SUPPORTED_EXTENSIONS = Object.keys(EXTENSIONS);
 export interface ImportPolicy {
   /** Directories that may never be imported from (e.g. DataDesk's own userData). */
   denyDirs: string[];
+  /**
+   * Exceptions inside a denied directory. Only load_hf_dataset passes one (its own download
+   * folder under userData, D-020); register_dataset never does.
+   */
+  allowDirs?: string[];
   maxFileBytes: number;
   platform?: NodeJS.Platform;
 }
@@ -100,16 +105,21 @@ export async function validateImportPath(
     );
   }
 
-  for (const denied of policy.denyDirs) {
-    let deniedReal = normalize(denied);
+  const resolve = async (dir: string) => {
     try {
-      deniedReal = await realpath(denied);
+      return await realpath(dir);
     } catch {
-      // A deny dir that doesn't exist yet still blocks its path.
+      // A dir that doesn't exist yet still matches its path.
+      return normalize(dir);
     }
-    if (isInside(fold(real), fold(deniedReal))) {
-      throw new ImportPathError('This location is not allowed.');
+  };
+  for (const denied of policy.denyDirs) {
+    if (!isInside(fold(real), fold(await resolve(denied)))) continue;
+    let excepted = false;
+    for (const allowed of policy.allowDirs ?? []) {
+      if (isInside(fold(real), fold(await resolve(allowed)))) excepted = true;
     }
+    if (!excepted) throw new ImportPathError('This location is not allowed.');
   }
 
   return { path: real, format, sizeBytes: info.size };

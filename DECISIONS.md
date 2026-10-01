@@ -535,3 +535,60 @@ a live anonymous `tools/list`, and dummy-key probes of `@anthropic-ai/claude-age
 - Session start makes one extra request to HF when a token is set.
 - Tools HF adds _during_ a session (`tools/list_changed`) aren't in `disallowedTools` and the
   guard has already run; `canUseTool` still denies them.
+
+## D-020: load_hf_dataset downloads into userData/datasets/hf through a narrow exception (2026-10-01)
+
+**Context:** The analyst can find datasets on the Hub (D-019), but to query one, a file must be
+on disk and registered. datadesk-mcp denies registering anything under userData
+(`DATADESK_DENY_DIRS`), because that folder holds the encrypted keys, the catalog and logs.
+Verified 2026-10-01 from the HF OpenAPI description, the huggingface.js `file-download-info` and
+`list-files` sources, and a live anonymous probe (Node 24 `fetch`, `redirect: 'manual'`):
+
+- `https://huggingface.co/datasets/{repo}/resolve/{revision}/{path}` serves a file. Small files
+  get a **relative** 307 to `/api/resolve-cache/…`. Large files get a 302 to a CDN host
+  (`us.aws.cdn.hf.co`, `cas-bridge.xethub.hf.co`; observed, not documented) with the real size in
+  `X-Linked-Size`. A 200 may have no `Content-Length`.
+- Errors carry `X-Error-Code` (`GatedRepo`, `RepoNotFound`, `EntryNotFound`). Gated access can
+  only be granted in a browser.
+- `@huggingface/hub` 2.17.5 exists, but plain `fetch` covers one-file downloads. The library's
+  extra is Xet chunked transfer (WASM), not needed for files of this size.
+
+**Decision:**
+
+- **Tool:** `load_hf_dataset({ repo_id, path, revision?, name? })` in datadesk-mcp, registered
+  only when `DATADESK_HF_TOKEN` is set. One file per call, `.csv/.tsv/.parquet/.json/.jsonl/
+.ndjson` only. The input schema lives in `src/shared/hf.ts`, so main's approval dialog and the
+  tool validate the same thing. The default name is `hf_<repo>_<file>`, so a Hub dataset doesn't
+  silently replace a local one.
+- **Location:** `userData/datasets/hf/<owner>/<repo>/<revision>/<path>`, with each segment made
+  file-system safe and the result checked to stay inside the folder.
+- **Exception:** `ImportPolicy.allowDirs` lets a path inside a denied directory through only if
+  it is inside an allowed one. Only `load_hf_dataset` passes `allowDirs: [hfDir]`, for the file
+  it just wrote. `register_dataset` (model or UI) still refuses all of userData, the HF folder
+  included.
+- **Cap:** 500 MB per file by default (`DATADESK_HF_MAX_BYTES`), and never more than the import
+  cap. It's checked against `X-Linked-Size` and `Content-Length` before the body, and enforced on
+  the bytes actually received. The download goes to a `.part` file that is renamed only when
+  complete; on any failure, cancel or timeout (20 minutes) it is deleted.
+- **Redirects by hand:** follow at most 5, over https only, to `huggingface.co`,
+  `*.huggingface.co` or `*.hf.co`. The token is sent to `huggingface.co` only, never to the CDN.
+- **Approval:** always asks the user, main analyst only (see the approval route in
+  `claudeOrchestrator.ts`).
+- **Client seam:** the tool takes `fetch` as a dependency; tests script a fake Hub.
+
+**Alternatives:**
+
+- A download folder outside userData (e.g. Documents): it would need a new user-visible setting,
+  and the roadmap asks for app-managed storage.
+- Lifting the userData deny for the whole agent server: `register_dataset` could then point at
+  the key file.
+- `@huggingface/hub`: an extra dependency (plus WASM) for one HTTP GET.
+- Letting fetch follow redirects: whether the Authorization header is stripped on a cross-origin
+  redirect depends on the fetch implementation, and the hosts would be unchecked.
+
+**Consequences:**
+
+- Downloaded files stay in userData until removed by hand; there's no cleanup UI yet.
+- If HF moves its CDN outside `*.hf.co`, downloads fail with "not a Hugging Face host" until the
+  list is updated. That fails closed.
+- A file is downloaded again each time it is loaded; there is no cache by ETag.

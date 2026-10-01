@@ -27,6 +27,18 @@ const EnvSchema = z.object({
    * CLI's explicitly built env, never on a command line (DECISIONS D-018). Empty = disabled.
    */
   DATADESK_OPENAI_API_KEY: z.string().optional(),
+  /**
+   * Enables load_hf_dataset (and is sent to huggingface.co for gated datasets). Arrives through
+   * the agent CLI's env, like the OpenAI key (DECISIONS D-019). Empty = disabled.
+   */
+  DATADESK_HF_TOKEN: z.string().optional(),
+  /** Where load_hf_dataset downloads to. Defaults to datasets/hf next to the catalog. */
+  DATADESK_HF_DIR: z.string().min(1).optional(),
+  DATADESK_HF_MAX_BYTES: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .default(500 * 1024 ** 2),
   /** Embedding cache. Defaults to a "cache" folder next to the catalog. */
   DATADESK_CACHE_DIR: z.string().min(1).optional(),
   DATADESK_MAX_FILE_BYTES: z.coerce
@@ -49,11 +61,15 @@ export interface ServerConfig {
   extensionDir: string | undefined;
   openaiApiKey: string | undefined;
   cacheDir: string;
+  hfToken: string | undefined;
+  hfDir: string;
+  hfMaxBytes: number;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv): ServerConfig {
   const parsed = EnvSchema.parse(env);
   const openaiKey = parsed.DATADESK_OPENAI_API_KEY?.trim();
+  const hfToken = parsed.DATADESK_HF_TOKEN?.trim();
   return {
     catalogPath: parsed.DATADESK_CATALOG_PATH,
     artifactsDir:
@@ -71,15 +87,19 @@ export function loadConfig(env: NodeJS.ProcessEnv): ServerConfig {
     // Blank (main blanks secrets with '') means disabled.
     openaiApiKey: openaiKey === '' ? undefined : openaiKey,
     cacheDir: parsed.DATADESK_CACHE_DIR ?? join(dirname(parsed.DATADESK_CATALOG_PATH), 'cache'),
+    hfToken: hfToken === '' ? undefined : hfToken,
+    hfDir: parsed.DATADESK_HF_DIR ?? join(dirname(parsed.DATADESK_CATALOG_PATH), 'datasets', 'hf'),
+    hfMaxBytes: parsed.DATADESK_HF_MAX_BYTES,
   };
 }
 
 /**
- * Reads the config, then removes the OpenAI key from the environment: from here on it lives
- * only in the returned config, so nothing else in this process (or a child it spawned) sees it.
+ * Reads the config, then removes the keys from the environment: from here on they live only in
+ * the returned config, so nothing else in this process (or a child it spawned) sees them.
  */
 export function loadConfigAndTakeSecrets(env: NodeJS.ProcessEnv): ServerConfig {
   const config = loadConfig(env);
   Reflect.deleteProperty(env, 'DATADESK_OPENAI_API_KEY');
+  Reflect.deleteProperty(env, 'DATADESK_HF_TOKEN');
   return config;
 }
