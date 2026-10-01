@@ -1,4 +1,4 @@
-import { copyFileSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { expect, test } from './fixtures';
@@ -87,4 +87,29 @@ test('unsupported files are refused with a clear reason', async ({ electronApp, 
   await expect(page.getByRole('alert')).toContainText(/Unsupported file type/, {
     timeout: 20_000,
   });
+});
+
+test('right-click → Remove forgets a dataset but leaves the user file on disk', async ({
+  electronApp,
+  page,
+}) => {
+  const csv = join(dataDir, 'sales.csv');
+  await electronApp.evaluate(({ dialog }, filePath) => {
+    dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [filePath] });
+  }, csv);
+  await page.getByRole('button', { name: 'Add file…' }).click();
+  const list = page.getByRole('list', { name: 'Registered datasets' });
+  await expect(list.getByText('sales', { exact: true })).toBeVisible({ timeout: 20_000 });
+
+  await list.getByRole('button', { name: /^sales/ }).click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Remove dataset…' }).click();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Remove' }).click();
+
+  await expect(page.getByText('No datasets yet.')).toBeVisible();
+  const userData = await electronApp.evaluate(({ app }) => app.getPath('userData'));
+  const catalog = JSON.parse(readFileSync(join(userData, 'catalog.json'), 'utf8')) as {
+    datasets: unknown[];
+  };
+  expect(catalog.datasets).toEqual([]);
+  expect(existsSync(csv)).toBe(true);
 });

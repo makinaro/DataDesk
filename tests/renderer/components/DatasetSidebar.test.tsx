@@ -128,3 +128,69 @@ describe('DatasetSidebar', () => {
     expect(await screen.findByText(/⚠ File not found/)).toBeInTheDocument();
   });
 });
+
+describe('removing a dataset', () => {
+  const twoDatasets = () => createFakeApi({}, [summary('sales'), summary('events')]);
+  const item = (name: string) =>
+    within(screen.getByRole('list', { name: 'Registered datasets' })).getByRole('button', {
+      name: new RegExp(`^${name}`),
+    });
+
+  it('right-click → Remove dataset… → confirm removes it from the list', async () => {
+    const { api, user } = renderSidebar(twoDatasets());
+    await screen.findByText('events');
+    fireEvent.contextMenu(item('sales'), { clientX: 40, clientY: 80 });
+
+    const menu = screen.getByRole('menu', { name: 'Dataset sales' });
+    expect(within(menu).getByRole('menuitem', { name: 'Remove dataset…' })).toHaveFocus();
+    await user.keyboard('{Enter}');
+
+    const dialog = screen.getByRole('alertdialog', { name: 'Remove "sales"?' });
+    expect(within(dialog).getByRole('button', { name: 'Cancel' })).toHaveFocus();
+    await user.click(within(dialog).getByRole('button', { name: 'Remove' }));
+
+    expect(api.datasets.remove).toHaveBeenCalledWith('sales');
+    await waitFor(() => {
+      expect(screen.queryByText('sales')).not.toBeInTheDocument();
+    });
+    expect(screen.getByText('events')).toBeInTheDocument();
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+  });
+
+  it('Delete on a focused dataset asks first, and Escape cancels without removing', async () => {
+    const { api, user } = renderSidebar(twoDatasets());
+    await screen.findByText('events');
+    item('events').focus();
+    await user.keyboard('{Delete}');
+    expect(screen.getByRole('alertdialog', { name: 'Remove "events"?' })).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect(api.datasets.remove).not.toHaveBeenCalled();
+  });
+
+  it('the menu closes on Escape or a click elsewhere', async () => {
+    const { user } = renderSidebar();
+    await screen.findByText('sales');
+    fireEvent.contextMenu(item('sales'));
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    fireEvent.contextMenu(item('sales'));
+    await user.click(document.body);
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+  });
+
+  it('shows why a removal failed', async () => {
+    const api = twoDatasets();
+    api.datasets.remove.mockResolvedValueOnce({
+      ok: false,
+      error: { code: 'REJECTED', message: 'Catalog is busy.' },
+    } as never);
+    const { user } = renderSidebar(api);
+    await screen.findByText('sales');
+    item('sales').focus();
+    await user.keyboard('{Delete}');
+    await user.click(screen.getByRole('button', { name: 'Remove' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Catalog is busy.');
+    expect(screen.getByText('sales')).toBeInTheDocument();
+  });
+});

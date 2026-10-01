@@ -1,6 +1,8 @@
-import { useCallback, useState, type CSSProperties, type DragEvent } from 'react';
+import { useCallback, useState, type CSSProperties, type DragEvent, type MouseEvent } from 'react';
 import { useApi } from '../api';
 import { useIpcQuery } from '../useIpcQuery';
+import { ConfirmDialog } from './ConfirmDialog';
+import { ContextMenu } from './ContextMenu';
 import { Panel } from './Panel';
 
 interface Props {
@@ -29,6 +31,8 @@ export function DatasetSidebar({ selected, onSelect, revision, onChanged, style 
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const [menu, setMenu] = useState<{ name: string; x: number; y: number } | null>(null);
+  const [confirming, setConfirming] = useState<string | null>(null);
 
   const loadList = useCallback(() => api.datasets.list(), [api]);
   const loadSchema = useCallback((key: string) => api.datasets.schema(nameFromKey(key)), [api]);
@@ -74,6 +78,36 @@ export function DatasetSidebar({ selected, onSelect, revision, onChanged, style 
       setActionError('Could not reach the app backend.');
     } finally {
       setBusy(false);
+    }
+  }
+
+  function openMenu(event: MouseEvent<HTMLButtonElement>, name: string) {
+    event.preventDefault();
+    // From the keyboard (Shift+F10, Menu key) there's no pointer position: use the item's.
+    const rect = event.currentTarget.getBoundingClientRect();
+    const fromKeyboard = event.clientX === 0 && event.clientY === 0;
+    setMenu({
+      name,
+      x: fromKeyboard ? rect.left + 16 : event.clientX,
+      y: fromKeyboard ? rect.bottom : event.clientY,
+    });
+  }
+
+  async function remove(name: string) {
+    setBusy(true);
+    setActionError(null);
+    try {
+      const result = await api.datasets.remove(name);
+      if (!result.ok) setActionError(result.error.message);
+      else {
+        if (selected === name) onSelect(null);
+        onChanged();
+      }
+    } catch {
+      setActionError('Could not reach the app backend.');
+    } finally {
+      setBusy(false);
+      setConfirming(null);
     }
   }
 
@@ -131,8 +165,15 @@ export function DatasetSidebar({ selected, onSelect, revision, onChanged, style 
                 <button
                   type="button"
                   aria-current={selected === d.name}
+                  aria-keyshortcuts="Delete"
                   onClick={() => {
                     onSelect(selected === d.name ? null : d.name);
+                  }}
+                  onContextMenu={(event) => {
+                    openMenu(event, d.name);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Delete') setConfirming(d.name);
                   }}
                   className={`w-full rounded px-2 py-1.5 text-left hover:bg-raised ${
                     selected === d.name ? 'bg-raised' : ''
@@ -165,6 +206,42 @@ export function DatasetSidebar({ selected, onSelect, revision, onChanged, style 
           </ul>
         )}
       </div>
+      {menu && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          label={`Dataset ${menu.name}`}
+          onClose={() => {
+            setMenu(null);
+          }}
+          items={[
+            {
+              label: 'Remove dataset…',
+              danger: true,
+              onSelect: () => {
+                setConfirming(menu.name);
+              },
+            },
+          ]}
+        />
+      )}
+      {confirming && (
+        <ConfirmDialog
+          title={`Remove "${confirming}"?`}
+          confirmLabel={busy ? 'Removing…' : 'Remove'}
+          busy={busy}
+          onConfirm={() => void remove(confirming)}
+          onCancel={() => {
+            setConfirming(null);
+          }}
+        >
+          <p>DataDesk forgets this dataset. Charts and reports you already made keep their data.</p>
+          <p>
+            Your own file stays where it is. If DataDesk downloaded it (from Hugging Face), the
+            download is deleted.
+          </p>
+        </ConfirmDialog>
+      )}
     </Panel>
   );
 }
