@@ -1,4 +1,5 @@
 import type { AgentEvent, AgentSettings, CompareEvent } from '../agent';
+import type { Appearance } from '../appearance';
 import type { ChartArtifact, ReportArtifact } from '../artifacts';
 import type { ColumnInfo, DatasetPreview, DatasetSummary, RegisteredDataset } from '../datasets';
 import type { IpcChannels } from './channels';
@@ -29,6 +30,8 @@ export interface DatadeskApi {
     pick(): Promise<IpcResult<RegisteredDataset | null>>;
     schema(name: string): Promise<IpcResult<ColumnInfo[]>>;
     preview(name: string, limit: number): Promise<IpcResult<DatasetPreview>>;
+    /** Forgets a dataset; deletes its file only if DataDesk downloaded it (D-029). */
+    remove(name: string): Promise<IpcResult<IpcResponse<typeof IpcChannels.datasetsRemove>>>;
   };
   agent: {
     send(text: string): Promise<IpcResult<{ accepted: true }>>;
@@ -51,6 +54,13 @@ export interface DatadeskApi {
   settings: {
     getAgent(): Promise<IpcResult<AgentSettings>>;
     setAgent(settings: AgentSettings): Promise<IpcResult<AgentSettings>>;
+    /** Theme and layout. Saving them never restarts the conversation. */
+    getAppearance(): Promise<IpcResult<Appearance>>;
+    setAppearance(appearance: Appearance): Promise<IpcResult<Appearance>>;
+  };
+  /** Write-only: there is deliberately no way to read the clipboard. */
+  clipboard: {
+    writeText(text: string): Promise<IpcResult<IpcResponse<typeof IpcChannels.clipboardWriteText>>>;
   };
   artifacts: {
     getChart(id: string): Promise<IpcResult<ChartArtifact>>;
@@ -59,5 +69,9 @@ export interface DatadeskApi {
     exportReport(
       request: IpcRequest<typeof IpcChannels.artifactsExportReport>,
     ): Promise<IpcResult<IpcResponse<typeof IpcChannels.artifactsExportReport>>>;
+    /** Opens a save dialog in main and writes the chart as PNG or SVG. */
+    exportChart(
+      request: IpcRequest<typeof IpcChannels.artifactsExportChart>,
+    ): Promise<IpcResult<IpcResponse<typeof IpcChannels.artifactsExportChart>>>;
   };
 }

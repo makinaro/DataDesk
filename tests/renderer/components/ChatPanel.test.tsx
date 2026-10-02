@@ -32,6 +32,44 @@ describe('ChatPanel + TimelineDrawer', () => {
     expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument();
   });
 
+  it('shows answers without a bubble, with a caret while streaming and Copy once done', async () => {
+    const { api, user } = renderAgentUi();
+    act(() => {
+      api.emit({
+        kind: 'text_delta',
+        messageId: 'm1',
+        delta: '**West** leads',
+        parentToolUseId: null,
+      });
+    });
+    const convo = screen.getByRole('list', { name: 'Conversation' });
+    const answer = within(convo).getByText('West').closest('li');
+    expect(answer).not.toHaveClass('bg-surface');
+    expect(answer?.querySelector('.caret')).not.toBeNull();
+    expect(within(convo).queryByRole('button', { name: 'Copy answer' })).toBeNull();
+
+    act(() => {
+      api.emit({
+        kind: 'assistant_message',
+        messageId: 'm1',
+        text: '**West** leads.',
+        parentToolUseId: null,
+      });
+    });
+    expect(answer?.querySelector('.caret')).toBeNull();
+    await user.click(within(convo).getByRole('button', { name: 'Copy answer' }));
+    expect(api.clipboard.writeText).toHaveBeenCalledWith('**West** leads.');
+    expect(await within(convo).findByRole('button', { name: 'Copied' })).toBeInTheDocument();
+  });
+
+  it('keeps Send disabled until there is a message', async () => {
+    const { user } = renderAgentUi();
+    const sendButton = screen.getByRole('button', { name: 'Send' });
+    expect(sendButton).toBeDisabled();
+    await user.type(screen.getByLabelText('Message'), 'hi');
+    expect(sendButton).toBeEnabled();
+  });
+
   it('Stop interrupts the running turn', async () => {
     const { api, user } = renderAgentUi();
     act(() => {

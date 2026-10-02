@@ -3,7 +3,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { buildServer, TOOL_NAMES } from '../../src/mcp-server/server';
+import { buildServer, TOOL_NAMES, UI_TOOL_NAMES } from '../../src/mcp-server/server';
 import { createWorkspace, SECRET, sqlPath } from './fixtures';
 
 let ws: ReturnType<typeof createWorkspace>;
@@ -161,5 +161,47 @@ describe('artifact titles', () => {
     expect(text(r)).toMatch(/single line/);
     const report = await call('save_report', { title: 'A\u0007B', markdown: '# x' });
     expect(report.isError).toBe(true);
+  });
+});
+
+describe('remove_dataset (UI server only)', () => {
+  it('does not exist without the UI flag, so an agent server can never call it', async () => {
+    const { tools } = await client.listTools();
+    expect(tools.map((t) => t.name)).not.toContain('remove_dataset');
+    const result = await call('remove_dataset', { name: 'sales' });
+    expect(result.isError).toBe(true);
+  });
+
+  it('exists on the UI server, is marked destructive, and removes a dataset', async () => {
+    const server = buildServer({
+      db: ws.db,
+      importPolicy: { denyDirs: [join(ws.root, 'userData')], maxFileBytes: 10_000_000 },
+      artifacts: ws.artifacts,
+      ui: { ownedDir: join(ws.root, 'userData', 'datasets', 'hf') },
+    });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const ui = new Client({ name: 'ui', version: '0.0.0' });
+    await Promise.all([server.connect(serverTransport), ui.connect(clientTransport)]);
+    try {
+      const { tools } = await ui.listTools();
+      expect(tools.map((t) => t.name).sort()).toEqual([...TOOL_NAMES, ...UI_TOOL_NAMES].sort());
+      expect(tools.find((t) => t.name === 'remove_dataset')?.annotations?.destructiveHint).toBe(
+        true,
+      );
+
+      await register();
+      const removed = (await ui.callTool({
+        name: 'remove_dataset',
+        arguments: { name: 'sales' },
+      })) as CallToolResult;
+      expect(removed.structuredContent).toEqual({ removed: true, deletedFile: false });
+      const bad = (await ui.callTool({
+        name: 'remove_dataset',
+        arguments: { name: '../catalog' },
+      })) as CallToolResult;
+      expect(bad.isError).toBe(true);
+    } finally {
+      await ui.close();
+    }
   });
 });

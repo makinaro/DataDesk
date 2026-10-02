@@ -1057,3 +1057,168 @@ What happens between double-clicking the installer and the first answer:
    `%TEMP%\datadesk-install-*\Data Desk` and Windows' Apps list. Expected: the folder (with a
    space in its name) and a "DataDesk" entry appear, then both disappear, and the last line reads
    "uninstaller removed app, shortcuts, uninstall entry and cache".
+
+## Phase 9: UI polish: design tokens, frameless windows, safe markdown, split panes (2026-10-02)
+
+### Concept
+
+Four ideas carry this phase.
+
+- **Design tokens.** Components never name a colour. They name a _role_ (`bg-canvas`,
+  `text-muted`, `border-line`), and each theme is just a set of values for those roles on
+  `<html data-theme="…">`. Switching theme changes a few CSS variables. No component
+  re-renders, and no CSS is rebuilt. The same idea reaches outside CSS: main paints the window
+  background and the native window buttons, and Vega draws charts, all from copies of the same
+  values, kept equal by a test.
+- **Frameless windows.** With `titleBarStyle: 'hidden'` the page draws the title bar itself,
+  while Windows still draws minimize, maximize and close (`titleBarOverlay`). The menu bar is
+  gone, so main now handles the few shortcuts it used to give us.
+- **Safe markdown.** The analyst's answer is text written by a model that has read your data,
+  so it is _untrusted input_. Rendering it as markdown is safe only if it can't become HTML,
+  can't load anything, and can't navigate anywhere. react-markdown builds React elements from a
+  syntax tree and never uses `innerHTML`. We leave raw HTML disabled, unwrap links, and turn
+  images into their alt text.
+- **Accessible split panes.** A draggable divider is a real control: a `role="separator"` with
+  a value, a min and a max, and arrow keys. It isn't just a decorative line that happens to
+  react to the mouse.
+
+### Where it lives
+
+- Tokens: [styles.css:9](../src/renderer/src/styles.css#L9) (`@theme inline` maps roles to
+  variables), [styles.css:68](../src/renderer/src/styles.css#L68) (one theme's values); the
+  appearance setting [appearance.ts:13](../src/shared/appearance.ts#L13), stored in main by
+  [appearanceStore.ts:15](../src/main/settings/appearanceStore.ts#L15), applied by
+  [AppearanceProvider.tsx:44](../src/renderer/src/appearance/AppearanceProvider.tsx#L44).
+- Title bar: [window.ts:43](../src/main/window.ts#L43) (hidden title bar + overlay),
+  [window.ts:62](../src/main/window.ts#L62) (shortcuts in `before-input-event`, decided by
+  [shortcuts.ts:18](../src/main/shortcuts.ts#L18)), [window.ts:78](../src/main/window.ts#L78)
+  (repainting the native buttons on a theme change), [index.ts:80](../src/main/index.ts#L80) (no
+  menu).
+- Markdown: [ChatMarkdown.tsx:27](../src/renderer/src/components/ChatMarkdown.tsx#L27)
+  (languages), [:40](../src/renderer/src/components/ChatMarkdown.tsx#L40) (the `[[chart:id]]`
+  plugin), [:107](../src/renderer/src/components/ChatMarkdown.tsx#L107) (code block + copy),
+  [:173](../src/renderer/src/components/ChatMarkdown.tsx#L173) (links unwrapped); the write-only
+  clipboard [contract.ts:152](../src/shared/ipc/contract.ts#L152) and
+  [clipboard.ts:8](../src/main/ipc/handlers/clipboard.ts#L8).
+- Chat and steps: [agentState.ts:116](../src/renderer/src/agent/agentState.ts#L116) (a user
+  message starts a turn), [agentState.ts:188](../src/renderer/src/agent/agentState.ts#L188) (a
+  tool call remembers its turn), [ChatPanel.tsx:31](../src/renderer/src/components/ChatPanel.tsx#L31),
+  [TurnSteps.tsx:11](../src/renderer/src/components/TurnSteps.tsx#L11).
+- Panels and layouts: [Splitter.tsx:26](../src/renderer/src/layout/Splitter.tsx#L26),
+  [panelSizes.ts:49](../src/renderer/src/layout/panelSizes.ts#L49) (validated read),
+  [panelSizes.ts:66](../src/renderer/src/layout/panelSizes.ts#L66),
+  [App.tsx:105](../src/renderer/src/App.tsx#L105) (the two arrangements),
+  [ResultsFocus.tsx:8](../src/renderer/src/results/ResultsFocus.tsx#L8) and
+  [ResultsPanel.tsx:69](../src/renderer/src/components/ResultsPanel.tsx#L69) (a chip brings its
+  chart forward).
+- Charts: [chartTheme.ts:22](../src/shared/chartTheme.ts#L22) and
+  [:64](../src/shared/chartTheme.ts#L64),
+  [interactive.ts:22](../src/renderer/src/charts/interactive.ts#L22) (fill width) and
+  [:34](../src/renderer/src/charts/interactive.ts#L34) (zoom, legend),
+  [vega.ts:38](../src/renderer/src/charts/vega.ts#L38),
+  [ChartView.tsx:68](../src/renderer/src/components/ChartView.tsx#L68) (ResizeObserver) and
+  [:77](../src/renderer/src/components/ChartView.tsx#L77) (save), the export channel
+  [contract.ts:130](../src/shared/ipc/contract.ts#L130) and handler
+  [artifacts.ts:50](../src/main/ipc/handlers/artifacts.ts#L50), main's themed SVG
+  [chartSvg.ts:26](../src/main/artifacts/chartSvg.ts#L26).
+- Packaged check: [smoke-packaged.mjs:149](../scripts/smoke-packaged.mjs#L149).
+
+### How it works
+
+One question in the Results-first layout, from Enter to a saved PNG:
+
+1. You type "Units by day per region?" and press Enter. `ChatPanel` sends it, and the reducer
+   adds your message and sets `turnId` to its id.
+2. The analyst calls `run_sql`, then `create_chart`. Each `tool_call` event lands in the timeline
+   with `turnId` set. Under your question, `TurnSteps` folds them into "● Working ·
+   datadesk · create_chart…".
+3. The `artifact` event adds the chart. `ResultsPanel` sees a newer artifact and switches to its
+   tab. `ChartView` loads the stored spec, re-sanitizes it, then:
+   - `fillWidth` adds `width: "container"`, and `addInteractivity` adds a zoom param (x is
+     temporal) and a legend param (colour is nominal);
+   - vega-embed renders it with `chartConfig(resolvedTheme)`, on the theme's canvas with the
+     validated palette;
+   - the ResizeObserver keeps it as wide as the panel, even while you drag a splitter.
+4. Text deltas stream in. Each delta re-renders `ChatMarkdown`. An unclosed `sql` fence is
+   already a code block, and highlight.js classes colour it with `--dd-hl-*` tokens.
+5. The finished answer says `See [[chart:<id>]]`. The remark plugin turns that into a span. The
+   `span` component shows it as a chip named after the chart. Clicking the chip calls
+   `useResultsFocus()`, App bumps `focus`, and `ResultsPanel` selects the tab.
+6. You click **Save PNG**. The view renders itself to a PNG at 2x. The renderer sends only the
+   base64 to `artifacts:exportChart`:
+   - zod checks the id and that the string is base64;
+   - main decodes it, checks the 8-byte PNG signature, and opens a native save dialog;
+   - main writes the file and answers `{ saved, path }`, which shows up under the chart.
+
+### Gotchas
+
+- **`navigator.clipboard` doesn't work here.** `hardenApp.ts` denies every permission check,
+  clipboard writes included. Opening that permission would widen a deny-all, so copying goes
+  through a one-method, write-only IPC channel instead (D-026).
+- **Losing an image loses its words.** `unwrapDisallowed` keeps an element's _children_, but
+  `<img>` has none, so the alt text vanished. Images now render as their alt text through a
+  component, without ever creating an `<img>`.
+- **`style` props are fine under `style-src 'self'`.** The CSP blocks style _attributes in
+  markup_ and `<style>` elements. React and Vega write styles through the CSSOM
+  (`el.style.width = …`), which the CSP allows. The splitter e2e test drags in the real app to
+  prove it.
+- **Container-width charts never grew.** `.vega-embed` was `inline-block`, so its width came
+  from its content, and Vega measured that and stayed at 300 px. It also only re-measures on
+  _window_ resize, and panels resize without one. The fix was `display: block` plus a
+  ResizeObserver that sets Vega's `width` signal.
+- **Zoom made bar charts blank.** Zoom needs `clip: true`, and the theme's rounded bar ends
+  (`cornerRadiusEnd`) make Vega-Lite draw each bar inside a group with no width. Clipping that
+  group clipped every bar to nothing, so you got axes and no bars. Tests missed it twice: unit
+  tests only looked at the spec, and the e2e test counted bar `<path>`s, which still exist when
+  clipped. Zoom is now limited to lines, areas and points. The e2e test hit-tests each bar's
+  centre with `elementFromPoint`, which respects `clip-path`.
+- **Composite marks don't take params.** `boxplot`, `errorbar` and `errorband` expand into
+  several layers, and a legend selection on them fails with "Unrecognized signal name". Only
+  primitive marks get interaction now. A test also runs every chart type through real Vega,
+  because checking the spec's shape is not the same as checking the chart works.
+- **The sidebar only knew about the user's own additions.** It re-fetched after Add file or a
+  drop, but the analyst registers datasets too (`load_hf_dataset`, `register_dataset`), so an
+  HF download only showed up after a reload. App now counts successful catalog-changing tool
+  calls in the timeline and refreshes when the count grows.
+- **A tool can exist for one client only.** `remove_dataset` is registered only when main
+  spawns the UI's server (`DATADESK_UI_TOOLS=1`). Agent servers get the variable blanked
+  explicitly, because the Claude CLI merges its own env first (D-029).
+- **Short paths broke folder cleanup, but only on CI.** The catalog stores real paths, while
+  CI's temp dir is `RUNNER~1`. Comparing the two as strings said "not inside", so empty
+  folders stayed. The short-TEMP run caught it before pushing; the fix resolves both sides
+  with `realpath`.
+- **An invisible label made the whole window scroll.** `sr-only` is `position: absolute`. Without
+  a positioned ancestor, its containing block is the page, not the chat's scroll box. So in a
+  long conversation the "Analyst:" labels sat far below the window and stretched the document.
+  The fix: scroll boxes are `relative`, and the app shell is `relative overflow-clip`. Fixed
+  overlays (menus, dialogs, tooltips) are still fine, because overflow doesn't clip them.
+- **Middle-click needs `preventDefault` on `mousedown`.** In Chromium on Windows the middle
+  button starts autoscroll, and then no `auxclick` fires. jsdom tests passed anyway; the e2e
+  test caught it.
+- **New accessible names can break old selectors.** Tabs added buttons named "Close
+  <tab>", so `getByRole('button', { name: 'Close' })` (a substring match) found two. Use
+  `exact: true` for short names.
+- **Vega line opacity is the `opacity` attribute**, not `stroke-opacity`. The e2e legend check
+  first looked at the wrong one. Also, legend symbols are covered by a transparent hit area, so
+  the test clicks the label's coordinates the way a user would.
+- **A CSP test that only ever sees silence proves nothing.** Before trusting "zero violations",
+  a throwaway probe injected a `<style>` element to check the console listener really catches
+  one.
+- **The installer smoke refuses to run where DataDesk is really installed**, as it should. This
+  phase ran the unpacked-build smoke instead.
+
+### Experiments
+
+1. **Add a theme.** Copy the `[data-theme='slate']` block in `styles.css` as
+   `[data-theme='paper']` with warm greys, then add `paper` to `ThemeSchema`, `THEME_CHROME` and
+   `CHART_INK`. _Expect:_ `npm run check` fails until every token is defined and the tooling test
+   finds main's and the charts' colours equal to the stylesheet. Then the whole app (title bar
+   buttons, code highlighting, charts) switches with one click.
+2. **Try to break the markdown renderer.** With the dev app running, emit an `assistant_message`
+   containing `<img src=x onerror=alert(1)>`, `[click](javascript:alert(1))` and
+   `![x](https://example.com/p.png)`. _Expect:_ the tag shows as literal text, the link is plain
+   text, the image is the word "x", and DevTools' Network tab shows no request.
+3. **Drive a splitter with the keyboard only.** Tab to the line between the results and the
+   chat, then press ←, Home and End, and restart the app. _Expect:_ the chat grows by 24 px per
+   press and jumps to 300 px and 960 px. The chart re-fits as you go, a screen reader announces
+   the size, and the size survives the restart for that layout only.

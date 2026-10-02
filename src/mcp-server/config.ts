@@ -36,6 +36,11 @@ const EnvSchema = z.object({
   /** Where load_hf_dataset downloads to. Defaults to datasets/hf next to the catalog. */
   DATADESK_HF_DIR: z.string().min(1).optional(),
   DATADESK_HF_MAX_BYTES: z.coerce.number().int().min(1).default(HF_MAX_DOWNLOAD_BYTES),
+  /**
+   * '1' only for the UI's own server (main's buildServerEnv 'ui'). Enables tools that change
+   * the user's catalog on the user's behalf (remove_dataset); agent servers never get them.
+   */
+  DATADESK_UI_TOOLS: z.enum(['', '0', '1']).default(''),
   /** Embedding cache. Defaults to a "cache" folder next to the catalog. */
   DATADESK_CACHE_DIR: z.string().min(1).optional(),
   DATADESK_MAX_FILE_BYTES: z.coerce
@@ -61,6 +66,7 @@ export interface ServerConfig {
   hfToken: string | undefined;
   hfDir: string;
   hfMaxBytes: number;
+  uiTools: boolean;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv): ServerConfig {
@@ -87,6 +93,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): ServerConfig {
     hfToken: hfToken === '' ? undefined : hfToken,
     hfDir: parsed.DATADESK_HF_DIR ?? join(dirname(parsed.DATADESK_CATALOG_PATH), 'datasets', 'hf'),
     hfMaxBytes: parsed.DATADESK_HF_MAX_BYTES,
+    uiTools: parsed.DATADESK_UI_TOOLS === '1',
   };
 }
 

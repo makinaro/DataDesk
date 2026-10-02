@@ -23,6 +23,7 @@ describe('buildServerEnv', () => {
         'DATADESK_EXTENSION_DIR',
         'DATADESK_HF_DIR',
         'DATADESK_TEMP_DIR',
+        'DATADESK_UI_TOOLS',
         'ELECTRON_RUN_AS_NODE',
       ]);
       expect(JSON.stringify(env)).not.toContain('should-not-leak');
@@ -30,6 +31,13 @@ describe('buildServerEnv', () => {
       delete process.env.SOME_PARENT_SECRET;
       delete process.env.ANTHROPIC_API_KEY;
     }
+  });
+
+  it('turns on the UI-only tools for the UI server and explicitly off for agent servers', () => {
+    expect(buildServerEnv(paths, 'ui').DATADESK_UI_TOOLS).toBe('1');
+    // Blank, not absent: the Claude CLI merges its own env first, and the explicit '' wins.
+    expect(buildServerEnv(paths, 'agent').DATADESK_UI_TOOLS).toBe('');
+    expect(buildServerEnv(paths, 'agent', 'compare-openai').DATADESK_UI_TOOLS).toBe('');
   });
 
   it('keeps the catalog in userData and deny-lists userData itself', () => {

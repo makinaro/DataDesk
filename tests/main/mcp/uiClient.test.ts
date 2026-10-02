@@ -22,6 +22,8 @@ beforeEach(() => {
         db: ws.db,
         importPolicy: { denyDirs: [join(ws.root, 'userData')], maxFileBytes: 10_000_000 },
         artifacts: ws.artifacts,
+        // The UI's server, as main spawns it (DATADESK_UI_TOOLS=1).
+        ui: { ownedDir: join(ws.root, 'userData', 'datasets', 'hf') },
       });
       void server.connect(serverTransport);
       return clientTransport;
@@ -47,6 +49,13 @@ describe('UiMcpClient', () => {
     const preview = await client.preview('sales', 3);
     expect(preview).toMatchObject({ rowCount: 3, truncated: false });
     expect(preview.rows[0]).toHaveLength(7);
+  });
+
+  it('removes a dataset through the UI-only tool', async () => {
+    await client.register(join(ws.dataDir, 'sales.csv'));
+    await expect(client.remove('sales')).resolves.toEqual({ removed: true, deletedFile: false });
+    await expect(client.listDatasets()).resolves.toEqual([]);
+    await expect(client.remove('sales')).rejects.toBeInstanceOf(McpToolError);
   });
 
   it('turns isError tool results into McpToolError with the server message', async () => {

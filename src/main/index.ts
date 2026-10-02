@@ -1,13 +1,25 @@
 import { join } from 'node:path';
-import { app, BrowserWindow, dialog, ipcMain, safeStorage } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  clipboard,
+  dialog,
+  ipcMain,
+  Menu,
+  nativeTheme,
+  safeStorage,
+} from 'electron';
 import { IpcEvents } from '../shared/ipc/channels';
 import { createAgentRuntime } from './agent/agentRuntime';
+import { applyTheme, chromeFor } from './appearance';
 import { createCompareRuntime } from './agent/compareRuntime';
 import { ArtifactStore } from '../node-shared/artifactStore';
 import { printHtmlToPdf } from './artifacts/printPdf';
 import { renderChartSvg } from './artifacts/chartSvg';
 import { registerAgentHandlers } from './ipc/handlers/agent';
+import { registerAppearanceHandlers } from './ipc/handlers/appearance';
 import { registerArtifactHandlers } from './ipc/handlers/artifacts';
+import { registerClipboardHandlers } from './ipc/handlers/clipboard';
 import { registerCompareHandlers } from './ipc/handlers/compare';
 import { registerAppHandlers } from './ipc/handlers/app';
 import { registerDatasetHandlers } from './ipc/handlers/datasets';
@@ -18,6 +30,7 @@ import { createStdioTransport } from './mcp/serverProcess';
 import { UiMcpClient } from './mcp/uiClient';
 import { serverPaths } from './paths';
 import { KeyStore } from './secrets/keyStore';
+import { AppearanceStore } from './settings/appearanceStore';
 import { SettingsStore } from './settings/settingsStore';
 import {
   APP_ENTRY_URL,
@@ -27,7 +40,7 @@ import {
 } from './security/appProtocol';
 import { buildCsp } from './security/csp';
 import { applyDevCspHeader, hardenApp } from './security/hardenApp';
-import { createMainWindow } from './window';
+import { createMainWindow, paintWindow } from './window';
 
 // Lets e2e tests run against a throwaway profile. Dev/test builds only; must run before 'ready'.
 const userDataOverride = !app.isPackaged ? process.env.DATADESK_USER_DATA : undefined;
@@ -60,8 +73,11 @@ function start(): void {
 
   app
     .whenReady()
-    .then(() => {
+    .then(async () => {
       hardenApp(rendererOrigin);
+      // No File/Edit/View menu: the page draws the title bar (D-025). Its shortcuts that still
+      // matter are handled per window in createMainWindow.
+      Menu.setApplicationMenu(null);
 
       if (devServerUrl) {
         applyDevCspHeader(buildCsp({ kind: 'development', devServerUrl }));
@@ -80,6 +96,25 @@ function start(): void {
         },
       });
       registerAppHandlers(handle);
+      registerClipboardHandlers(handle, clipboard);
+
+      const appearanceStore = new AppearanceStore(join(app.getPath('userData'), 'appearance.json'));
+      let theme = (await appearanceStore.get()).theme;
+      const paintAll = (chrome: ReturnType<typeof chromeFor>) => {
+        for (const win of BrowserWindow.getAllWindows()) paintWindow(win, chrome);
+      };
+      applyTheme(theme, { nativeTheme, paint: paintAll });
+      // Fires when the OS theme changes, which matters while the theme is "system".
+      nativeTheme.on('updated', () => {
+        paintAll(chromeFor(theme, nativeTheme.shouldUseDarkColors));
+      });
+      registerAppearanceHandlers(handle, {
+        store: appearanceStore,
+        onChanged: (appearance) => {
+          theme = appearance.theme;
+          applyTheme(theme, { nativeTheme, paint: paintAll });
+        },
+      });
 
       const keyStore = new KeyStore(
         join(app.getPath('userData'), 'secrets.json'),
@@ -135,13 +170,16 @@ function start(): void {
       registerArtifactHandlers(handle, {
         store: new ArtifactStore(join(app.getPath('userData'), 'artifacts')),
         pickSavePath: async (defaultName, format) => {
+          const filters = {
+            md: { name: 'Markdown', extensions: ['md'] },
+            pdf: { name: 'PDF', extensions: ['pdf'] },
+            png: { name: 'PNG image', extensions: ['png'] },
+            svg: { name: 'SVG image', extensions: ['svg'] },
+          };
           const options: Electron.SaveDialogOptions = {
-            title: 'Export report',
+            title: format === 'png' || format === 'svg' ? 'Save chart' : 'Export report',
             defaultPath: defaultName,
-            filters:
-              format === 'pdf'
-                ? [{ name: 'PDF', extensions: ['pdf'] }]
-                : [{ name: 'Markdown', extensions: ['md'] }],
+            filters: [filters[format]],
           };
           const owner = BrowserWindow.getFocusedWindow();
           const result = owner
@@ -202,9 +240,13 @@ function start(): void {
         });
       });
 
-      createMainWindow(rendererUrl);
+      const openWindow = () =>
+        createMainWindow(rendererUrl, chromeFor(theme, nativeTheme.shouldUseDarkColors), {
+          dev: !app.isPackaged,
+        });
+      openWindow();
       app.on('activate', () => {
-        if (BrowserWindow.getAllWindows().length === 0) createMainWindow(rendererUrl);
+        if (BrowserWindow.getAllWindows().length === 0) openWindow();
       });
     })
     .catch((error: unknown) => {

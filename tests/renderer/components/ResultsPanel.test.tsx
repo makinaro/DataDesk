@@ -1,6 +1,8 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react';
-import { AgentProvider } from '../../../src/renderer/src/agent/AgentProvider';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { AgentProvider, useAgent } from '../../../src/renderer/src/agent/AgentProvider';
+import { useResultTabs } from '../../../src/renderer/src/results/useResultTabs';
 import { ApiProvider } from '../../../src/renderer/src/api';
+import { AppearanceProvider } from '../../../src/renderer/src/appearance/AppearanceProvider';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { splitReport } from '../../../src/renderer/src/components/ReportDocument';
 import { ResultsPanel } from '../../../src/renderer/src/components/ResultsPanel';
@@ -9,9 +11,12 @@ import { renderWithProviders } from '../renderApp';
 
 // Vega needs a real layout engine; the CSP-safe embed options are covered by the e2e test.
 const vega = vi.hoisted(() => ({
-  renderChart: vi.fn((el: HTMLElement) => {
-    el.setAttribute('data-rendered', 'true');
-    return Promise.resolve(vi.fn());
+  renderChart: vi.fn((el: HTMLElement, _spec: unknown, theme: string) => {
+    el.setAttribute('data-rendered', theme);
+    return Promise.resolve({
+      dispose: vi.fn(),
+      toPngBase64: () => Promise.resolve('iVBORw0KGgo='),
+    });
   }),
   chartToSvg: vi.fn(() => Promise.resolve('<svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>')),
 }));
@@ -20,13 +25,20 @@ vi.mock('../../../src/renderer/src/charts/vega', () => ({
   chartToSvg: vega.chartToSvg,
 }));
 
+/** Owns the tabs the way App does. */
+function HostedPanel({ dataset, revision }: { dataset: string | null; revision: number }) {
+  const { state } = useAgent();
+  const [tabs, setTabs] = useResultTabs(state.artifacts, dataset, null);
+  return <ResultsPanel dataset={dataset} revision={revision} tabs={tabs} setTabs={setTabs} />;
+}
+
 beforeEach(() => {
   vega.renderChart.mockClear();
   vega.chartToSvg.mockClear();
 });
 
 function renderPanel(dataset: string | null = null) {
-  return renderWithProviders(<ResultsPanel dataset={dataset} revision={0} />, createFakeApi());
+  return renderWithProviders(<HostedPanel dataset={dataset} revision={0} />, createFakeApi());
 }
 
 describe('splitReport', () => {
@@ -36,6 +48,57 @@ describe('splitReport', () => {
       { kind: 'chart', id: CHART_ID },
       { kind: 'md', text: `b [[chart:${CHART_ID}]]` },
     ]);
+  });
+});
+
+describe('ChartView toolbar', () => {
+  async function openChart() {
+    const result = renderPanel('sales');
+    act(() => {
+      result.api.emit({
+        kind: 'artifact',
+        artifactKind: 'chart',
+        id: CHART_ID,
+        title: 'Units by region',
+      });
+    });
+    await waitFor(() => {
+      expect(vega.renderChart).toHaveBeenCalledTimes(1);
+    });
+    return { ...result, figure: screen.getByRole('figure', { name: 'Chart: Units by region' }) };
+  }
+
+  it('renders in the current theme', async () => {
+    await openChart();
+    expect(vega.renderChart.mock.calls[0]?.[2]).toBe('dark');
+  });
+
+  it('saves a PNG of what is on screen and an SVG that main renders in the theme', async () => {
+    const { api, user, figure } = await openChart();
+    await user.click(within(figure).getByRole('button', { name: 'Save PNG' }));
+    expect(api.artifacts.exportChart).toHaveBeenCalledWith({
+      id: CHART_ID,
+      format: 'png',
+      pngBase64: 'iVBORw0KGgo=',
+    });
+    expect(await within(figure).findByRole('status')).toHaveTextContent(
+      'Saved to C:/out/chart.png',
+    );
+
+    await user.click(within(figure).getByRole('button', { name: 'Save SVG' }));
+    expect(api.artifacts.exportChart).toHaveBeenLastCalledWith({
+      id: CHART_ID,
+      format: 'svg',
+      theme: 'dark',
+    });
+  });
+
+  it('Reset view draws the chart again from its spec', async () => {
+    const { user, figure } = await openChart();
+    await user.click(within(figure).getByRole('button', { name: 'Reset view' }));
+    await waitFor(() => {
+      expect(vega.renderChart).toHaveBeenCalledTimes(2);
+    });
   });
 });
 
@@ -128,7 +191,7 @@ describe('ResultsPanel', () => {
         },
       }),
     );
-    renderWithProviders(<ResultsPanel dataset={null} revision={0} />, api);
+    renderWithProviders(<HostedPanel dataset={null} revision={0} />, api);
     act(() => {
       api.emit({ kind: 'artifact', artifactKind: 'report', id: REPORT_ID, title: 'Evil' });
     });
@@ -176,9 +239,11 @@ describe('ResultsPanel', () => {
     const api = createFakeApi();
     const ui = (dataset: string) => (
       <ApiProvider api={api}>
-        <AgentProvider>
-          <ResultsPanel dataset={dataset} revision={0} />
-        </AgentProvider>
+        <AppearanceProvider>
+          <AgentProvider>
+            <HostedPanel dataset={dataset} revision={0} />
+          </AgentProvider>
+        </AppearanceProvider>
       </ApiProvider>
     );
     const { rerender } = render(ui('sales'));
@@ -202,5 +267,89 @@ describe('ResultsPanel', () => {
       'aria-selected',
       'true',
     );
+  });
+});
+
+describe('closable tabs', () => {
+  function openBoth() {
+    const result = renderPanel('sales');
+    act(() => {
+      result.api.emit({
+        kind: 'artifact',
+        artifactKind: 'chart',
+        id: CHART_ID,
+        title: 'Units by region',
+      });
+      result.api.emit({
+        kind: 'artifact',
+        artifactKind: 'report',
+        id: REPORT_ID,
+        title: 'Sales summary',
+      });
+    });
+    return result;
+  }
+  const tabNames = () => screen.queryAllByRole('tab').map((t) => t.textContent);
+
+  it('the close button closes a tab and selects its neighbour', async () => {
+    const { user } = openBoth();
+    expect(tabNames()).toEqual([
+      'Data preview',
+      'Chart · Units by region',
+      'Report · Sales summary',
+    ]);
+    await user.click(screen.getByRole('button', { name: 'Close Sales summary' }));
+    expect(tabNames()).toEqual(['Data preview', 'Chart · Units by region']);
+    expect(screen.getByRole('tab', { name: /Units by region/ })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+  });
+
+  it('Delete closes the focused tab; arrows move between tabs', async () => {
+    const { user } = openBoth();
+    const report = screen.getByRole('tab', { name: /Sales summary/ });
+    report.focus();
+    await user.keyboard('{ArrowLeft}');
+    const chart = screen.getByRole('tab', { name: /Units by region/ });
+    expect(chart).toHaveFocus();
+    expect(chart).toHaveAttribute('aria-selected', 'true');
+    await user.keyboard('{Delete}');
+    expect(tabNames()).toEqual(['Data preview', 'Report · Sales summary']);
+    await waitFor(() => {
+      expect(screen.getByRole('tab', { name: /Sales summary/ })).toHaveFocus();
+    });
+  });
+
+  it('middle-click closes a tab', () => {
+    openBoth();
+    fireEvent(
+      screen.getByRole('tab', { name: 'Data preview' }),
+      new MouseEvent('auxclick', { bubbles: true, button: 1 }),
+    );
+    expect(tabNames()).toEqual(['Chart · Units by region', 'Report · Sales summary']);
+  });
+
+  it('with every tab closed it says what to do; picking a dataset reopens the preview', async () => {
+    const api = createFakeApi();
+    const ui = (dataset: string | null) => (
+      <ApiProvider api={api}>
+        <AppearanceProvider>
+          <AgentProvider>
+            <HostedPanel dataset={dataset} revision={0} />
+          </AgentProvider>
+        </AppearanceProvider>
+      </ApiProvider>
+    );
+    const { rerender } = render(ui(null));
+    fireEvent.click(screen.getByRole('button', { name: 'Close Data preview' }));
+    expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+    expect(screen.getByText(/Nothing open/)).toBeInTheDocument();
+    rerender(ui('sales'));
+    expect(screen.getByRole('tab', { name: 'Data preview' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(await screen.findByRole('table', { name: 'Preview of sales' })).toBeInTheDocument();
   });
 });

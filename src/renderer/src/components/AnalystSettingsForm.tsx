@@ -40,7 +40,7 @@ export function AnalystSettingsForm() {
     setMessage(result.ok ? 'Saved. New conversations use these settings.' : result.error.message);
   }
 
-  if (!settings) return <p className="text-sm text-slate-500">Loading…</p>;
+  if (!settings) return <p className="text-sm text-faint">Loading…</p>;
 
   return (
     <form onSubmit={(e) => void save(e)} className="space-y-3 text-sm">
@@ -52,7 +52,7 @@ export function AnalystSettingsForm() {
           onChange={(e) => {
             setSettings({ ...settings, provider: e.target.value as AnalystProvider });
           }}
-          className="rounded border border-slate-700 bg-slate-950 px-2 py-1"
+          className="rounded border border-strong bg-canvas px-2 py-1"
         >
           {PROVIDERS.map((p) => (
             <option key={p.value} value={p.value}>
@@ -70,7 +70,7 @@ export function AnalystSettingsForm() {
             onChange={(e) => {
               setSettings({ ...settings, openaiModel: e.target.value as OpenAIModel });
             }}
-            className="rounded border border-slate-700 bg-slate-950 px-2 py-1"
+            className="rounded border border-strong bg-canvas px-2 py-1"
           >
             {OPENAI_MODEL_OPTIONS.map((m) => (
               <option key={m.value} value={m.value}>
@@ -85,7 +85,7 @@ export function AnalystSettingsForm() {
             onChange={(e) => {
               setSettings({ ...settings, model: e.target.value });
             }}
-            className="rounded border border-slate-700 bg-slate-950 px-2 py-1"
+            className="rounded border border-strong bg-canvas px-2 py-1"
           >
             {MODELS.map((m) => (
               <option key={m.value} value={m.value}>
@@ -96,7 +96,7 @@ export function AnalystSettingsForm() {
         )}
       </div>
       {settings.provider === 'openai' && (
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-faint">
           Needs your OpenAI key. OpenAI then receives the whole conversation (see the OpenAI key
           note). Hugging Face tools are only available with Claude.
         </p>
@@ -113,7 +113,7 @@ export function AnalystSettingsForm() {
           onChange={(e) => {
             setSettings({ ...settings, maxBudgetUsd: Number(e.target.value) });
           }}
-          className="w-24 rounded border border-slate-700 bg-slate-950 px-2 py-1"
+          className="w-24 rounded border border-strong bg-canvas px-2 py-1"
         />
       </div>
       <div className="flex items-center justify-between gap-3">
@@ -128,12 +128,15 @@ export function AnalystSettingsForm() {
           onChange={(e) => {
             setSettings({ ...settings, maxTurns: Number(e.target.value) });
           }}
-          className="w-24 rounded border border-slate-700 bg-slate-950 px-2 py-1"
+          className="w-24 rounded border border-strong bg-canvas px-2 py-1"
         />
       </div>
       <div className="flex items-center justify-between">
-        <span className="text-xs text-slate-500">{message}</span>
-        <button type="submit" className="rounded bg-sky-700 px-3 py-1 hover:bg-sky-600">
+        <span className="text-xs text-faint">{message}</span>
+        <button
+          type="submit"
+          className="rounded bg-accent px-3 py-1 text-on-accent hover:bg-accent-hover"
+        >
           Save analyst settings
         </button>
       </div>

@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
+import { changesCatalog } from '../../shared/agent';
+import type { Layout } from '../../shared/appearance';
 import { ApprovalDialog } from './components/ApprovalDialog';
 import { ChatPanel } from './components/ChatPanel';
 import { CompareView } from './components/CompareView';
@@ -6,72 +8,148 @@ import { DatasetSidebar } from './components/DatasetSidebar';
 import { ResultsPanel } from './components/ResultsPanel';
 import { SettingsDialog } from './components/SettingsDialog';
 import { TimelineDrawer } from './components/TimelineDrawer';
+import { CompareIcon, SettingsIcon, TimelineIcon } from './components/icons';
+import { TitleBar, TitleBarButton } from './components/TitleBar';
+import { useAgent } from './agent/AgentProvider';
+import { useAppearance } from './appearance/AppearanceProvider';
+import { PANEL_LIMITS, usePanelSizes, type PanelKey } from './layout/panelSizes';
+import { Splitter } from './layout/Splitter';
+import { ResultsFocusProvider } from './results/ResultsFocus';
+import { useResultTabs, type FocusRequest } from './results/useResultTabs';
 
 export function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [timelineOpen, setTimelineOpen] = useState(true);
+  // Results-first shows each turn's steps inline in the chat, so its drawer starts closed.
+  const [timelineByLayout, setTimelineByLayout] = useState<Record<Layout, boolean>>({
+    'chat-first': true,
+    'results-first': false,
+  });
   const [comparing, setComparing] = useState(false);
   const [selectedDataset, setSelectedDataset] = useState<string | null>(null);
   const [datasetsRevision, setDatasetsRevision] = useState(0);
+  const [focus, setFocus] = useState<FocusRequest | null>(null);
+  const { state: agent } = useAgent();
+  // The analyst can register datasets too (register_dataset, load_hf_dataset). Each one that
+  // succeeds refreshes the sidebar, adjusting state during render rather than in an effect.
+  const catalogChanges = useMemo(
+    () =>
+      agent.timeline.filter(
+        (t) => t.kind === 'tool' && t.result && !t.result.isError && changesCatalog(t.name),
+      ).length,
+    [agent.timeline],
+  );
+  const [seenCatalogChanges, setSeenCatalogChanges] = useState(catalogChanges);
+  if (catalogChanges !== seenCatalogChanges) {
+    setSeenCatalogChanges(catalogChanges);
+    if (catalogChanges > seenCatalogChanges) setDatasetsRevision((r) => r + 1);
+  }
+  const [tabs, setTabs] = useResultTabs(agent.artifacts, selectedDataset, focus);
+  const { appearance } = useAppearance();
+  const layout = appearance.layout;
+  const timelineOpen = timelineByLayout[layout];
+  const [sizes, setSize] = usePanelSizes(layout);
+  const splitter = (key: PanelKey, label: string, panel: 'before' | 'after') => (
+    <Splitter
+      label={label}
+      orientation={key === 'timeline' ? 'horizontal' : 'vertical'}
+      value={sizes[key]}
+      min={PANEL_LIMITS[key].min}
+      max={PANEL_LIMITS[key].max}
+      panel={panel}
+      onChange={(px) => {
+        setSize(key, px);
+      }}
+    />
+  );
+  const focusArtifact = useCallback((id: string) => {
+    setFocus((prev) => ({ id, n: (prev?.n ?? 0) + 1 }));
+  }, []);
+  const results = (className: string, width?: number) => (
+    <ResultsPanel
+      dataset={selectedDataset}
+      revision={datasetsRevision}
+      tabs={tabs}
+      setTabs={setTabs}
+      className={className}
+      style={width === undefined ? undefined : { width }}
+    />
+  );
 
   return (
-    <div className="flex h-screen flex-col bg-slate-950 text-slate-100">
-      <header className="flex items-center justify-between border-b border-slate-800 px-4 py-2">
-        <h1 className="text-base font-semibold">DataDesk</h1>
-        <nav className="flex gap-2 text-sm">
-          <button
-            type="button"
-            aria-pressed={comparing}
+    // The window never scrolls, only the panels in it: relative + overflow-clip keeps any
+    // absolutely positioned descendant from stretching the document (fixed overlays still work).
+    <div className="relative flex h-screen flex-col overflow-clip text-fg">
+      <TitleBar>
+        <span className="flex-1" />
+        <nav aria-label="App" className="flex items-center gap-1">
+          <TitleBarButton
+            label="Compare"
+            icon={<CompareIcon />}
+            pressed={comparing}
             onClick={() => {
               setComparing((on) => !on);
             }}
-            className="rounded border border-slate-700 px-3 py-1 hover:bg-slate-800"
-          >
-            Compare
-          </button>
-          <button
-            type="button"
-            aria-pressed={timelineOpen}
+          />
+          <TitleBarButton
+            label="Timeline"
+            icon={<TimelineIcon />}
+            pressed={timelineOpen}
             onClick={() => {
-              setTimelineOpen((open) => !open);
+              setTimelineByLayout((open) => ({ ...open, [layout]: !open[layout] }));
             }}
-            className="rounded border border-slate-700 px-3 py-1 hover:bg-slate-800"
-          >
-            Timeline
-          </button>
-          <button
-            type="button"
+          />
+          <TitleBarButton
+            label="Settings"
+            icon={<SettingsIcon />}
             onClick={() => {
               setSettingsOpen(true);
             }}
-            className="rounded border border-slate-700 px-3 py-1 hover:bg-slate-800"
-          >
-            Settings
-          </button>
+          />
         </nav>
-      </header>
+      </TitleBar>
 
-      <main className="flex min-h-0 flex-1">
-        <DatasetSidebar
-          selected={selectedDataset}
-          onSelect={setSelectedDataset}
-          revision={datasetsRevision}
-          onChanged={() => {
-            setDatasetsRevision((r) => r + 1);
-          }}
-        />
-        {comparing ? (
-          // The chat stays mounted state-wise (AgentProvider), so its conversation survives.
-          <CompareView />
-        ) : (
-          <>
-            <ChatPanel />
-            <ResultsPanel dataset={selectedDataset} revision={datasetsRevision} />
-          </>
-        )}
-      </main>
-
-      {timelineOpen && <TimelineDrawer />}
+      <ResultsFocusProvider onFocus={focusArtifact}>
+        <main className="flex min-h-0 flex-1">
+          <DatasetSidebar
+            selected={selectedDataset}
+            onSelect={setSelectedDataset}
+            revision={datasetsRevision}
+            onChanged={() => {
+              setDatasetsRevision((r) => r + 1);
+            }}
+            style={{ width: sizes.sidebar }}
+          />
+          {splitter('sidebar', 'Resize datasets', 'before')}
+          <div className="flex min-w-0 flex-1 flex-col">
+            {comparing ? (
+              // The chat stays mounted state-wise (AgentProvider), so its conversation survives.
+              <CompareView />
+            ) : layout === 'results-first' ? (
+              results('min-h-0 flex-1')
+            ) : (
+              <ChatPanel className="flex-1" />
+            )}
+            {timelineOpen && (
+              <>
+                {splitter('timeline', 'Resize timeline', 'after')}
+                <TimelineDrawer style={{ height: sizes.timeline }} />
+              </>
+            )}
+          </div>
+          {!comparing &&
+            (layout === 'results-first' ? (
+              <>
+                {splitter('side', 'Resize chat', 'after')}
+                <ChatPanel docked className="shrink-0" style={{ width: sizes.side }} />
+              </>
+            ) : (
+              <>
+                {splitter('side', 'Resize results', 'after')}
+                {results('shrink-0', sizes.side)}
+              </>
+            ))}
+        </main>
+      </ResultsFocusProvider>
 
       <ApprovalDialog />
 

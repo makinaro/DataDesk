@@ -55,6 +55,9 @@ export function buildServerEnv(
     DATADESK_HF_DIR: join(paths.userData, 'datasets', 'hf'),
   };
   if (paths.extensionDir) env.DATADESK_EXTENSION_DIR = paths.extensionDir;
+  // Catalog-editing tools (remove_dataset) exist only in the UI's server. The agent's is
+  // blanked explicitly, so nothing inherited through the CLI's env can turn them on (D-029).
+  env.DATADESK_UI_TOOLS = purpose === 'ui' ? '1' : '';
   if (purpose === 'agent') {
     for (const name of BLANKED_FOR_AGENT_SERVER) env[name] = '';
   }

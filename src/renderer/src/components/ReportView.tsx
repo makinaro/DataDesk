@@ -54,22 +54,22 @@ export function ReportView({ id }: { id: string }) {
 
   if (error) {
     return (
-      <p role="alert" className="text-sm text-red-300">
+      <p role="alert" className="text-sm text-danger">
         {error}
       </p>
     );
   }
-  if (!report) return <p className="text-sm text-slate-500">Loading report…</p>;
+  if (!report) return <p className="text-sm text-faint">Loading report…</p>;
 
   return (
     <article aria-label={`Report: ${report.title}`} className="space-y-3">
       <div className="flex items-center justify-end gap-2 text-xs">
-        {status && <span className="mr-auto text-slate-400">{status}</span>}
+        {status && <span className="mr-auto text-muted">{status}</span>}
         <button
           type="button"
           disabled={busy}
           onClick={() => void exportAs('md')}
-          className="rounded border border-slate-700 px-2 py-1 hover:bg-slate-800 disabled:opacity-40"
+          className="rounded border border-strong px-2 py-1 hover:bg-raised disabled:opacity-40"
         >
           Export Markdown
         </button>
@@ -77,7 +77,7 @@ export function ReportView({ id }: { id: string }) {
           type="button"
           disabled={busy}
           onClick={() => void exportAs('pdf')}
-          className="rounded border border-slate-700 px-2 py-1 hover:bg-slate-800 disabled:opacity-40"
+          className="rounded border border-strong px-2 py-1 hover:bg-raised disabled:opacity-40"
         >
           Export PDF
         </button>

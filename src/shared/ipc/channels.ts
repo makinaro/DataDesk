@@ -12,6 +12,7 @@ export const IpcChannels = {
   datasetsPick: 'datasets:pick',
   datasetsSchema: 'datasets:schema',
   datasetsPreview: 'datasets:preview',
+  datasetsRemove: 'datasets:remove',
   agentSend: 'agent:send',
   agentStop: 'agent:stop',
   agentReset: 'agent:reset',
@@ -21,9 +22,13 @@ export const IpcChannels = {
   compareReset: 'compare:reset',
   settingsGetAgent: 'settings:getAgent',
   settingsSetAgent: 'settings:setAgent',
+  settingsGetAppearance: 'settings:getAppearance',
+  settingsSetAppearance: 'settings:setAppearance',
   artifactsGetChart: 'artifacts:getChart',
   artifactsGetReport: 'artifacts:getReport',
   artifactsExportReport: 'artifacts:exportReport',
+  artifactsExportChart: 'artifacts:exportChart',
+  clipboardWriteText: 'clipboard:writeText',
 } as const;
 
 export type IpcChannel = (typeof IpcChannels)[keyof typeof IpcChannels];

@@ -7,10 +7,12 @@ import {
   DatasetPreviewSchema,
   DatasetSummarySchema,
   RegisteredDatasetSchema,
+  RemovedDatasetSchema,
   type ColumnInfo,
   type DatasetPreview,
   type DatasetSummary,
   type RegisteredDataset,
+  type RemovedDataset,
 } from '../../shared/datasets';
 
 /** The server answered with isError: a message meant for the user (or model), not a crash. */
@@ -70,6 +72,11 @@ export class UiMcpClient {
 
   preview(dataset: string, limit: number): Promise<DatasetPreview> {
     return this.call('sample_rows', { dataset, limit, mode: 'head' }, DatasetPreviewSchema);
+  }
+
+  /** Only the UI's server has this tool (DATADESK_UI_TOOLS, D-029). */
+  remove(dataset: string): Promise<RemovedDataset> {
+    return this.call('remove_dataset', { name: dataset }, RemovedDatasetSchema);
   }
 
   async close(): Promise<void> {

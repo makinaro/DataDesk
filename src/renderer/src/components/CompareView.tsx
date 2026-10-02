@@ -15,7 +15,7 @@ const seconds = (ms: number) => `${(ms / 1000).toFixed(1)} s`;
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <dt className="text-slate-500">{label}</dt>
+      <dt className="text-faint">{label}</dt>
       <dd className="font-mono">{value}</dd>
     </div>
   );
@@ -35,11 +35,11 @@ function Lane({
   return (
     <section
       aria-label={title}
-      className="flex min-w-0 flex-1 flex-col gap-3 rounded-lg border border-slate-800 p-3"
+      className="flex min-w-0 flex-1 flex-col gap-3 rounded-lg border border-line p-3"
     >
       <header className="flex items-baseline justify-between gap-2">
         <h3 className="text-sm font-semibold">{title}</h3>
-        <span className="text-xs text-slate-500">
+        <span className="text-xs text-faint">
           {lane.model ?? ''}
           {lane.busy ? ' · working…' : lane.outcome ? ` · ${lane.outcome.reason}` : ''}
         </span>
@@ -53,9 +53,9 @@ function Lane({
       </dl>
 
       <div>
-        <h4 className="mb-1 text-xs font-semibold text-slate-400 uppercase">Answer</h4>
+        <h4 className="mb-1 text-xs font-semibold text-muted uppercase">Answer</h4>
         <p
-          className="min-h-12 rounded bg-slate-900 p-2 text-sm whitespace-pre-wrap"
+          className="min-h-12 rounded bg-surface p-2 text-sm whitespace-pre-wrap"
           data-testid="compare-answer"
         >
           {lane.answer || (lane.busy ? '…' : '')}
@@ -65,7 +65,7 @@ function Lane({
       {lane.errors.length > 0 && (
         <ul className="space-y-1">
           {lane.errors.map((message, i) => (
-            <li key={i} className="rounded bg-red-950 px-2 py-1 text-xs text-red-300">
+            <li key={i} className="rounded bg-danger-soft px-2 py-1 text-xs text-danger">
               {message}
             </li>
           ))}
@@ -73,17 +73,15 @@ function Lane({
       )}
 
       <div className="min-h-0">
-        <h4 className="mb-1 text-xs font-semibold text-slate-400 uppercase">
+        <h4 className="mb-1 text-xs font-semibold text-muted uppercase">
           Tool calls{lane.steps !== null ? ` · ${String(lane.steps)} model step(s)` : ''}
         </h4>
         <ol aria-label={`${title} tool calls`} className="space-y-1 text-xs">
           {lane.tools.map((tool) => (
-            <li key={tool.id} className={`font-mono ${tool.nested ? 'ml-4 text-slate-400' : ''}`}>
+            <li key={tool.id} className={`font-mono ${tool.nested ? 'ml-4 text-muted' : ''}`}>
               <span aria-hidden="true">{tool.ms === null ? '⏳' : tool.isError ? '✗' : '✓'}</span>{' '}
               {tool.label}
-              <span className="text-slate-500">
-                {tool.ms === null ? '' : ` ${String(tool.ms)} ms`}
-              </span>
+              <span className="text-faint">{tool.ms === null ? '' : ` ${String(tool.ms)} ms`}</span>
             </li>
           ))}
         </ol>
@@ -147,7 +145,7 @@ export function CompareView() {
   return (
     <Panel title="Compare providers" className="min-w-0 flex-[2]">
       <div className="flex h-full flex-col gap-3">
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-faint">
           Asks both analysts the same question in fresh sessions, with the models from Settings.
           Nothing is added or downloaded here: tools that need your approval are declined.
         </p>
@@ -160,13 +158,13 @@ export function CompareView() {
             }}
             onKeyDown={onKeyDown}
             placeholder="Ask both analysts… (Enter to run)"
-            className="h-16 flex-1 resize-none rounded-lg border border-slate-800 bg-slate-900 p-3 text-sm"
+            className="h-16 flex-1 resize-none rounded-lg border border-line bg-surface p-3 text-sm"
           />
           {busy ? (
             <button
               type="button"
               onClick={() => void api.compare.stop().catch(() => undefined)}
-              className="rounded-lg border border-red-800 px-4 text-sm text-red-300 hover:bg-red-950"
+              className="rounded-lg border border-danger px-4 text-sm text-danger hover:bg-danger-soft"
             >
               Stop
             </button>
@@ -175,14 +173,14 @@ export function CompareView() {
               type="button"
               onClick={() => void run()}
               disabled={!draft.trim()}
-              className="rounded-lg bg-sky-700 px-4 text-sm hover:bg-sky-600 disabled:opacity-40"
+              className="rounded-lg bg-accent px-4 text-sm text-on-accent hover:bg-accent-hover disabled:opacity-40"
             >
               Compare
             </button>
           )}
         </div>
         {error && (
-          <p role="alert" className="rounded bg-red-950 px-3 py-2 text-sm text-red-300">
+          <p role="alert" className="rounded bg-danger-soft px-3 py-2 text-sm text-danger">
             {error}
           </p>
         )}

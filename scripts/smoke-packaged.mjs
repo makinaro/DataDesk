@@ -30,7 +30,7 @@
 /* global window -- page.evaluate callbacks run inside the app's renderer. */
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { _electron as electron } from '@playwright/test';
@@ -140,6 +140,103 @@ async function uninstall(installDir) {
   }
 }
 
+const SMOKE_CHART_ID = '44444444-4444-4444-8444-444444444444';
+
+/**
+ * Phase 9 UI: a markdown answer with highlighted SQL and a chart chip, an interactive chart,
+ * and every theme in both layouts, with no CSP violation from the packaged app:// origin.
+ */
+async function checkUi(app, page, userData) {
+  const violations = [];
+  page.on('console', (msg) => {
+    if (/Content Security Policy|Refused to/i.test(msg.text())) violations.push(msg.text());
+  });
+  await page.reload();
+  await page.waitForLoadState('domcontentloaded');
+
+  mkdirSync(join(userData, 'artifacts', 'charts'), { recursive: true });
+  const chart = {
+    id: SMOKE_CHART_ID,
+    kind: 'chart',
+    title: 'Units by day',
+    sql: 'SELECT 1',
+    rowCount: 6,
+    truncated: false,
+    createdAt: '2026-10-01T00:00:00.000Z',
+    spec: {
+      mark: 'line',
+      encoding: {
+        x: { field: 'day', type: 'temporal' },
+        y: { field: 'units', type: 'quantitative' },
+        color: { field: 'region', type: 'nominal' },
+      },
+      data: {
+        values: ['South', 'East'].flatMap((region, r) =>
+          [1, 2, 3].map((d) => ({ region, day: `2026-01-0${String(d)}`, units: d * (r + 2) })),
+        ),
+      },
+    },
+  };
+  writeFileSync(
+    join(userData, 'artifacts', 'charts', `${SMOKE_CHART_ID}.json`),
+    JSON.stringify(chart),
+  );
+  let seq = 100_000;
+  const emit = (event) =>
+    app.evaluate(
+      ({ BrowserWindow }, payload) => {
+        BrowserWindow.getAllWindows()[0]?.webContents.send('agent:event', payload);
+      },
+      { ...event, seq: seq++, at: Date.now() },
+    );
+  await emit({ kind: 'artifact', artifactKind: 'chart', id: SMOKE_CHART_ID, title: chart.title });
+  await emit({
+    kind: 'assistant_message',
+    messageId: 'smoke-1',
+    text: [
+      '**East** leads.',
+      '',
+      '```sql',
+      'SELECT region FROM sales;',
+      '```',
+      '',
+      `See [[chart:${SMOKE_CHART_ID}]].`,
+    ].join('\n'),
+    parentToolUseId: null,
+  });
+  const answer = page.getByRole('list', { name: 'Conversation' });
+  await answer.locator('code.hljs .hljs-keyword').first().waitFor({ timeout: 10_000 });
+  check('markdown answer with highlighted SQL', true);
+  check(
+    'chart chip names the chart',
+    (await answer.getByRole('button', { name: `Show chart: ${chart.title}` }).count()) === 1,
+  );
+  await page.locator('.vega-embed svg .mark-line path').first().waitFor({ timeout: 10_000 });
+  check('interactive chart rendered', true);
+
+  const themes = ['Light', 'Slate', 'System', 'Dark'];
+  for (const layout of ['Chat-first', 'Results-first']) {
+    await page.getByRole('button', { name: 'Settings' }).click();
+    await page.getByRole('tab', { name: 'Appearance' }).click();
+    await page.getByRole('radio', { name: new RegExp(layout) }).check({ force: true });
+    for (const theme of themes) {
+      await page.getByRole('radio', { name: new RegExp(`^${theme}`) }).check({ force: true });
+      await page.waitForTimeout(150);
+    }
+    await page.getByRole('button', { name: 'Close', exact: true }).click();
+    await page.locator('.vega-embed svg').first().waitFor({ timeout: 10_000 });
+    check(
+      `${layout} layout renders the chat and the chart`,
+      await page.getByLabel('Message').isVisible(),
+    );
+  }
+  check(
+    'no CSP violations in any theme or layout',
+    violations.length === 0,
+    violations.join(' | '),
+  );
+}
+
 /** The app, dataset and agent checks, against whichever exe was built or installed. */
 async function checkApp(exe) {
   const profile = mkdtempSync(join(tmpdir(), 'datadesk-smoke-'));
@@ -192,6 +289,18 @@ async function checkLaunchedApp(app, profile) {
   }
   const preview = await page.evaluate(() => window.datadesk.datasets.preview('sales', 3));
   check('query via DuckDB', preview.ok && preview.data.rowCount === 3);
+
+  await checkUi(app, page, userData);
+
+  // The UI's own server has remove_dataset (DATADESK_UI_TOOLS, D-029); the user file stays.
+  const removed = await page.evaluate(() => window.datadesk.datasets.remove('sales'));
+  const after = await page.evaluate(() => window.datadesk.datasets.list());
+  check(
+    'remove a dataset through the UI-only tool',
+    removed.ok && after.ok && after.data.every((d) => d.name !== 'sales'),
+    removed.ok ? '' : removed.error.message,
+  );
+  check('the removed file is still on disk', existsSync(resolve('test-data/public/sales.xlsx')));
 
   if (withAgent) {
     await page.evaluate(() => {

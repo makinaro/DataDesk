@@ -35,22 +35,35 @@ describe('preload bridge', () => {
       'agent',
       'app',
       'artifacts',
+      'clipboard',
       'compare',
       'datasets',
       'secrets',
       'settings',
     ]);
-    expect(Object.keys(api.artifacts).sort()).toEqual(['exportReport', 'getChart', 'getReport']);
+    expect(Object.keys(api.artifacts).sort()).toEqual([
+      'exportChart',
+      'exportReport',
+      'getChart',
+      'getReport',
+    ]);
     expect(Object.keys(api.agent).sort()).toEqual(['approve', 'onEvent', 'reset', 'send', 'stop']);
-    expect(Object.keys(api.settings).sort()).toEqual(['getAgent', 'setAgent']);
+    expect(Object.keys(api.settings).sort()).toEqual([
+      'getAgent',
+      'getAppearance',
+      'setAgent',
+      'setAppearance',
+    ]);
     expect(Object.keys(api.compare).sort()).toEqual(['onEvent', 'reset', 'run', 'stop']);
     expect(Object.keys(api.app).sort()).toEqual(['info']);
+    expect(Object.keys(api.clipboard)).toEqual(['writeText']);
     expect(Object.keys(api.secrets).sort()).toEqual(['clear', 'set', 'status']);
     expect(Object.keys(api.datasets).sort()).toEqual([
       'list',
       'pick',
       'preview',
       'registerFile',
+      'remove',
       'schema',
     ]);
   });
@@ -113,13 +126,18 @@ describe('preload bridge', () => {
     await api.datasets.pick();
     await api.datasets.schema('sales');
     await api.datasets.preview('sales', 20);
+    await api.datasets.remove('sales');
     await api.datasets.registerFile(new File(['a'], 'sales.csv'), 'sales');
     await api.artifacts.getChart(CHART);
     await api.artifacts.getReport(REPORT);
     await api.artifacts.exportReport({ id: REPORT, format: 'md' });
+    await api.artifacts.exportChart({ id: CHART, format: 'svg', theme: 'dark' });
     await api.compare.run('Which region?');
     await api.compare.stop();
     await api.compare.reset();
+    await api.settings.getAppearance();
+    await api.settings.setAppearance({ theme: 'light', layout: 'chat-first' });
+    await api.clipboard.writeText('SELECT 1;');
     expect(invoke.mock.calls).toEqual([
       ['secrets:set', { provider: 'openai', key: 'sk-test-12345678' }],
       ['secrets:clear', { provider: 'huggingface' }],
@@ -129,13 +147,18 @@ describe('preload bridge', () => {
       ['datasets:pick', undefined],
       ['datasets:schema', { name: 'sales' }],
       ['datasets:preview', { name: 'sales', limit: 20 }],
+      ['datasets:remove', { name: 'sales' }],
       ['datasets:register', { path: 'C:/data/sales.csv', name: 'sales' }],
       ['artifacts:getChart', { id: CHART }],
       ['artifacts:getReport', { id: REPORT }],
       ['artifacts:exportReport', { id: REPORT, format: 'md' }],
+      ['artifacts:exportChart', { id: CHART, format: 'svg', theme: 'dark' }],
       ['compare:run', { text: 'Which region?' }],
       ['compare:stop', undefined],
       ['compare:reset', undefined],
+      ['settings:getAppearance', undefined],
+      ['settings:setAppearance', { theme: 'light', layout: 'chat-first' }],
+      ['clipboard:writeText', { text: 'SELECT 1;' }],
     ]);
   });
 

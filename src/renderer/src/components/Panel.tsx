@@ -1,18 +1,21 @@
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 
 interface PanelProps {
   title: string;
   className?: string;
+  /** Sizes from the resizable layout (set through the CSSOM, so the CSP allows them). */
+  style?: CSSProperties;
   children: ReactNode;
 }
 
-export function Panel({ title, className = '', children }: PanelProps) {
+export function Panel({ title, className = '', style, children }: PanelProps) {
   return (
-    <section aria-label={title} className={`flex min-h-0 flex-col ${className}`}>
-      <h2 className="border-b border-slate-800 px-4 py-2 text-xs font-semibold tracking-wide text-slate-400 uppercase">
+    <section aria-label={title} style={style} className={`flex min-h-0 flex-col ${className}`}>
+      <h2 className="border-b border-line px-4 py-2 text-xs font-semibold tracking-wide text-muted uppercase">
         {title}
       </h2>
-      <div className="min-h-0 flex-1 overflow-auto p-4">{children}</div>
+      {/* relative: absolutely positioned content stays inside the box that scrolls it. */}
+      <div className="relative min-h-0 flex-1 overflow-auto p-4">{children}</div>
     </section>
   );
 }
@@ -20,9 +23,9 @@ export function Panel({ title, className = '', children }: PanelProps) {
 /** Placeholder content for areas that later phases fill in. */
 export function ComingSoon({ phase, children }: { phase: number; children: ReactNode }) {
   return (
-    <div className="rounded-lg border border-dashed border-slate-700 p-4 text-sm text-slate-500">
+    <div className="rounded-lg border border-dashed border-strong p-4 text-sm text-faint">
       <p>{children}</p>
-      <p className="mt-2 text-xs text-slate-600">Arrives in Phase {phase}.</p>
+      <p className="mt-2 text-xs text-faint">Arrives in Phase {phase}.</p>
     </div>
   );
 }

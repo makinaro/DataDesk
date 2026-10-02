@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, type CSSProperties } from 'react';
 import { isSubagentTool as isSubagentCall } from '../../../shared/agent';
 import { useAgent } from '../agent/AgentProvider';
 import type { TimelineItem, ToolCallItem } from '../agent/agentState';
@@ -42,20 +42,20 @@ function ToolCall({ item }: { item: ToolCallItem }) {
   const { icon, duration } = status(item);
   return (
     <li>
-      <details className="rounded border border-slate-800 bg-slate-900/50">
+      <details className="rounded border border-line bg-surface">
         <summary className="cursor-pointer px-2 py-1 text-xs">
           <span aria-hidden="true">{icon}</span>{' '}
           <span className="font-mono">{toolLabel(item.name, item.input)}</span>{' '}
-          <span className="text-slate-500">{duration}</span>
+          <span className="text-faint">{duration}</span>
         </summary>
         <div className="space-y-1 px-2 pb-2 text-xs">
-          <pre className="overflow-auto rounded bg-slate-950 p-2 whitespace-pre-wrap">
+          <pre className="overflow-auto rounded bg-canvas p-2 whitespace-pre-wrap">
             {item.input}
           </pre>
           {item.result && (
             <pre
               className={`max-h-48 overflow-auto rounded p-2 whitespace-pre-wrap ${
-                item.result.isError ? 'bg-red-950 text-red-200' : 'bg-slate-950'
+                item.result.isError ? 'bg-danger-soft text-danger' : 'bg-canvas'
               }`}
             >
               {item.result.output}
@@ -81,27 +81,24 @@ function SubagentLane({
   const task = typeof input.description === 'string' ? input.description : '';
   const children = childrenOf.get(item.id) ?? [];
   return (
-    <li className="rounded border border-indigo-900 bg-indigo-950/30 p-2">
+    <li className="rounded border border-line bg-surface p-2">
       <p className="text-xs">
         <span aria-hidden="true">{icon}</span>{' '}
-        <span className="font-mono text-indigo-200">agent · {type}</span>
-        {task && <span className="text-slate-300"> · {task}</span>}{' '}
-        <span className="text-slate-500">
+        <span className="font-mono text-agent">agent · {type}</span>
+        {task && <span className="text-muted"> · {task}</span>}{' '}
+        <span className="text-faint">
           {duration} · {children.length} tool call(s)
         </span>
       </p>
       {children.length > 0 && (
-        <ol
-          aria-label={`${type} lane`}
-          className="mt-1 ml-3 space-y-1 border-l border-indigo-900 pl-2"
-        >
+        <ol aria-label={`${type} lane`} className="mt-1 ml-3 space-y-1 border-l border-line pl-2">
           {children.map((child) => (
             <Item key={`${child.kind}-${child.id}`} item={child} childrenOf={childrenOf} />
           ))}
         </ol>
       )}
       {item.agentText && (
-        <p className="mt-1 ml-3 line-clamp-3 text-xs whitespace-pre-wrap text-slate-400">
+        <p className="mt-1 ml-3 line-clamp-3 text-xs whitespace-pre-wrap text-muted">
           {item.agentText}
         </p>
       )}
@@ -119,7 +116,7 @@ function Item({
   switch (item.kind) {
     case 'session':
       return (
-        <li className="text-xs text-slate-500">
+        <li className="text-xs text-faint">
           Session started · {item.model} ·{' '}
           {item.mcpServers.map((s) => `${s.name} (${s.status})`).join(', ') || 'no MCP servers'} ·{' '}
           {item.tools.length} tools
@@ -133,28 +130,28 @@ function Item({
       );
     case 'turn':
       return (
-        <li className="text-xs text-slate-500">
+        <li className="text-xs text-faint">
           {item.ok ? 'Turn complete' : `Turn ended: ${item.reason}`} · {item.numTurns} step(s) ·{' '}
           {(item.durationMs / 1000).toFixed(1)} s · ${item.costUsd.toFixed(4)}
         </li>
       );
     case 'approval':
       return (
-        <li className="text-xs text-amber-300">
+        <li className="text-xs text-warn">
           Approval: {item.title} →{' '}
           {item.approved === null ? 'waiting' : item.approved ? 'approved' : 'denied'}
         </li>
       );
     case 'reset':
       return (
-        <li className="text-xs text-slate-500">
+        <li className="text-xs text-faint">
           New conversation (
           {item.reason === 'settings' ? 'analyst settings changed' : 'Anthropic key changed'})
         </li>
       );
     case 'error':
       return (
-        <li role="alert" className="text-xs text-red-300">
+        <li role="alert" className="text-xs text-danger">
           {item.message}
         </li>
       );
@@ -191,22 +188,29 @@ export function laneTree(timeline: readonly TimelineItem[]): {
   return { top, childrenOf };
 }
 
-export function TimelineDrawer() {
-  const { state } = useAgent();
-  const { top, childrenOf } = useMemo(() => laneTree(state.timeline), [state.timeline]);
+/** Timeline items with sub-agent lanes; used by the drawer and by inline turn steps. */
+export function TimelineList({ items, label }: { items: readonly TimelineItem[]; label: string }) {
+  const { top, childrenOf } = useMemo(() => laneTree(items), [items]);
   return (
-    <Panel title="Agent timeline" className="h-56 shrink-0 border-t border-slate-800">
+    <ol aria-label={label} className="space-y-1">
+      {top.map((item) => (
+        <Item key={`${item.kind}-${item.id}`} item={item} childrenOf={childrenOf} />
+      ))}
+    </ol>
+  );
+}
+
+export function TimelineDrawer({ style }: { style?: CSSProperties }) {
+  const { state } = useAgent();
+  return (
+    <Panel title="Agent timeline" style={style} className="shrink-0">
       {state.timeline.length === 0 ? (
-        <p className="text-sm text-slate-500">
+        <p className="text-sm text-faint">
           Every tool call the analyst makes shows up here, live, with inputs, results, timing and
           cost. Sub-agents get their own lane.
         </p>
       ) : (
-        <ol aria-label="Timeline" className="space-y-1">
-          {top.map((item) => (
-            <Item key={`${item.kind}-${item.id}`} item={item} childrenOf={childrenOf} />
-          ))}
-        </ol>
+        <TimelineList items={state.timeline} label="Timeline" />
       )}
     </Panel>
   );

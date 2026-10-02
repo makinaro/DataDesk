@@ -1,6 +1,8 @@
-import { useCallback, useState, type DragEvent } from 'react';
+import { useCallback, useState, type CSSProperties, type DragEvent, type MouseEvent } from 'react';
 import { useApi } from '../api';
 import { useIpcQuery } from '../useIpcQuery';
+import { ConfirmDialog } from './ConfirmDialog';
+import { ContextMenu } from './ContextMenu';
 import { Panel } from './Panel';
 
 interface Props {
@@ -9,6 +11,7 @@ interface Props {
   /** Bumped by the parent whenever datasets change; part of every query key. */
   revision: number;
   onChanged: () => void;
+  style?: CSSProperties;
 }
 
 /** Query key for "this dataset at this revision", so re-registering refreshes its views. */
@@ -23,11 +26,13 @@ function formatBytes(n: number): string {
   return `${(n / 1024 ** 3).toFixed(2)} GB`;
 }
 
-export function DatasetSidebar({ selected, onSelect, revision, onChanged }: Props) {
+export function DatasetSidebar({ selected, onSelect, revision, onChanged, style }: Props) {
   const api = useApi();
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const [menu, setMenu] = useState<{ name: string; x: number; y: number } | null>(null);
+  const [confirming, setConfirming] = useState<string | null>(null);
 
   const loadList = useCallback(() => api.datasets.list(), [api]);
   const loadSchema = useCallback((key: string) => api.datasets.schema(nameFromKey(key)), [api]);
@@ -76,6 +81,36 @@ export function DatasetSidebar({ selected, onSelect, revision, onChanged }: Prop
     }
   }
 
+  function openMenu(event: MouseEvent<HTMLButtonElement>, name: string) {
+    event.preventDefault();
+    // From the keyboard (Shift+F10, Menu key) there's no pointer position: use the item's.
+    const rect = event.currentTarget.getBoundingClientRect();
+    const fromKeyboard = event.clientX === 0 && event.clientY === 0;
+    setMenu({
+      name,
+      x: fromKeyboard ? rect.left + 16 : event.clientX,
+      y: fromKeyboard ? rect.bottom : event.clientY,
+    });
+  }
+
+  async function remove(name: string) {
+    setBusy(true);
+    setActionError(null);
+    try {
+      const result = await api.datasets.remove(name);
+      if (!result.ok) setActionError(result.error.message);
+      else {
+        if (selected === name) onSelect(null);
+        onChanged();
+      }
+    } catch {
+      setActionError('Could not reach the app backend.');
+    } finally {
+      setBusy(false);
+      setConfirming(null);
+    }
+  }
+
   function onDragOver(event: DragEvent) {
     if (!event.dataTransfer.types.includes('Files')) return;
     event.preventDefault();
@@ -91,7 +126,7 @@ export function DatasetSidebar({ selected, onSelect, revision, onChanged }: Prop
   }
 
   return (
-    <Panel title="Datasets" className="w-72 shrink-0 border-r border-slate-800">
+    <Panel title="Datasets" style={style} className="shrink-0 bg-surface">
       <div
         data-testid="dataset-dropzone"
         onDragOver={onDragOver}
@@ -100,29 +135,29 @@ export function DatasetSidebar({ selected, onSelect, revision, onChanged }: Prop
         }}
         onDrop={onDrop}
         className={`flex min-h-full flex-col gap-3 rounded-lg ${
-          dragging ? 'outline-2 outline-sky-500 outline-dashed' : ''
+          dragging ? 'outline-2 outline-focus outline-dashed' : ''
         }`}
       >
         <button
           type="button"
           onClick={() => void pick()}
           disabled={busy}
-          className="rounded border border-slate-700 px-3 py-1.5 text-sm hover:bg-slate-800 disabled:opacity-40"
+          className="rounded border border-strong px-3 py-1.5 text-sm hover:bg-raised disabled:opacity-40"
         >
           {busy ? 'Adding…' : 'Add file…'}
         </button>
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-faint">
           Or drop CSV, Excel, Parquet or JSON files anywhere in this panel.
         </p>
 
         {error && (
-          <p role="alert" className="rounded bg-red-950 px-2 py-1.5 text-xs text-red-300">
+          <p role="alert" className="rounded bg-danger-soft px-2 py-1.5 text-xs text-danger">
             {error}
           </p>
         )}
 
         {datasets.length === 0 ? (
-          <p className="text-sm text-slate-500">No datasets yet.</p>
+          <p className="text-sm text-faint">No datasets yet.</p>
         ) : (
           <ul aria-label="Registered datasets" className="space-y-1">
             {datasets.map((d) => (
@@ -130,15 +165,22 @@ export function DatasetSidebar({ selected, onSelect, revision, onChanged }: Prop
                 <button
                   type="button"
                   aria-current={selected === d.name}
+                  aria-keyshortcuts="Delete"
                   onClick={() => {
                     onSelect(selected === d.name ? null : d.name);
                   }}
-                  className={`w-full rounded px-2 py-1.5 text-left hover:bg-slate-800 ${
-                    selected === d.name ? 'bg-slate-800' : ''
+                  onContextMenu={(event) => {
+                    openMenu(event, d.name);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Delete') setConfirming(d.name);
+                  }}
+                  className={`w-full rounded px-2 py-1.5 text-left hover:bg-raised ${
+                    selected === d.name ? 'bg-raised' : ''
                   }`}
                 >
                   <span className="block font-mono text-sm">{d.name}</span>
-                  <span className="block text-xs text-slate-500">
+                  <span className="block text-xs text-faint">
                     {d.error
                       ? `⚠ ${d.error}`
                       : `${d.format.toUpperCase()} · ${String(d.rowCount ?? '?')} rows · ${String(
@@ -149,12 +191,12 @@ export function DatasetSidebar({ selected, onSelect, revision, onChanged }: Prop
                 {selected === d.name && schema && (
                   <ul
                     aria-label={`Columns of ${d.name}`}
-                    className="mt-1 ml-3 space-y-0.5 border-l border-slate-800 pl-2"
+                    className="mt-1 ml-3 space-y-0.5 border-l border-line pl-2"
                   >
                     {schema.map((c) => (
                       <li key={c.name} className="flex justify-between gap-2 text-xs">
                         <span className="truncate font-mono">{c.name}</span>
-                        <span className="shrink-0 text-slate-500">{c.type}</span>
+                        <span className="shrink-0 text-faint">{c.type}</span>
                       </li>
                     ))}
                   </ul>
@@ -164,6 +206,42 @@ export function DatasetSidebar({ selected, onSelect, revision, onChanged }: Prop
           </ul>
         )}
       </div>
+      {menu && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          label={`Dataset ${menu.name}`}
+          onClose={() => {
+            setMenu(null);
+          }}
+          items={[
+            {
+              label: 'Remove dataset…',
+              danger: true,
+              onSelect: () => {
+                setConfirming(menu.name);
+              },
+            },
+          ]}
+        />
+      )}
+      {confirming && (
+        <ConfirmDialog
+          title={`Remove "${confirming}"?`}
+          confirmLabel={busy ? 'Removing…' : 'Remove'}
+          busy={busy}
+          onConfirm={() => void remove(confirming)}
+          onCancel={() => {
+            setConfirming(null);
+          }}
+        >
+          <p>DataDesk forgets this dataset. Charts and reports you already made keep their data.</p>
+          <p>
+            Your own file stays where it is. If DataDesk downloaded it (from Hugging Face), the
+            download is deleted.
+          </p>
+        </ConfirmDialog>
+      )}
     </Panel>
   );
 }

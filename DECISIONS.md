@@ -830,3 +830,250 @@ runtime).
 - If a certificate is added later (`cscLink`), check that `claude.exe` keeps Anthropic's
   signature (`signExts` / `signtoolOptions`), so it isn't re-signed with ours.
 - Updates mean reinstalling; there is no auto-updater (no `electron-updater`, no publish target).
+
+## D-024: Theme tokens and a separate appearance store (2026-10-01)
+
+**Context:** Phase 9 (UI polish). The owner wants a black-and-white look and a theme switcher.
+Every component hard-coded Tailwind palette classes (`bg-slate-900`, `bg-sky-700`, ...), so any
+new theme meant editing every component. Main also draws colours the page can't reach: the
+window background before first paint, and (from the next task) the native window controls.
+Verified 2026-10-01: Tailwind **4.3.3** `@theme inline` (https://tailwindcss.com/docs/theme,
+"Referencing other variables"); Electron **44.5.1** `nativeTheme.themeSource` /
+`shouldUseDarkColors` / `'updated'` (`node_modules/electron/electron.d.ts:10130-10236`), and
+`prefers-color-scheme` in the renderer follows `themeSource` (same lines;
+https://www.electronjs.org/docs/latest/tutorial/dark-mode).
+
+**Decision:**
+
+- **Tokens:** components use semantic colours only (`bg-canvas`, `bg-surface`, `bg-raised`,
+  `text-muted`, `text-faint`, `border-line`, `bg-accent`, `text-danger`, ...). `@theme inline`
+  maps each to a `--dd-*` variable, and `[data-theme='dark'|'light'|'slate']` blocks set the
+  values. The selectors work on any element, so Settings previews each theme in place.
+- **Themes:** Dark (neutral black and white, default), Light, Slate (the pre-Phase-9 look), and
+  System (Dark or Light from the OS).
+- **Storage:** `userData/appearance.json` (`{ version: 1, appearance: { theme, layout } }`) via
+  `AppearanceStore`, behind `settings:getAppearance` / `settings:setAppearance`. It is separate
+  from `settings.json` because saving agent settings restarts the conversation; a theme change
+  must not.
+- **Who resolves System:** main sets `nativeTheme.themeSource` (`system`, or `dark`/`light`;
+  slate counts as dark), so `prefers-color-scheme` in the page follows it and the renderer
+  resolves System with `matchMedia`. Main resolves it again with `shouldUseDarkColors` for the
+  colours it paints, and repaints on `nativeTheme` `'updated'`.
+- **No flash:** main creates the window with the saved theme's background. `<html>` gets no
+  `data-theme` until the saved appearance has loaded, and the body background applies only
+  once it has, so the window background shows through until then.
+- **Guards:** a tooling test fails on any palette class in `src/renderer`, on a theme missing a
+  token, and on `THEME_CHROME` (main's colours) drifting from `styles.css`.
+
+**Alternatives:**
+
+- `localStorage` for the theme: main still needs it for the window background and title bar,
+  so it would be stored twice.
+- A `dark:` variant per class: it only handles two themes, and every component would spell out
+  every theme.
+- Keeping the theme in `AgentSettings`: saving it would reset the conversation.
+
+**Consequences:**
+
+- A new theme is one CSS block plus one `THEME_CHROME` entry. The tests point at anything
+  missing.
+- Charts keep a white surface until they get a theme-aware Vega config (later Phase 9 task).
+
+## D-025: Page-drawn title bar with native window controls (2026-10-01)
+
+**Context:** The owner wanted the "File, Edit, View, Window" menu gone and a title bar that
+belongs to the app, like VS Code, Discord or Obsidian. Verified 2026-10-01 against Electron
+**44.5.1** (`node_modules/electron/electron.d.ts:4055-4067, 24145-24167, 9640, 16241`;
+https://www.electronjs.org/docs/latest/tutorial/custom-title-bar; source of
+`NativeWindow::IsWindowControlsOverlayEnabled` and `setTitleBarOverlay` at tag v44.5.1).
+
+**Decision:**
+
+- `titleBarStyle: 'hidden'` plus `titleBarOverlay: { color, symbolColor, height: 40 }`.
+  Windows keeps drawing its own minimize, maximize and close buttons (with snap layouts and
+  the right hover states), in the theme's colours. The page draws the rest of the bar.
+  `setTitleBarOverlay` repaints the controls on a theme change. It throws if the window was
+  created without an overlay, which can't happen here because every window gets one.
+- `Menu.setApplicationMenu(null)` removes the menu and its accelerators app-wide. Hiding it
+  (`autoHideMenuBar`) would let Alt bring it back.
+- **CSS:** `.titlebar` sets `app-region: drag`, and its buttons set `no-drag`. Its right padding
+  comes from `env(titlebar-area-x/width)`, so nothing sits under the native controls. The e2e
+  test checks that `navigator.windowControlsOverlay.visible` is true.
+- **Shortcuts the menu used to provide** are handled in `before-input-event`
+  (`src/main/shortcuts.ts`): Ctrl+= / Ctrl+- / Ctrl+0 zoom in every build; F12, Ctrl+Shift+I,
+  F5 and Ctrl+R only when not packaged. Copy, paste, cut, select-all and undo need no menu on
+  Windows, because Blink handles them in text fields (`editing_behavior.cc`). The e2e test
+  checks cut and paste.
+
+**Alternatives:**
+
+- `frame: false` with page-drawn window buttons: you lose Windows snap layouts and the native
+  hover and maximize behaviour, and the app has to reimplement them.
+- Keeping a hidden menu just for its roles: the accelerators we need fit in one small module.
+
+**Consequences:**
+
+- Playwright's `press()` is injected into the page, below `before-input-event`, so the zoom
+  e2e test sends native key events with `webContents.sendInputEvent`.
+- No reload or DevTools in packaged builds (neither was reachable before without the menu).
+- `TITLE_BAR_HEIGHT` (main) and `.titlebar { height }` (CSS) must stay equal.
+
+## D-026: Chat markdown with class-only highlighting and a write-only clipboard (2026-10-02)
+
+**Context:** Analyst answers were shown as plain text, so tables, lists and SQL arrived as raw
+markdown. Model output is untrusted (it can echo text from datasets), and the CSP forbids
+inline scripts and injected `<style>`. Verified 2026-10-02 against the installed packages:
+**react-markdown 10.1.0**, **remark-gfm 4.0.1**, **rehype-highlight 7.0.2**
+(`node_modules/rehype-highlight/lib/index.d.ts`: `languages`, `aliases`, `detect`, `plainText`;
+an unknown language only adds a vfile warning), **highlight.js 11.11.2**
+(`types/index.d.ts` declares `highlight.js/lib/languages/*`). Sources:
+https://github.com/remarkjs/react-markdown, https://github.com/rehypejs/rehype-highlight.
+
+**Decision:**
+
+- `ChatMarkdown` uses the same safety rules as `ReportMarkdown`: no `rehype-raw`, so raw HTML
+  shows as text; links are unwrapped to their text; images become their alt text and never an
+  `<img>`. Highlighting runs through rehype-highlight, which emits `hljs-*` classes only. The
+  colours are theme tokens (`--dd-hl-*`), so code follows Dark, Light and Slate.
+- Only eight languages are registered (sql, python, r, json, javascript, typescript, bash,
+  yaml), with `duckdb` as an alias for sql. That keeps the bundle small; other fences stay plain.
+- Streaming needs no special parser. CommonMark already treats an unclosed fence as code to
+  the end of the text, and a GFM table renders once its delimiter row arrives.
+- A tiny remark plugin turns `[[chart:<id>]]` in prose (not in code) into a chip. The chip is
+  named after the chart and, via `ResultsFocusProvider`, brings that chart's tab forward in the
+  Results panel. Ids not in this conversation show as a disabled chip.
+- Copying a code block goes through a new **write-only** `clipboard:writeText` IPC channel
+  (zod-validated, text ≤ 1 MB). `hardenApp.ts` denies every permission check, so
+  `navigator.clipboard` would be rejected.
+
+**Alternatives:**
+
+- Allowing the `clipboard-sanitized-write` permission: this widens a deny-all handler, and the
+  renderer could then also ask for other clipboard permissions. An explicit write-only method
+  is easier to reason about and test.
+- Shiki: it emits inline `style` colours by default, and its WASM engine would need
+  `wasm-unsafe-eval` in the CSP.
+- `lowlight`'s `common` set (~37 languages): a larger bundle for languages an analyst rarely
+  writes.
+
+**Consequences:**
+
+- No IPC channel can read the clipboard. `tests/shared/ipc/contract.test.ts` fails if one is
+  added.
+- A new language needs one import in `ChatMarkdown.tsx`. If the token colours look off for it,
+  extend the `.hljs-*` rules in `styles.css`.
+
+## D-027: Resizable panels as ARIA window splitters, sizes in localStorage (2026-10-02)
+
+**Context:** The panels had fixed widths. The owner wanted to drag them, like the prototype,
+and the roadmap asks for keyboard access and sizes remembered per layout.
+
+**Decision:**
+
+- A small `Splitter` component follows the WAI-ARIA window-splitter pattern:
+  `role="separator"`, focusable, `aria-valuenow/min/max`, arrow keys move it 24 px, Home/End
+  jump to the limits. Pointer drag uses pointer capture, so a fast drag doesn't lose the 1 px
+  line. No library: the whole thing is about 80 lines.
+- Sizes are plain px values, applied through React's `style` prop. React writes them through
+  the CSSOM, which `style-src 'self'` allows (the CSP only blocks style attributes in markup and
+  `<style>` elements). The e2e test drags in the real app to prove it.
+- Sizes are kept per layout in the renderer's `localStorage` (`datadesk.panelSizes.v1`), read
+  through a zod schema and clamped, so a corrupt entry falls back to the defaults.
+
+**Alternatives:**
+
+- Saving in main next to the appearance settings: main needs the theme before the first paint
+  (D-024), but it never needs panel sizes, and a drag would mean a stream of IPC writes.
+- `react-resizable-panels`: works in percentages and brings its own layout model. Fixed-px
+  side panels with one growing area is what the prototype does.
+
+**Consequences:**
+
+- Sizes live in `userData/Local Storage`. Clearing site data resets them, which is harmless.
+- `PANEL_LIMITS` holds fixed px limits. On a very small window the growing area can get
+  narrow, but every panel keeps `min-w-0` and scrolls.
+
+## D-028: Theme-aware, interactive charts and chart export (2026-10-02)
+
+**Context:** Charts sat on a white card in every theme (D-024 left this for later) and were
+static. The roadmap asks for tooltips, zoom/pan, a legend filter, reset, and saving as PNG or
+SVG. Verified 2026-10-02 against the installed **vega 6.4.0**, **vega-lite 6.4.3**,
+**vega-embed 7.3.0**: `EmbedOptions.config`, `View.toImageURL(type, scale)` and `View.signal`
+(`node_modules/vega-embed/build/embed.d.ts`, `node_modules/vega-typings/types/runtime/index.d.ts`);
+`width: "container"` compiles to a `width` signal fed by `containerSize()` on `window:resize`,
+with `autosize: fit-x` (checked by compiling a spec with the installed vega-lite). Sources:
+https://vega.github.io/vega-lite/docs/size.html, https://vega.github.io/vega-lite/docs/bind.html.
+
+**Decision:**
+
+- **Theme:** `src/shared/chartTheme.ts` builds a Vega-Lite config per resolved theme. Ink colours
+  equal the stylesheet tokens (a tooling test checks), the grid and axes stay quiet, and tooltips
+  are on for every mark. The categorical palette is the dataviz skill's reference palette.
+  `validate_palette.js` passes every check against the Dark, Light and Slate canvases. On white,
+  three hues fall under 3:1 contrast; tooltips, the legend and the data preview are the required
+  relief.
+- **Interaction** (`charts/interactive.ts`, renderer only): single-view specs without their own
+  `params` get wheel zoom and drag pan (`bind: "scales"`) when x is continuous, and a legend
+  filter (`bind: "legend"`, other series fade to 0.15) when colour is categorical. They also get
+  `width: "container"`. A ResizeObserver sets the `width` signal, because Vega only re-measures
+  on window resize and the splitters resize panels without one. Composite specs are left alone.
+- **Reset** re-renders from the stored spec instead of resetting signals one by one.
+- **Export** goes through a new `artifacts:exportChart` channel. **SVG** is rendered by main
+  from the stored chart, in the theme the renderer names: SVG is markup and can carry script,
+  so D-016 applies. **PNG** comes from the renderer (exactly what's on screen, zoom included).
+  Main accepts only base64 that decodes to bytes starting with the PNG signature, then writes
+  it through a native save dialog.
+
+**Alternatives:**
+
+- Taking the SVG from the renderer, like the PNG: simpler, but it would reopen the hole D-016
+  closed.
+- vega-themes' `dark` theme: it doesn't match our tokens, and its categorical palette isn't
+  validated for colour-vision deficiency.
+- Interactivity written by the model in each spec: inconsistent from chart to chart, and every
+  prompt would pay for the instructions.
+
+**Consequences:**
+
+- Report exports (Markdown and PDF) keep Vega's light look, which suits paper. Only "Save SVG"
+  is themed.
+- A spec with its own `params` gets no added zoom or legend filter, so we never clash with the
+  model's selections.
+- `.vega-embed` is now `display: block`. An inline-block container measures its own content,
+  so container-width charts would never grow.
+
+## D-029: Removing datasets is a UI-only MCP tool (2026-10-02)
+
+**Context:** The owner asked for a way to delete a dataset from the sidebar. The sidebar reaches
+data only through its own datadesk-mcp process (D-003), and `DatasetDb.unregister` already
+existed, but no tool exposed it. Removing data is the user's decision, not the analyst's: a
+prompt-injected dataset must never be able to make the agent delete other datasets.
+
+**Decision:**
+
+- A `remove_dataset` tool, registered only when `DATADESK_UI_TOOLS=1`. Main's `buildServerEnv`
+  sets it to `'1'` for the UI server and to `''` for every agent server (Claude and OpenAI,
+  chat and compare). Blank rather than absent, because the Claude CLI merges its own env first,
+  as with the blanked secrets (D-014). As a second layer, the Claude agent's `system:init`
+  guard already stops a session that lists any tool it didn't expect.
+- It removes the catalog entry. It deletes the file only if (a) its real path is inside
+  DataDesk's HF download folder (the one folder DataDesk writes to, D-020), (b) it is a regular
+  file (not a symlink or junction), and (c) no other dataset points at it. The now-empty
+  `owner/repo/revision` folders go too, but never the HF folder itself. The user's own files
+  are never deleted, only forgotten.
+- Broken datasets (their file is missing) can still be removed.
+- The tool uses the existing `@modelcontextprotocol/sdk` 1.31.0 `registerTool` shape, the same
+  as the server's other 11 tools (D-005), with `destructiveHint: true`.
+
+**Alternatives:**
+
+- Main editing `catalog.json` directly: two writers, and main would need its own copy of the
+  catalog lock and validation. The MCP server already owns both.
+- Giving the agent the tool behind an approval prompt: it isn't needed for analysis, and a
+  "delete" prompt the user might click through is worse than the capability not existing.
+
+**Consequences:**
+
+- The tool list differs between the UI server and agent servers. Tests assert both: the
+  default server has no `remove_dataset`, and the UI env turns it on while every agent env
+  turns it off.

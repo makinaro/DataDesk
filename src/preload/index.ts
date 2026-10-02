@@ -49,6 +49,7 @@ const api: DatadeskApi = {
     pick: () => invoke(IpcChannels.datasetsPick),
     schema: (name) => invoke(IpcChannels.datasetsSchema, { name }),
     preview: (name, limit) => invoke(IpcChannels.datasetsPreview, { name, limit }),
+    remove: (name) => invoke(IpcChannels.datasetsRemove, { name }),
   },
   agent: {
     send: (text) => invoke(IpcChannels.agentSend, { text }),
@@ -83,11 +84,17 @@ const api: DatadeskApi = {
   settings: {
     getAgent: () => invoke(IpcChannels.settingsGetAgent),
     setAgent: (settings) => invoke(IpcChannels.settingsSetAgent, settings),
+    getAppearance: () => invoke(IpcChannels.settingsGetAppearance),
+    setAppearance: (appearance) => invoke(IpcChannels.settingsSetAppearance, appearance),
+  },
+  clipboard: {
+    writeText: (text) => invoke(IpcChannels.clipboardWriteText, { text }),
   },
   artifacts: {
     getChart: (id) => invoke(IpcChannels.artifactsGetChart, { id }),
     getReport: (id) => invoke(IpcChannels.artifactsGetReport, { id }),
     exportReport: (request) => invoke(IpcChannels.artifactsExportReport, request),
+    exportChart: (request) => invoke(IpcChannels.artifactsExportChart, request),
   },
 };
 

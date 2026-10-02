@@ -50,6 +50,25 @@ function isInside(child: string, parent: string): boolean {
 }
 
 /**
+ * True only if `file` is a regular file (not a symlink or junction) whose real path is inside
+ * the real path of `dir`. Used before deleting anything, so every doubt answers false.
+ */
+export async function isRealFileInside(
+  file: string,
+  dir: string,
+  platform: NodeJS.Platform = process.platform,
+): Promise<boolean> {
+  const fold = samePathCase(platform);
+  try {
+    if (!(await lstat(file)).isFile()) return false;
+    const [realFile, realDir] = await Promise.all([realpath(file), realpath(dir)]);
+    return realFile !== realDir && isInside(fold(realFile), fold(realDir));
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Decides whether a file may become a dataset. Registration grants the analyst read access to
  * that exact file, so this is a security boundary:
  * - absolute local paths only (no UNC / network shares: on Windows they can leak credentials)

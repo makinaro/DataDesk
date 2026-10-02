@@ -5,8 +5,10 @@ import {
   DatasetPreviewSchema,
   DatasetSummarySchema,
   RegisteredDatasetSchema,
+  RemovedDatasetSchema,
 } from '../datasets';
 import { AgentSettingsSchema } from '../agent';
+import { AppearanceSchema, ResolvedThemeSchema } from '../appearance';
 import { ArtifactIdSchema, ChartArtifactSchema, ReportArtifactSchema } from '../artifacts';
 import { IpcChannels, type IpcChannel } from './channels';
 
@@ -67,6 +69,10 @@ export const ipcContract = {
     request: z.strictObject({ name: DatasetNameSchema }),
     response: z.array(ColumnInfoSchema).max(10_000),
   },
+  [IpcChannels.datasetsRemove]: {
+    request: z.strictObject({ name: DatasetNameSchema }),
+    response: RemovedDatasetSchema,
+  },
   [IpcChannels.datasetsPreview]: {
     request: z.strictObject({
       name: DatasetNameSchema,
@@ -105,6 +111,8 @@ export const ipcContract = {
   },
   [IpcChannels.settingsGetAgent]: { request: NoPayload, response: AgentSettingsSchema },
   [IpcChannels.settingsSetAgent]: { request: AgentSettingsSchema, response: AgentSettingsSchema },
+  [IpcChannels.settingsGetAppearance]: { request: NoPayload, response: AppearanceSchema },
+  [IpcChannels.settingsSetAppearance]: { request: AppearanceSchema, response: AppearanceSchema },
   [IpcChannels.artifactsGetChart]: {
     request: z.strictObject({ id: ArtifactIdSchema }),
     response: ChartArtifactSchema,
@@ -123,6 +131,33 @@ export const ipcContract = {
     }),
     /** saved=false when the user cancelled the save dialog. */
     response: z.strictObject({ saved: z.boolean(), path: z.string().nullable() }),
+  },
+  [IpcChannels.artifactsExportChart]: {
+    request: z.discriminatedUnion('format', [
+      // SVG is markup, so main renders it itself from the stored chart, in the user's theme
+      // (same rule as report exports, D-016).
+      z.strictObject({
+        id: ArtifactIdSchema,
+        format: z.literal('svg'),
+        theme: ResolvedThemeSchema,
+      }),
+      // PNG is pixels: the renderer sends what is on screen (zoom, legend filter included) and
+      // main checks the PNG signature before writing.
+      z.strictObject({
+        id: ArtifactIdSchema,
+        format: z.literal('png'),
+        pngBase64: z
+          .string()
+          .max(20_000_000)
+          .regex(/^[A-Za-z0-9+/]+={0,2}$/),
+      }),
+    ]),
+    response: z.strictObject({ saved: z.boolean(), path: z.string().nullable() }),
+  },
+  [IpcChannels.clipboardWriteText]: {
+    // Write-only: the page may copy text out (e.g. a code block) but never read the clipboard.
+    request: z.strictObject({ text: z.string().max(1_000_000) }),
+    response: z.strictObject({ ok: z.literal(true) }),
   },
 } as const satisfies Record<IpcChannel, { request: z.ZodType; response: z.ZodType }>;
 

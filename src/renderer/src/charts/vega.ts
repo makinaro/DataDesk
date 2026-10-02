@@ -2,6 +2,9 @@ import { parse, View, type Loader } from 'vega';
 import embed from 'vega-embed';
 import { expressionInterpreter } from 'vega-interpreter';
 import { compile, type TopLevelSpec } from 'vega-lite';
+import type { ResolvedTheme } from '../../../shared/appearance';
+import { chartConfig } from '../../../shared/chartTheme';
+import { addInteractivity, fillWidth } from './interactive';
 
 /**
  * Vega under DataDesk's strict CSP (no eval, no inline styles, no network):
@@ -20,9 +23,27 @@ export const denyAllLoader = {
   file: deny,
 } as unknown as Loader;
 
-/** Renders a chart into `el`; returns a cleanup function. */
-export async function renderChart(el: HTMLElement, spec: TopLevelSpec): Promise<() => void> {
-  const result = await embed(el, spec, {
+export interface RenderedChart {
+  dispose: () => void;
+  /**
+   * Re-fits a container-width chart to its host. Vega only re-measures on window resize, but
+   * panels also resize with the splitters.
+   */
+  fit: (width: number) => void;
+  /** The chart as shown (theme, zoom, legend filter), as base64 PNG at 2x. */
+  toPngBase64: () => Promise<string>;
+}
+
+/** Renders an interactive, themed chart into `el`. */
+export async function renderChart(
+  el: HTMLElement,
+  spec: TopLevelSpec,
+  theme: ResolvedTheme,
+): Promise<RenderedChart> {
+  const prepared = addInteractivity(fillWidth(spec));
+  const fitsContainer = (prepared as unknown as { width?: unknown }).width === 'container';
+  const result = await embed(el, prepared, {
+    config: chartConfig(theme),
     mode: 'vega-lite',
     renderer: 'svg',
     ast: true,
@@ -32,8 +53,23 @@ export async function renderChart(el: HTMLElement, spec: TopLevelSpec): Promise<
     tooltip: { disableDefaultStyle: true },
     loader: denyAllLoader,
   });
-  return () => {
-    result.finalize();
+  return {
+    dispose: () => {
+      result.finalize();
+    },
+    fit: (width) => {
+      // The compiled `width` signal is the container's full width (autosize fit-x, padding).
+      if (!fitsContainer || width <= 0) return;
+      // A resize can land while the view is being finalized; there is nothing left to fit then.
+      result.view
+        .signal('width', width)
+        .runAsync()
+        .catch(() => undefined);
+    },
+    toPngBase64: async () => {
+      const url = await result.view.toImageURL('png', 2);
+      return url.slice(url.indexOf(',') + 1);
+    },
   };
 }
 

@@ -1,12 +1,231 @@
 @import 'tailwindcss';
 
 /*
+ * Theme tokens. Components use only these semantic colours (bg-canvas, text-muted,
+ * border-line, ...), never palette classes like slate-800, so a theme is just a set of
+ * variable values on <html data-theme="...">. `inline` makes each utility read the variable
+ * directly, so switching data-theme restyles everything without rebuilding CSS.
+ */
+@theme inline {
+  --color-canvas: var(--dd-canvas);
+  --color-surface: var(--dd-surface);
+  --color-raised: var(--dd-raised);
+  --color-strong: var(--dd-strong);
+  --color-line: var(--dd-line);
+  --color-fg: var(--dd-fg);
+  --color-muted: var(--dd-muted);
+  --color-faint: var(--dd-faint);
+  --color-accent: var(--dd-accent);
+  --color-accent-hover: var(--dd-accent-hover);
+  --color-on-accent: var(--dd-on-accent);
+  --color-bubble: var(--dd-bubble);
+  --color-focus: var(--dd-focus);
+  --color-danger: var(--dd-danger);
+  --color-danger-soft: var(--dd-danger-soft);
+  --color-warn: var(--dd-warn);
+  --color-warn-soft: var(--dd-warn-soft);
+  --color-ok: var(--dd-ok);
+  --color-agent: var(--dd-agent);
+  --color-scrim: var(--dd-scrim);
+}
+
+/*
+ * Themes apply to any element, so a settings card can preview one. Dark is also the fallback
+ * before the stored theme is applied.
+ */
+:root,
+[data-theme='dark'] {
+  color-scheme: dark;
+  --dd-canvas: #0e0e0e;
+  --dd-surface: #151515;
+  --dd-raised: #1e1e1e;
+  --dd-strong: #2a2a2a;
+  --dd-line: #262626;
+  --dd-fg: #ececec;
+  --dd-muted: #b4b4b4;
+  --dd-faint: #8a8a8a;
+  --dd-accent: #ececec;
+  --dd-accent-hover: #ffffff;
+  --dd-on-accent: #0e0e0e;
+  --dd-bubble: #222222;
+  --dd-focus: #ffffff;
+  --dd-danger: #f87171;
+  --dd-danger-soft: #2b1515;
+  --dd-warn: #fbbf24;
+  --dd-warn-soft: #2a2110;
+  --dd-ok: #4ade80;
+  --dd-agent: #c8c8c8;
+  --dd-scrim: rgb(0 0 0 / 0.6);
+  --dd-scrollbar: #363636;
+  --dd-scrollbar-hover: #4e4e4e;
+  --dd-hl-keyword: #c4a7f5;
+  --dd-hl-string: #9fd8a4;
+  --dd-hl-number: #f0b884;
+  --dd-hl-title: #8cc4f5;
+  --dd-hl-comment: #7a7a7a;
+}
+
+[data-theme='light'] {
+  color-scheme: light;
+  --dd-canvas: #ffffff;
+  --dd-surface: #f7f7f6;
+  --dd-raised: #efefee;
+  --dd-strong: #e4e4e3;
+  --dd-line: #e4e4e3;
+  --dd-fg: #171717;
+  --dd-muted: #464646;
+  --dd-faint: #6b6b6b;
+  --dd-accent: #171717;
+  --dd-accent-hover: #000000;
+  --dd-on-accent: #ffffff;
+  --dd-bubble: #f0f0ef;
+  --dd-focus: #000000;
+  --dd-danger: #b91c1c;
+  --dd-danger-soft: #fdecec;
+  --dd-warn: #92400e;
+  --dd-warn-soft: #fdf3e1;
+  --dd-ok: #15803d;
+  --dd-agent: #3a3a3a;
+  --dd-scrim: rgb(0 0 0 / 0.35);
+  --dd-scrollbar: #d0d0cf;
+  --dd-scrollbar-hover: #acacab;
+  --dd-hl-keyword: #7c3aed;
+  --dd-hl-string: #15803d;
+  --dd-hl-number: #b45309;
+  --dd-hl-title: #1d4ed8;
+  --dd-hl-comment: #737373;
+}
+
+/* The pre-Phase-9 look (slate + sky), kept as an option. */
+[data-theme='slate'] {
+  color-scheme: dark;
+  --dd-canvas: #020617;
+  --dd-surface: #0b1224;
+  --dd-raised: #1e293b;
+  --dd-strong: #273449;
+  --dd-line: #1e293b;
+  --dd-fg: #f1f5f9;
+  --dd-muted: #b4c0d0;
+  --dd-faint: #8391a7;
+  --dd-accent: #0369a1;
+  --dd-accent-hover: #0284c7;
+  --dd-on-accent: #ffffff;
+  --dd-bubble: #0c2a44;
+  --dd-focus: #38bdf8;
+  --dd-danger: #fca5a5;
+  --dd-danger-soft: #450a0a;
+  --dd-warn: #fcd34d;
+  --dd-warn-soft: #3a2a07;
+  --dd-ok: #6ee7b7;
+  --dd-agent: #a5b4fc;
+  --dd-scrim: rgb(0 0 0 / 0.6);
+  --dd-scrollbar: #1e293b;
+  --dd-scrollbar-hover: #334155;
+  --dd-hl-keyword: #c4b5fd;
+  --dd-hl-string: #86efac;
+  --dd-hl-number: #fdba74;
+  --dd-hl-title: #7dd3fc;
+  --dd-hl-comment: #64748b;
+}
+
+@layer base {
+  /* Until the saved theme is applied, the window background (painted by main) shows through. */
+  :root[data-theme] body {
+    background-color: var(--dd-canvas);
+  }
+  body {
+    color: var(--dd-fg);
+    font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  :focus-visible {
+    outline: 2px solid var(--dd-focus);
+    outline-offset: 2px;
+  }
+  ::placeholder {
+    color: var(--dd-faint);
+  }
+}
+
+/*
+ * The page-drawn title bar (D-025). Its height matches TITLE_BAR_HEIGHT in src/main/window.ts.
+ * env(titlebar-area-*) is where Windows leaves room beside its native window controls.
+ */
+.titlebar {
+  height: 40px;
+  padding-right: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw));
+  app-region: drag;
+  user-select: none;
+}
+.titlebar button,
+.titlebar a,
+.titlebar input,
+.titlebar [role='tab'] {
+  app-region: no-drag;
+}
+
+/*
+ * Resizable panel splitters: a 1 px line with a wider invisible grab area, highlighted on
+ * hover, drag and keyboard focus.
+ */
+.splitter {
+  position: relative;
+  z-index: 2;
+  flex-shrink: 0;
+  background: var(--dd-line);
+  touch-action: none;
+}
+.splitter-v {
+  width: 1px;
+  cursor: col-resize;
+}
+.splitter-h {
+  height: 1px;
+  cursor: row-resize;
+}
+.splitter::after {
+  content: '';
+  position: absolute;
+}
+.splitter-v::after {
+  inset: 0 -3px;
+}
+.splitter-h::after {
+  inset: -3px 0;
+}
+.splitter:hover,
+.splitter:focus-visible,
+.splitter:active {
+  outline: none;
+  background: var(--dd-muted);
+  box-shadow: 0 0 0 1px var(--dd-muted);
+}
+
+/* Thin rounded scrollbars in the theme's colours (Chromium). */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 10px;
+  background: var(--dd-scrollbar) padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--dd-scrollbar-hover) padding-box;
+}
+
+/*
  * Vega renders with defaultStyle:false and tooltip.disableDefaultStyle:true because the CSP
  * forbids injected <style> elements (DECISIONS D-016), so the equivalent rules live here.
  */
 .vega-embed {
   position: relative;
-  display: inline-block;
+  display: block;
   box-sizing: border-box;
   max-width: 100%;
 }
@@ -16,12 +235,12 @@
   position: fixed;
   z-index: 1000;
   padding: 8px;
-  border: 1px solid #d9d9d9;
-  border-radius: 3px;
-  background-color: rgb(255 255 255 / 0.95);
-  box-shadow: 2px 2px 4px rgb(0 0 0 / 0.1);
-  color: black;
-  font-family: sans-serif;
+  border: 1px solid var(--dd-line);
+  border-radius: 6px;
+  background-color: var(--dd-surface);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.2);
+  color: var(--dd-fg);
+  font-family: inherit;
   font-size: 11px;
   white-space: pre-line;
 }
@@ -44,7 +263,7 @@
 #vg-tooltip-element td.key {
   max-width: 150px;
   padding-right: 4px;
-  color: #808080;
+  color: var(--dd-faint);
   text-align: right;
 }
 #vg-tooltip-element td.value {
@@ -90,19 +309,19 @@
   list-style: decimal;
 }
 .report-prose a {
-  color: var(--color-sky-300);
+  color: var(--dd-fg);
   text-decoration: underline;
 }
 .report-prose code {
   border-radius: 0.25rem;
-  background: var(--color-slate-800);
+  background: var(--dd-raised);
   padding: 0 0.25rem;
   font-size: 0.8em;
 }
 .report-prose pre {
   overflow: auto;
   border-radius: 0.25rem;
-  background: var(--color-slate-900);
+  background: var(--dd-surface);
   padding: 0.5rem;
 }
 .report-prose pre code {
@@ -115,12 +334,136 @@
 }
 .report-prose th,
 .report-prose td {
-  border: 1px solid var(--color-slate-700);
+  border: 1px solid var(--dd-line);
   padding: 0.25rem 0.5rem;
   text-align: left;
 }
 .report-prose blockquote {
-  border-left: 3px solid var(--color-slate-600);
+  border-left: 3px solid var(--dd-strong);
   padding-left: 0.75rem;
-  color: var(--color-slate-400);
+  color: var(--dd-muted);
+}
+
+/* The streaming caret after an answer that is still arriving. */
+.caret {
+  display: inline-block;
+  width: 7px;
+  height: 15px;
+  margin-left: 2px;
+  background: var(--dd-fg);
+  vertical-align: -2px;
+  animation: caret-blink 1s steps(2) infinite;
+}
+@keyframes caret-blink {
+  50% {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .caret {
+    animation: none;
+  }
+}
+
+/* Analyst answers in the chat (ChatMarkdown). */
+.chat-prose {
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.chat-prose > * + * {
+  margin-top: 0.6rem;
+}
+.chat-prose h1,
+.chat-prose h2,
+.chat-prose h3 {
+  font-weight: 600;
+}
+.chat-prose ul {
+  padding-left: 1.25rem;
+  list-style: disc;
+}
+.chat-prose ol {
+  padding-left: 1.25rem;
+  list-style: decimal;
+}
+.chat-prose li + li {
+  margin-top: 0.15rem;
+}
+.chat-prose :not(pre) > code {
+  border-radius: 0.25rem;
+  background: var(--dd-raised);
+  padding: 0.05rem 0.3rem;
+  font-size: 0.85em;
+}
+.chat-prose table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+.chat-prose th,
+.chat-prose td {
+  border: 1px solid var(--dd-line);
+  padding: 0.25rem 0.6rem;
+  text-align: left;
+}
+.chat-prose th {
+  background: var(--dd-raised);
+  font-weight: 600;
+}
+.chat-prose blockquote {
+  border-left: 3px solid var(--dd-strong);
+  padding-left: 0.75rem;
+  color: var(--dd-muted);
+}
+.code-block {
+  overflow: hidden;
+  border: 1px solid var(--dd-line);
+  border-radius: 0.5rem;
+  background: var(--dd-canvas);
+}
+.code-block > div {
+  border-bottom: 1px solid var(--dd-line);
+  background: var(--dd-surface);
+}
+.code-block pre {
+  overflow-x: auto;
+  padding: 0.6rem 0.75rem;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+/* highlight.js token classes (rehype-highlight emits classes only, never inline styles). */
+.hljs-keyword,
+.hljs-built_in,
+.hljs-literal,
+.hljs-type,
+.hljs-selector-tag {
+  color: var(--dd-hl-keyword);
+}
+.hljs-string,
+.hljs-regexp,
+.hljs-symbol,
+.hljs-template-string {
+  color: var(--dd-hl-string);
+}
+.hljs-number,
+.hljs-attr,
+.hljs-variable {
+  color: var(--dd-hl-number);
+}
+.hljs-title,
+.hljs-function,
+.hljs-section,
+.hljs-name,
+.hljs-property {
+  color: var(--dd-hl-title);
+}
+.hljs-comment,
+.hljs-quote,
+.hljs-meta {
+  color: var(--dd-hl-comment);
+  font-style: italic;
 }

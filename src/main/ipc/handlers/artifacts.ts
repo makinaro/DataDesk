@@ -1,8 +1,10 @@
 import { writeFile } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import type { ArtifactStore } from '../../../node-shared/artifactStore';
+import type { ResolvedTheme } from '../../../shared/appearance';
 import type { ChartArtifact } from '../../../shared/artifacts';
 import { IpcChannels } from '../../../shared/ipc/channels';
+import type { IpcRequest } from '../../../shared/ipc/contract';
 import {
   buildMarkdownExport,
   buildPrintDocument,
@@ -14,12 +16,21 @@ import type { IpcHandle } from '../router';
 export interface ArtifactHandlerDeps {
   store: Pick<ArtifactStore, 'getChart' | 'getReport'>;
   /** Main-process save dialog; resolves to a path or null if cancelled. */
-  pickSavePath: (defaultName: string, format: 'md' | 'pdf') => Promise<string | null>;
+  pickSavePath: (defaultName: string, format: ExportFormat) => Promise<string | null>;
   printToPdf: (html: string) => Promise<Buffer>;
-  /** Renders a stored chart to SVG (headless Vega in main); null if it can't be rendered. */
-  renderSvg: (chart: ChartArtifact) => Promise<string | null>;
+  /**
+   * Renders a stored chart to SVG (headless Vega in main); null if it can't be rendered.
+   * Without a theme it uses Vega's default (light paper) look, as report exports do.
+   */
+  renderSvg: (chart: ChartArtifact, theme?: ResolvedTheme) => Promise<string | null>;
   writeFile?: (path: string, data: string | Buffer) => Promise<void>;
 }
+
+export type ExportFormat =
+  | IpcRequest<typeof IpcChannels.artifactsExportReport>['format']
+  | IpcRequest<typeof IpcChannels.artifactsExportChart>['format'];
+
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 export function registerArtifactHandlers(handle: IpcHandle, deps: ArtifactHandlerDeps): void {
   const write = deps.writeFile ?? ((path, data) => writeFile(path, data));
@@ -34,6 +45,31 @@ export function registerArtifactHandlers(handle: IpcHandle, deps: ArtifactHandle
     const report = await deps.store.getReport(id);
     if (!report) throw new IpcUserError('REJECTED', 'That report no longer exists.');
     return report;
+  });
+
+  handle(IpcChannels.artifactsExportChart, async (request) => {
+    const chart = await deps.store.getChart(request.id);
+    if (!chart) throw new IpcUserError('REJECTED', 'That chart no longer exists.');
+
+    let data: string | Buffer;
+    if (request.format === 'png') {
+      data = Buffer.from(request.pngBase64, 'base64');
+      if (!data.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)) {
+        throw new IpcUserError('INVALID_REQUEST', 'That is not a PNG image.');
+      }
+    } else {
+      const svg = await deps.renderSvg(chart, request.theme);
+      if (svg === null) throw new IpcUserError('REJECTED', 'This chart could not be rendered.');
+      data = svg;
+    }
+
+    const path = await deps.pickSavePath(
+      `${safeFileStem(chart.title)}.${request.format}`,
+      request.format,
+    );
+    if (path === null) return { saved: false, path: null };
+    await write(path, data);
+    return { saved: true, path };
   });
 
   handle(IpcChannels.artifactsExportReport, async ({ id, format, bodyHtml }) => {

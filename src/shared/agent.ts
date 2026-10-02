@@ -170,6 +170,17 @@ export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
  */
 export const SUBAGENT_TOOL_NAMES = ['Agent', 'Task'] as const;
 
+/** datadesk-mcp tools that add to the user's catalog when they succeed. */
+const CATALOG_TOOLS = ['register_dataset', 'load_hf_dataset'];
+
+/**
+ * True for a catalog-changing tool, whether the provider reports it as `mcp__datadesk__<name>`
+ * (Claude) or by its bare name (OpenAI).
+ */
+export function changesCatalog(toolName: string): boolean {
+  return CATALOG_TOOLS.some((t) => toolName === t || toolName === `mcp__datadesk__${t}`);
+}
+
 export function isSubagentTool(name: string): boolean {
   return (SUBAGENT_TOOL_NAMES as readonly string[]).includes(name);
 }

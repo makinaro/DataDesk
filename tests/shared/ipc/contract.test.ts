@@ -119,4 +119,65 @@ describe('ipcContract', () => {
       expect(ipcContract[IpcChannels.compareReset].request.safeParse(undefined).success).toBe(true);
     });
   });
+
+  describe('dataset remove channel', () => {
+    it('takes only a valid dataset name', () => {
+      const req = ipcContract[IpcChannels.datasetsRemove].request;
+      expect(req.safeParse({ name: 'sales_2024' }).success).toBe(true);
+      expect(req.safeParse({ name: 'C:/Users/me/sales.csv' }).success).toBe(false);
+      expect(req.safeParse({ name: 'x'.repeat(500) }).success).toBe(false);
+      expect(req.safeParse({ name: 'sales', path: 'C:/x' }).success).toBe(false);
+    });
+  });
+
+  describe('chart export channel', () => {
+    const req = ipcContract[IpcChannels.artifactsExportChart].request;
+    const id = '11111111-1111-4111-8111-111111111111';
+
+    it('takes PNG pixels or an SVG theme, never SVG markup', () => {
+      expect(req.safeParse({ id, format: 'png', pngBase64: 'iVBORw0KGgo=' }).success).toBe(true);
+      expect(req.safeParse({ id, format: 'svg', theme: 'light' }).success).toBe(true);
+      expect(req.safeParse({ id, format: 'svg', theme: 'system' }).success).toBe(false);
+      expect(req.safeParse({ id, format: 'svg', theme: 'dark', svg: '<svg/>' }).success).toBe(
+        false,
+      );
+      expect(req.safeParse({ id, format: 'png', pngBase64: '<svg/>' }).success).toBe(false);
+      expect(req.safeParse({ id, format: 'pdf', theme: 'dark' }).success).toBe(false);
+      expect(req.safeParse({ id: '../x', format: 'svg', theme: 'dark' }).success).toBe(false);
+    });
+  });
+
+  describe('clipboard channel', () => {
+    it('is write-only: no channel can read the clipboard', () => {
+      const clipboardChannels = Object.values(IpcChannels).filter((c) =>
+        c.startsWith('clipboard:'),
+      );
+      expect(clipboardChannels).toEqual(['clipboard:writeText']);
+    });
+
+    it('takes only bounded text', () => {
+      const write = ipcContract[IpcChannels.clipboardWriteText].request;
+      expect(write.safeParse({ text: 'SELECT 1;' }).success).toBe(true);
+      expect(write.safeParse({ text: 'x'.repeat(1_000_001) }).success).toBe(false);
+      expect(write.safeParse({ text: 'x', html: '<b>x</b>' }).success).toBe(false);
+      expect(write.safeParse({}).success).toBe(false);
+    });
+  });
+
+  describe('appearance channels', () => {
+    const set = ipcContract[IpcChannels.settingsSetAppearance].request;
+
+    it('takes only a known theme and layout', () => {
+      expect(set.safeParse({ theme: 'slate', layout: 'chat-first' }).success).toBe(true);
+      expect(set.safeParse({ theme: 'neon', layout: 'chat-first' }).success).toBe(false);
+      expect(set.safeParse({ theme: 'dark', layout: 'sideways' }).success).toBe(false);
+      expect(set.safeParse({ theme: 'dark' }).success).toBe(false);
+      expect(set.safeParse({ theme: 'dark', layout: 'chat-first', css: 'body{}' }).success).toBe(
+        false,
+      );
+      expect(ipcContract[IpcChannels.settingsGetAppearance].request.safeParse({}).success).toBe(
+        false,
+      );
+    });
+  });
 });
