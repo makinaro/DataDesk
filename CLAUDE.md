@@ -15,6 +15,9 @@ Doc map: [ROADMAP.md](ROADMAP.md) (what's next) · [DECISIONS.md](DECISIONS.md) 
 3. Run `git status` and `git branch --show-current`. You should be on `phase-N-<slug>` for the
    current phase. If you're on `main` and the phase's work hasn't started, create the branch.
 4. State the next task (from the ROADMAP) and your approach in 2–3 lines before writing code.
+5. Load the `using-agent-skills` skill and route the task through it: it says which skill or
+   agent applies (spec, planning, docs-researcher, add-* skills, reviewers) and the rules every
+   session follows.
 
 ## One phase at a time
 
@@ -107,4 +110,6 @@ To reverse an earlier decision, add a new entry that references the old one. Don
 
 - Agents: `docs-researcher` (read-only + web, cited signatures), `code-reviewer` (read-only
   review of `main...HEAD` against this file), `test-writer` (may only edit test files).
-- Skills: `/add-ipc-channel`, `/add-mcp-tool`, `/finish-phase`.
+- Skills: `using-agent-skills` (the router, start here), `spec-driven-development`,
+  `planning-and-task-breakdown`, `/spec-designer`, `/add-ipc-channel`, `/add-mcp-tool`,
+  `/finish-phase`. Agent: `plan-auditor` (blind review of `planning/`).

@@ -28,7 +28,8 @@
     "package:dir": "electron-vite build && electron-builder --dir",
     "icon": "node scripts/make-icon.mjs",
     "smoke:packaged": "node scripts/smoke-packaged.mjs",
-    "check": "npm run typecheck && npm run lint && npm run format:check && npm run test"
+    "check": "npm run typecheck && npm run lint && npm run format:check && npm run test",
+    "plan:html": "node planning/tools/md2html/md2html.mjs planning/README.md planning/pending.md planning/decisions-draft.md planning/roadmap.md planning/plans planning/audit --root planning --out planning/html"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.3.286",
