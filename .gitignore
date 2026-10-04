@@ -36,3 +36,6 @@ Thumbs.db
 
 # fetched by npm run duckdb:extensions (22 MB, signature-checked by DuckDB)
 resources/duckdb-extensions/
+
+# rendered planning docs (npm run plan:html)
+planning/html/
