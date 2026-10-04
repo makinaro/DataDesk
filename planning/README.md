@@ -110,7 +110,7 @@ planning rules are in roadmap §18.
   session start, step 5). It routes work to `spec-driven-development` (writing a phase spec),
   `planning-and-task-breakdown` (a signed-off phase into tasks) and the other skills. See roadmap §18.1a.
 
-- **Render to HTML:** `npm run plan:html` (first time: `npm run plan:setup`). On Windows you can also run
+- **Render to HTML:** `npm run plan:html` (after `npm ci`). On Windows you can also run
   `planning\md2html.cmd`. One file: `node planning/tools/md2html/md2html.mjs <file.md> --open`.
 - **Answer a questionnaire:** `/spec-designer planning/plans/Pn-questionnaire.md`. A senior
   system architect answers every open question with its reasoning, signs `@spec-designer`, and

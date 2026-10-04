@@ -49,7 +49,7 @@ defaults: spend lines need the signed-tag approval above. Answer "agree" to keep
 write a different answer; a struck-through default has been superseded by a later question.
 Details are in each phase's `Pn-audit.md`.
 
-<details><summary><b>P11</b> (18) · <a href="plans/P11-audit.md">P11-audit.md</a></summary>
+#### P11 (18) · [P11-audit.md](plans/P11-audit.md)
 
 - [x] **Q-D1. One owner for per-analysis state.** Default: an analysis controller in main owns the journal, budgets, split and attribution, and **`run_sql` also reports to it**, so the 200-row cap covers both servers. **Agreed (2026-10-04).**
 - [x] **Q-D2. Who writes the journal.** Default: main, not `datadesk-ds` (reverses the old roadmap §8.3 wording; recorded as a D-NNN at P11 sign-off). **Agreed after discussion (2026-10-04).**
@@ -70,9 +70,7 @@ Details are in each phase's `Pn-audit.md`.
 - [x] **Q-G5. The "unverified" mark.** Default: the agent writes `[[unverified]]` after a number it can't cite; M-04 = 0 stays the target. **Agreed (2026-10-04).**
 - [x] **Q-G6. Failed test evaluations.** Default: any attempt that reaches the evaluation kernel uses up the test set, even if it fails. **Agreed (2026-10-04).**
 
-</details>
-
-<details><summary><b>P12</b> (21) · <a href="plans/P12-audit.md">P12-audit.md</a></summary>
+#### P12 (21) · [P12-audit.md](plans/P12-audit.md)
 
 - [x] **Q-E1. Baseline before P14.** Default: a **partial** baseline from a runner-written event log (cost, time, injection attempts, the rubric score); answer-based metrics start at P14's first gate. No bench-only prompt is added to today's analyst. **Agreed (2026-10-04).**
 - [x] **Q-E2. Trap coverage.** Default: 2 traps per dev task and 3 per holdout task, so all 12 categories appear in both splits at no extra cost; drift is listed as a v1.0 limitation. **Agreed (2026-10-04).**
@@ -96,9 +94,7 @@ Details are in each phase's `Pn-audit.md`.
 - [x] **Q-K7. Injection gate with nothing measurable.** Default: the gate fails. **Agreed (2026-10-04).**
 - [x] **Q-K8. P12 spend.** Default: **≈ $13**, with a hard $15 cap per provider pass, judging included. **Agreed after discussion (2026-10-04).**
 
-</details>
-
-<details><summary><b>P13</b> (23) · <a href="plans/P13-audit.md">P13-audit.md</a></summary>
+#### P13 (23) · [P13-audit.md](plans/P13-audit.md)
 
 - [x] **Q-H1. Channel to main.** Default: a minimal preload with two functions; every limit is enforced in main, never in the sandbox. **Agreed (2026-10-04).**
 - [x] **Q-H2. Partitions.** Default: a fresh in-memory partition per kernel window. **Agreed (2026-10-04).**
@@ -124,9 +120,7 @@ Details are in each phase's `Pn-audit.md`.
 - [x] **Q-M6. Recomputing answer keys.** Default: a maintainer recomputes them under the pinned versions before P14's gate run. **Agreed (2026-10-04).**
 - [x] **Q-M7. Escape metric per build.** Default: committed per build SHA; no bench run without it. **Agreed (2026-10-04).**
 
-</details>
-
-<details><summary><b>P14</b> (21) · <a href="plans/P14-audit.md">P14-audit.md</a></summary>
+#### P14 (21) · [P14-audit.md](plans/P14-audit.md)
 
 - [x] **Q-L1. Continue.** Default: Continue reopens the same analysis, with the money, rows, split and test lock already used. **Agreed (2026-10-04).**
 - [x] **Q-L2. Transcript on reopen.** Default: the visible conversation is restored from the journal; the SDK session itself isn't. **Agreed (2026-10-04).**
@@ -150,9 +144,7 @@ Details are in each phase's `Pn-audit.md`.
 - [x] **Q-Q5. Forecast splits.** Default: always by time; refused without a usable time column. **Agreed (2026-10-04).**
 - [x] **Q-Q6. Second-opinion and column search.** Default: off once any data has been read in the conversation. **Agreed (2026-10-04).**
 
-</details>
-
-<details><summary><b>P15</b> (24) · <a href="plans/P15-audit.md">P15-audit.md</a></summary>
+#### P15 (24) · [P15-audit.md](plans/P15-audit.md)
 
 - [x] **Q-O1. Instrumentation is advisory.** Default: yes, project-wide; P16–P18 follow (their audits apply it). **Agreed (2026-10-04).**
 - [x] **Q-O2. Hiding derived data after a split.** Default: datasets derived from the split source are hidden entirely. **Agreed (2026-10-04).**
@@ -179,9 +171,7 @@ Details are in each phase's `Pn-audit.md`.
 - [x] **Q-X6. Reconcile.** Default: main decides from the journals; committed files are re-registered. **Agreed (2026-10-04).**
 - [x] **Q-X7. Profiler output.** Default: a capped structured tool with precision reported. **Agreed (2026-10-04).**
 
-</details>
-
-<details><summary><b>P16</b> (24) · <a href="plans/P16-audit.md">P16-audit.md</a></summary>
+#### P16 (24) · [P16-audit.md](plans/P16-audit.md)
 
 - [x] **Q-P1. How tests are scored.** Default: the agent lists the tests it relied on, and the scorer recomputes each one. **Agreed (2026-10-04).**
 - [x] **Q-P2. Test families.** Default: hypotheses locked in the plan; later questions are exploratory; the benchmark uses the task's families. **Agreed (2026-10-04).**
@@ -208,9 +198,7 @@ Details are in each phase's `Pn-audit.md`.
 - [x] **Q-W5. What "matched" means.** Default: allowed, as locked, and recomputed to the same value. **Agreed (2026-10-04).**
 - [x] **Q-W6. Regression claims.** Default: a typed design schema; no formula strings. **Agreed (2026-10-04).**
 
-</details>
-
-<details><summary><b>P17</b> (25) · <a href="plans/P17-audit.md">P17-audit.md</a></summary>
+#### P17 (25) · [P17-audit.md](plans/P17-audit.md)
 
 - [x] **Q-R1. Leakage checks that count.** Default: only checks computed by main count toward gates. **Agreed (2026-10-04).**
 - [x] **Q-R2. `predict` during a split.** Default: refuses data descended from the split dataset. **Agreed (2026-10-04).**
@@ -238,9 +226,7 @@ Details are in each phase's `Pn-audit.md`.
 - [x] **Q-Z4. Pipeline specs.** Default: declarative JSON, never a pickle. **Agreed (2026-10-04).**
 - [x] **Q-Z5. Retraining.** Default: a P21 work item. **Agreed (2026-10-04).**
 
-</details>
-
-<details><summary><b>P18</b> (22) · <a href="plans/P18-audit.md">P18-audit.md</a></summary>
+#### P18 (22) · [P18-audit.md](plans/P18-audit.md)
 
 - [x] **Q-U1. Refit for the real forecast.** Default: after evaluation, code refits the chosen model on all the data to produce your forecast. **Agreed (2026-10-04).**
 - [x] **Q-U2. Backtesting by code.** Default: a code-owned backtest tool runs model selection. **Agreed (2026-10-04).**
@@ -265,9 +251,7 @@ Details are in each phase's `Pn-audit.md`.
 - [x] **Q-AC4. Future regressor values in the app.** Default: you register them as a dataset in Study design. **Agreed (2026-10-04).**
 - [x] **Q-AC5. Regressors and model orders.** Default: all declared regressors are used; code picks orders. **Agreed (2026-10-04).**
 
-</details>
-
-<details><summary><b>P19</b> (27) · <a href="plans/P19-audit.md">P19-audit.md</a></summary>
+#### P19 (27) · [P19-audit.md](plans/P19-audit.md)
 
 - [x] **Q-AA1. `second_opinion`.** Default: dropped from v1.0. **Agreed (2026-10-04).**
 - [x] **Q-AA2. Which findings count.** Default: only findings from main's checks and the critic's own; kernel and probe findings never count or teach lessons. **Agreed (2026-10-04).**
@@ -297,9 +281,7 @@ Details are in each phase's `Pn-audit.md`.
 - [x] **Q-AI10. Controller-only roles.** Default: outside the delegatable scope table. **Agreed (2026-10-04).**
 - [x] **Q-AI11. Reads before commit.** Default: refused while a plan is proposed but not committed. **Agreed (2026-10-04).**
 
-</details>
-
-<details><summary><b>P20</b> (19) · <a href="plans/P20-audit.md">P20-audit.md</a></summary>
+#### P20 (19) · [P20-audit.md](plans/P20-audit.md)
 
 - [x] **Q-AB1. Weights.** Default: only in Study design; notes show them read-only. **Agreed (2026-10-04).**
 - [x] **Q-AB2. Dataset quirks.** Default: in notes only. **Agreed (2026-10-04).**
@@ -321,9 +303,7 @@ Details are in each phase's `Pn-audit.md`.
 - [x] **Q-AG5. Dataset notes.** Default: structured records; free text only when the user types it. **Agreed (2026-10-04).**
 - [x] **Q-AG6. Phrasing role budget.** Default: a new decision adds the phrasing role with a 2k-token budget. **Agreed (2026-10-04).**
 
-</details>
-
-<details><summary><b>P21</b> (17) · <a href="plans/P21-audit.md">P21-audit.md</a></summary>
+#### P21 (17) · [P21-audit.md](plans/P21-audit.md)
 
 - [x] **Q-AD1. Where notebooks are re-run.** Default: in a fresh sandboxed kernel; "outside DataDesk" becomes a documented manual check. **Agreed after discussion (2026-10-04).**
 - [x] **Q-AD2. Code-computed results in notebooks.** Default: exported as generated cells from the recorded specs and split. **Agreed (2026-10-04).**
@@ -343,9 +323,7 @@ Details are in each phase's `Pn-audit.md`.
 - [x] **Q-AM4. Export allowlist.** Default: an enumerated allowlist file, including dispatch strings. **Agreed (2026-10-04).**
 - [x] **Q-AM5. Code ownership.** Default: export and re-run code are maintainer-owned paths. **Agreed (2026-10-04).**
 
-</details>
-
-<details><summary><b>P22</b> (18) · <a href="plans/P22-audit.md">P22-audit.md</a></summary>
+#### P22 (18) · [P22-audit.md](plans/P22-audit.md)
 
 - [ ] **Q-AH1. P22 spend.** ~~Default: ≈ $350~~ (superseded by Q-AL7).
 - [x] **Q-AH2. The holdout after P22.** Default: kept in custody, aggregate-only, so a re-opened freeze has to use a fresh holdout-d. **Agreed after discussion (2026-10-04).**
@@ -366,9 +344,7 @@ Details are in each phase's `Pn-audit.md`.
 - [x] **Q-AO3. Judge-label settlement.** Default: a third blinded labeller who holds custody. **Agreed (2026-10-04).**
 - [x] **Q-AO4. Infrastructure failure on a safety task.** Default: the pass is void for safety metrics and re-run, not treated as a violation. **Agreed (2026-10-04).**
 
-</details>
-
-<details><summary><b>P23</b> (23) · <a href="plans/P23-audit.md">P23-audit.md</a></summary>
+#### P23 (23) · [P23-audit.md](plans/P23-audit.md)
 
 - [x] **Q-AK1. Release gate.** Default: only maintainers create `v*` tags; publishing needs a maintainer-approved `release` environment; attestations are published. **Agreed after discussion (2026-10-04).**
 - [x] **Q-AK2. Default models.** Default: ship aliases (D-045) as a declared deviation, printing the evaluated pinned ids. **Agreed (2026-10-04).**
@@ -393,8 +369,6 @@ Details are in each phase's `Pn-audit.md`.
 - [x] **Q-AP5. `file://` fuse.** Default: off, if a single-fuse test copy still exports a PDF. **Agreed (2026-10-04).**
 - [x] **Q-AP6. Fresh-machine tester.** Default: a contributor who didn't write the README, on their own key. **Agreed (2026-10-04).**
 - [x] **Q-AP7. Release tree-hash check.** Default: recomputed from the signed freeze tag, never read from the release commit. **Agreed (2026-10-04).**
-
-</details>
 
 ### Decided on 2026-10-03
 
@@ -516,9 +490,8 @@ The full criteria table is in P10-09 ([P10 plan](plans/P10-requirements-and-scop
 
 ## 3. Housekeeping
 
-- [ ] **Commit locally** on `plan/planning`: `planning/`, the four new skills (`using-agent-skills`, `spec-driven-development`, `planning-and-task-breakdown`, `spec-designer`), the `plan-auditor` agent, the CLAUDE.md edits, the npm scripts (`plan:setup`, `plan:html`) and the ignore entries. **Pushing is a separate approval.**
-- [ ] **`package-lock.json`:** it carries an older drift of 90 removed `libc` lines, not from this work. P10 Q29 recommends reverting it with `git checkout package-lock.json` and pinning the npm version in P10-07.
-- [ ] **Fresh clones** need `npm run plan:setup` once before `npm run plan:html`.
+- [ ] **Commit locally** on `plan/planning`: `planning/`, the four new skills (`using-agent-skills`, `spec-driven-development`, `planning-and-task-breakdown`, `spec-designer`), the `plan-auditor` agent, the CLAUDE.md edits, the npm script `plan:html` and the ignore entries. **Pushing is a separate approval.**
+- [x] **`package-lock.json`:** the older drift of 90 removed `libc` lines is reverted to `main`. Pinning the npm version stays with P10-07 (P10 Q29).
 
 ---
 

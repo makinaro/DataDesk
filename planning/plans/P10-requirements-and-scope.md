@@ -129,7 +129,7 @@ Decisions from the Q&A of 2026-10-02 and 2026-10-03. The rows are drafted as gro
 
 ### P10-08 Collaboration setup (DS-18)
 
-- [ ] `CONTRIBUTING.md`: roles (maintainer, contributor) and who holds them, setup (`npm ci`, `npm run duckdb:extensions`, `npm run plan:setup`), how to claim a work item, branch naming, review rule, how to answer a questionnaire (signed answers), the benchmark with your own keys
+- [ ] `CONTRIBUTING.md`: roles (maintainer, contributor) and who holds them, setup (`npm ci`, `npm run duckdb:extensions`), how to claim a work item, branch naming, review rule, how to answer a questionnaire (signed answers), the benchmark with your own keys
 - [ ] `.github/pull_request_template.md`: work item id, what and why, tests run, `npm run check` result, security-rule checklist (CLAUDE.md 1–6), screenshots for UI
 - [ ] `.github/ISSUE_TEMPLATE/`: work item, bug, and question/decision templates
 - [ ] CLAUDE.md: replace single-owner wording ("owner's go-ahead", "owner reviews the PR") with maintainer and contributor roles; add `planning/` and `CONTRIBUTING.md` to the doc map

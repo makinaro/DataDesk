@@ -1032,8 +1032,7 @@ The development skills are distinct from the **runtime skills** in
    Audits are saved as `Pn-audit.md`.
 4. **Decisions** from answers become D-NNN entries appended to `DECISIONS.md` at sign-off (the
    repo's append-only log). D-NNN numbers are assigned when the PR merges, to avoid clashes.
-5. **Rendering:** after any edit under `planning/`, run `npm run plan:html` (first time:
-   `npm run plan:setup`). The HTML lands in `planning/html/` (git-ignored, so everyone renders
+5. **Rendering:** after any edit under `planning/`, run `npm run plan:html`. The HTML lands in `planning/html/` (git-ignored, so everyone renders
    their own).
 
 ### 18.3 Building

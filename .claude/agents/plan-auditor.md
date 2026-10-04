@@ -2,7 +2,7 @@
 name: plan-auditor
 description: Strict, context-blind senior architecture designer who audits DataDesk advanced-analysis phase plans, questionnaires and design deliverables in planning/. Reads only files on disk, challenges the design choices themselves, writes attack sequences for anything safety-relevant, and returns a severity-graded report with exact quotes and one-sentence owner questions. Never edits files. Use before a phase starts and again after its deliverables are written.
 model: opus
-tools: Read, Glob, Grep, Bash
+tools: Read, Glob, Grep
 disallowedTools: Write, Edit, NotebookEdit, WebFetch, WebSearch, Agent
 ---
 

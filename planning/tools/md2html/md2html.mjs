@@ -7,9 +7,10 @@
 //   <file-or-dir>   one or more .md files, or directories (searched recursively for *.md)
 //   --out <dir>     write HTML into <dir>, mirroring the tree under --root, instead of next to the .md
 //   --root <dir>    the folder the mirrored tree is relative to (default: the current directory)
-//   --open          open each generated page in the default browser (Windows `start`)
+//   --open          open the generated page in the default browser (single file only)
 //
-// Relative links to other .md files are rewritten to .html, so the pages link to each other.
+// Relative links to files rendered in the same run point at their .html; other relative links are
+// rewritten so they still reach the source file from the output folder.
 //
 // Examples (from the repo root):
 //   npm run plan:html
@@ -17,30 +18,37 @@
 
 import { readFileSync, writeFileSync, mkdirSync, statSync, readdirSync } from 'node:fs';
 import { resolve, dirname, basename, extname, join, relative, sep } from 'node:path';
-import { exec } from 'node:child_process';
-import { marked } from 'marked';
+import { execFile } from 'node:child_process';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import Markdown, { defaultUrlTransform } from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 // ---------- CLI parsing ----------
-const argv = process.argv.slice(2);
-if (argv.length === 0 || argv.includes('--help') || argv.includes('-h')) {
+function usage(code) {
   const lines = readFileSync(new URL(import.meta.url), 'utf8')
     .split('\n')
-    .slice(1, 17);
+    .slice(1, 18);
   console.log(lines.map((l) => l.replace(/^\/\/ ?/, '')).join('\n'));
-  process.exit(0);
+  process.exit(code);
 }
+
+const argv = process.argv.slice(2);
+if (argv.length === 0 || argv.includes('--help') || argv.includes('-h')) usage(0);
 let outDir = null;
 let root = process.cwd();
 let openAfter = false;
 const inputs = [];
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
-  if (a === '--out') {
-    outDir = resolve(argv[++i]);
-    continue;
-  }
-  if (a === '--root') {
-    root = resolve(argv[++i]);
+  if (a === '--out' || a === '--root') {
+    const v = argv[++i];
+    if (!v || v.startsWith('--')) {
+      console.error(`${a} needs a directory.\n`);
+      usage(1);
+    }
+    if (a === '--out') outDir = resolve(v);
+    else root = resolve(v);
     continue;
   }
   if (a === '--open') {
@@ -66,85 +74,88 @@ if (files.length === 0) {
   process.exit(1);
 }
 
-// ---------- markdown setup ----------
-marked.setOptions({ gfm: true, breaks: false });
+function outPathFor(file) {
+  if (!outDir) return file.replace(/\.md$/i, '.html');
+  const rel = relative(root, file);
+  return join(outDir, rel.startsWith('..') ? basename(file) : rel).replace(/\.md$/i, '.html');
+}
+// Every output path is known before rendering, so links can target pages from the same run.
+const outPaths = new Map(files.map((f) => [f, outPathFor(f)]));
 
-const slugCounts = new Map();
-function slugify(text) {
-  const base = text
+// ---------- links ----------
+// defaultUrlTransform drops unsafe schemes (javascript:, data:, ...). Relative paths are then
+// resolved against the source file and re-expressed relative to the output page.
+function makeUrlTransform(file, outPath) {
+  return (url, key) => {
+    const safe = defaultUrlTransform(url);
+    if (!safe || /^([a-z][a-z0-9+.-]*:|[#/])/i.test(safe)) return safe;
+    const cut = safe.search(/[?#]/);
+    const pathPart = cut === -1 ? safe : safe.slice(0, cut);
+    const suffix = cut === -1 ? '' : safe.slice(cut);
+    if (!pathPart) return safe;
+    let decoded;
+    try {
+      decoded = decodeURIComponent(pathPart);
+    } catch {
+      return safe;
+    }
+    const target = resolve(dirname(file), decoded);
+    const dest = key === 'href' ? (outPaths.get(target) ?? target) : target;
+    const rel = relative(dirname(outPath), dest).split(sep).join('/') || basename(dest);
+    return encodeURI(rel) + suffix;
+  };
+}
+
+// ---------- headings ----------
+function hastText(node) {
+  if (node.type === 'text') return node.value;
+  return (node.children ?? []).map(hastText).join('');
+}
+
+function slugBase(text) {
+  return text
     .toLowerCase()
-    .replace(/<[^>]+>/g, '')
-    .replace(/[^\w\s-]/g, '')
+    .replace(/[^\p{L}\p{N}\s_-]/gu, '')
     .trim()
     .replace(/\s+/g, '-');
-  const n = slugCounts.get(base) ?? 0;
-  slugCounts.set(base, n + 1);
-  return n === 0 ? base : `${base}-${n}`;
 }
 
-// Only relative links to .md files are rewritten; web links and anchors are left alone.
-function rewriteHref(href) {
-  if (!href || /^[a-z][a-z0-9+.-]*:/i.test(href) || href.startsWith('#')) return href;
-  return href.replace(/\.md(?=$|#)/i, '.html');
-}
-
-const renderer = {
-  heading({ tokens, depth }) {
-    const text = this.parser.parseInline(tokens);
-    const id = slugify(text);
-    return `<h${depth} id="${id}"><a class="anchor" href="#${id}">#</a>${text}</h${depth}>\n`;
-  },
-  link({ href, title, tokens }) {
-    const text = this.parser.parseInline(tokens);
-    const t = title ? ` title="${escapeHtml(title)}"` : '';
-    return `<a href="${escapeHtml(rewriteHref(href))}"${t}>${text}</a>`;
-  },
-  listitem(item) {
-    let text = this.parser.parse(item.tokens, !!item.loose);
-    if (item.task) {
-      const box = `<input type="checkbox" disabled${item.checked ? ' checked' : ''}> `;
-      text = box + text;
-      return `<li class="task">${text}</li>\n`;
-    }
-    return `<li>${text}</li>\n`;
-  },
-  table({ header, rows }) {
-    const cell = (tag, c) =>
-      `<${tag} style="text-align:${c.align ?? 'left'}">${this.parser.parseInline(c.tokens)}</${tag}>`;
-    const th = header.map((c) => cell('th', c)).join('');
-    const body = rows.map((r) => `<tr>${r.map((c) => cell('td', c)).join('')}</tr>`).join('\n');
-    return `<div class="table-wrap"><table><thead><tr>${th}</tr></thead><tbody>\n${body}\n</tbody></table></div>\n`;
-  },
-};
-marked.use({ renderer });
-
-// ---------- TOC ----------
-function buildToc(md) {
-  const items = [];
-  let inFence = false;
-  for (const line of md.split('\n')) {
-    if (/^```/.test(line)) {
-      inFence = !inFence;
-      continue;
-    }
-    if (inFence) continue;
-    const m = /^(#{2,3})\s+(.+?)\s*#*\s*$/.exec(line);
-    if (m) items.push({ depth: m[1].length, text: m[2].replace(/[*_`]/g, '') });
-  }
-  if (items.length < 3) return '';
-  const counts = new Map();
-  const li = items
-    .map(({ depth, text }) => {
-      const base = text
-        .toLowerCase()
-        .replace(/[^\w\s-]/g, '')
-        .trim()
-        .replace(/\s+/g, '-');
-      const n = counts.get(base) ?? 0;
-      counts.set(base, n + 1);
+// The TOC and the page title come from the headings the renderer actually emitted, so anchors
+// always match ids and fenced code never contributes entries.
+function makeComponents(headings) {
+  const slugCounts = new Map();
+  const heading =
+    (depth) =>
+    ({ node, children }) => {
+      const text = hastText(node).trim();
+      const base = slugBase(text) || 'section';
+      const n = slugCounts.get(base) ?? 0;
+      slugCounts.set(base, n + 1);
       const id = n === 0 ? base : `${base}-${n}`;
-      return `<li class="d${depth}"><a href="#${id}">${escapeHtml(text)}</a></li>`;
-    })
+      headings.push({ depth, id, text });
+      return createElement(
+        `h${depth}`,
+        { id },
+        createElement('a', { className: 'anchor', href: `#${id}` }, '#'),
+        children,
+      );
+    };
+  const components = {
+    table: ({ node: _node, ...props }) =>
+      createElement('div', { className: 'table-wrap' }, createElement('table', props)),
+  };
+  for (const d of [1, 2, 3, 4, 5, 6]) components[`h${d}`] = heading(d);
+  return components;
+}
+
+function buildToc(headings) {
+  const items = headings.filter((h) => h.depth === 2 || h.depth === 3);
+  if (items.length < 3) return '';
+  const li = items
+    .map(
+      ({ depth, id, text }) =>
+        `<li class="d${depth}"><a href="#${escapeHtml(id)}">${escapeHtml(text)}</a></li>`,
+    )
     .join('\n');
   return `<nav class="toc"><div class="toc-title">Contents</div><ul>\n${li}\n</ul></nav>`;
 }
@@ -180,11 +191,11 @@ blockquote{margin:1em 0;padding:.5em 1em;border-left:4px solid var(--accent);bac
 blockquote p:last-child{margin:0}
 blockquote.answer{border-left-color:#d4a72c;background:var(--answer)}
 ul,ol{padding-left:1.6em;margin:0 0 1em}li{margin:.25em 0}
-li.task{list-style:none;margin-left:-1.4em}li.task input{margin-right:.5em;vertical-align:middle}
-li.task p{display:inline;margin:0}
+li.task-list-item{list-style:none;margin-left:-1.4em}li.task-list-item input{margin-right:.5em;vertical-align:middle}
+li.task-list-item p{display:inline;margin:0}
 .table-wrap{overflow-x:auto;margin:0 0 1.2em}
 table{border-collapse:collapse;width:100%;font-size:.92em}
-th,td{border:1px solid var(--border);padding:8px 12px;vertical-align:top}
+th,td{border:1px solid var(--border);padding:8px 12px;vertical-align:top;text-align:left}
 th{background:var(--th);font-weight:600}
 tbody tr:nth-child(even){background:var(--row)}
 img{max-width:100%}
@@ -230,24 +241,33 @@ ${bodyHtml}
 `;
 }
 
-// ---------- convert ----------
-for (const file of files) {
-  slugCounts.clear();
-  const md = readFileSync(file, 'utf8');
-  const titleMatch = /^#\s+(.+?)\s*$/m.exec(md);
-  const title = titleMatch ? titleMatch[1].replace(/[*_`]/g, '') : basename(file, '.md');
-  const body = markAnswers(marked.parse(md));
+function openInBrowser(p) {
+  // An argument array, never a shell string, so the path can't break out of quoting.
+  if (process.platform === 'win32') execFile('explorer.exe', [p]);
+  else execFile(process.platform === 'darwin' ? 'open' : 'xdg-open', [p]);
+}
 
-  let outPath;
-  if (outDir) {
-    const rel = relative(root, file);
-    outPath = join(outDir, rel.startsWith('..') ? basename(file) : rel).replace(/\.md$/i, '.html');
-  } else {
-    outPath = file.replace(/\.md$/i, '.html');
-  }
+// ---------- convert ----------
+// Raw HTML in the Markdown is escaped (no rehype-raw), the same rule as the app's ChatMarkdown.
+for (const file of files) {
+  const outPath = outPaths.get(file);
+  const headings = [];
+  const body = renderToStaticMarkup(
+    createElement(Markdown, {
+      remarkPlugins: [remarkGfm],
+      components: makeComponents(headings),
+      urlTransform: makeUrlTransform(file, outPath),
+      children: readFileSync(file, 'utf8'),
+    }),
+  );
+  const title = headings.find((h) => h.depth === 1)?.text ?? basename(file, '.md');
+
   mkdirSync(dirname(outPath), { recursive: true });
   const sourceRel = relative(process.cwd(), file).split(sep).join('/');
-  writeFileSync(outPath, page(title, buildToc(md), body, sourceRel), 'utf8');
+  writeFileSync(outPath, page(title, buildToc(headings), markAnswers(body), sourceRel), 'utf8');
   console.log(`${sourceRel} -> ${relative(process.cwd(), outPath).split(sep).join('/')}`);
-  if (openAfter) exec(`start "" "${outPath}"`);
+}
+if (openAfter) {
+  if (files.length === 1) openInBrowser(outPaths.get(files[0]));
+  else console.error(`--open skipped: it opens a single page, and ${files.length} were rendered.`);
 }
