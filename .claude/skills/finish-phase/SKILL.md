@@ -51,11 +51,17 @@ Append an entry in exactly this format (see CLAUDE.md):
 
 ## 5. Commit and push
 
-- Tick the "Done when" line if satisfied. Commit `docs: phase N learning log and summary`.
+- Tick the "Done when" line if satisfied. Commit `docs(docs): add the phase N learning log and summary`.
 - `git push -u origin <branch>`.
+- PR title, per [docs/conventions/git-conventions.md](../../../docs/conventions/git-conventions.md)
+  ("Phase PRs"): `type(scope): summary (phase N)`, e.g. `feat(ui): polish the UI and themes (phase 9)`.
+  Check it with `PR_TITLE="<title>" node scripts/gitConventions.mjs pr-title` (exit 0).
+- PR body: fill in `.github/pull_request_template.md` and save it as `.claude/tmp/pr-body.md`
+  (gitignored). Summary starts with a `Phase: N` line and links `docs/phases/phase-N.md` rather
+  than pasting it.
 - Open the PR: if the `gh` CLI is installed and authenticated, run
-  `gh pr create --base main --title "Phase N: <title>" --body-file docs/phases/phase-N.md`.
-  Otherwise print the compare URL:
+  `gh pr create --base main --title "<title>" --body-file .claude/tmp/pr-body.md`.
+  Otherwise print the compare URL and the title and body to paste:
   `https://github.com/<owner>/<repo>/compare/main...<branch>?expand=1`.
 
 ## 6. STOP
