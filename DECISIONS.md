@@ -1077,3 +1077,42 @@ prompt-injected dataset must never be able to make the agent delete other datase
 - The tool list differs between the UI server and agent servers. Tests assert both: the
   default server has no `remove_dataset`, and the UI env turns it on while every agent env
   turns it off.
+
+## D-046: Commit and PR-title conventions enforced by commitlint and husky (2026-10-07)
+
+**Context:** Commit and PR names had drifted: scopes outside the CLAUDE.md list (`smoke`, `e2e`,
+`test`, `lint`), 29 scopeless commits, a `Plan (docs):` subject, headers over 72 characters and
+phase PR titles taken from branch names. Only the code-reviewer agent checked the format. D-030 to
+D-045 are reserved by `planning/decisions-draft.md`, so this entry takes the next free number.
+
+**Decision:**
+
+- The rules live in `docs/conventions/git-conventions.md` (versioned, with a changelog); the type
+  and scope lists live in `scripts/gitConventionsData.mjs`, and a test keeps the two in step.
+  CLAUDE.md links the page instead of repeating the lists.
+- Exactly one scope, required. Nine scopes join the ten CLAUDE.md listed: `planning`, `ci`, `e2e`,
+  `smoke`, `test`, `scripts`, `lint`, `build`, `docs` (the ones history already used, plus the
+  areas that had none). Header, body and footer lines are 72 characters or fewer.
+- commitlint's default ignores are off: they match any line of the message, so a body line
+  `Merge branch main` skipped the whole commit. Only merge and `Revert "..."` headers are exempt.
+- Three layers: a husky `commit-msg` hook (installed by `"prepare": "husky"`), a strict
+  `commit-lint` CI job over the PR's own commits, and a warn-only PR-title job that fails only if
+  the check itself crashes. PR titles are `type(scope): summary (phase N)`; `/finish-phase` uses it.
+- Verified versions, installed with `--save-exact`: `@commitlint/cli`,
+  `@commitlint/config-conventional`, `@commitlint/load` and `@commitlint/lint` 21.2.3 (Node
+  > =22.12), `husky` 9.1.7. Sources: the installed packages' `lib/` and
+  > https://commitlint.js.org/reference/rules-configuration.html,
+  > https://typicode.github.io/husky/how-to.html (checked 2026-10-07).
+
+**Alternatives:**
+
+- Keeping review-only enforcement: it let the drift above through.
+- A required PR-title check with squash merges, so the title becomes the commit: we keep merge
+  commits, and GitHub uses the commit title, not the PR title, for a one-commit squash.
+- Optional scope (matches 29 old commits): makes `git log --grep "(ipc)"` unreliable.
+
+**Consequences:**
+
+- `fixup!`/`squash!` commits fail the hook; squash them before pushing.
+- The `commit-lint` job gates merges only once it is a required status check on `main`.
+- Branches cut before this lands must reword non-conforming commits before CI passes.

@@ -56,12 +56,14 @@ npm run smoke:packaged -- --installer   # installs it to a temp folder, checks i
 ```
 
 `npm run check` runs typecheck, lint, format and unit tests; `npm run test:e2e` runs the
-Playwright tests against the built app.
+Playwright tests against the built app. `npm ci` also installs a commit-msg hook that checks
+commit messages against [docs/conventions/git-conventions.md](docs/conventions/git-conventions.md).
 
 ## Documentation
 
 - [ROADMAP.md](ROADMAP.md): phases and progress
 - [CLAUDE.md](CLAUDE.md): how the repo is worked on (conventions, rules, routines)
 - [DECISIONS.md](DECISIONS.md): architecture decision log
+- [docs/conventions/](docs/conventions/README.md): commit, branch and PR conventions
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): process layout and data flow
 - [docs/learning-log.md](docs/learning-log.md): per-phase learning notes

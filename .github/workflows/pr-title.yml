@@ -1,0 +1,46 @@
+name: PR title
+
+# Warns on a bad title but fails on a crash, so a broken check can't pass as a permanent warning.
+# Not a required check. Its own workflow, so that editing a title does not re-run the whole CI
+# suite; pushes don't change the title, so there is no synchronize trigger.
+# Rules: docs/conventions/git-conventions.md.
+on:
+  pull_request:
+    types: [opened, edited, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-title-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pr-title:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      # Skip install scripts: only commitlint is needed, not Electron's or DuckDB's binaries.
+      - name: Install
+        run: npm ci --ignore-scripts
+
+      # The title goes through an env var, never into the script text, so it can't inject shell.
+      # Exit 1 is a bad title (warn); anything else non-zero is a crash or misuse (fail).
+      - name: Check the PR title
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          rc=0
+          node scripts/gitConventions.mjs pr-title || rc=$?
+          if [ "$rc" -eq 1 ]; then
+            echo "::warning title=PR title::The title does not follow docs/conventions/git-conventions.md (see the log above). This check only warns."
+            exit 0
+          fi
+          exit "$rc"
