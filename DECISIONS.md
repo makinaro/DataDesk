@@ -1077,3 +1077,54 @@ prompt-injected dataset must never be able to make the agent delete other datase
 - The tool list differs between the UI server and agent servers. Tests assert both: the
   default server has no `remove_dataset`, and the UI env turns it on while every agent env
   turns it off.
+
+## D-046: Commit and PR-title conventions enforced by commitlint and husky (2026-10-07)
+
+**Context:** Commit and PR names had drifted: scopes outside the CLAUDE.md list (`smoke`, `e2e`,
+`test`, `lint`), 28 non-merge commits on `main` without a `type(scope):` header (counted with
+`git log main --no-merges --format=%s | grep -cvE '^[a-z]+\([^)]+\)!?: '`), a `Plan (docs):`
+subject, headers over 72 characters and phase PR titles taken from branch names. Only the
+code-reviewer agent checked the format. D-030 to D-045 are reserved by
+`planning/decisions-draft.md`, so this entry takes the next free number.
+
+**Decision:**
+
+- The rules live in `docs/conventions/git-conventions.md` (versioned, with a changelog); the type
+  and scope lists live in `scripts/gitConventionsData.mjs`, and a test keeps the two in step.
+  CLAUDE.md links the page instead of repeating the lists.
+- Exactly one scope, required: the primary area of the change. A task that spans areas stays one
+  commit, as CLAUDE.md's per-task rule says. Nine scopes join the ten CLAUDE.md listed:
+  `planning`, `ci`, `e2e`, `smoke`, `test`, `scripts`, `lint`, `build`, `docs` (the ones history
+  already used, plus the areas that had none). Header, body and footer lines are 72 characters or
+  fewer, and the preset's blank-line rules are errors instead of warnings.
+- commitlint's default ignores are off: they match any line of the message, so a body line
+  `Merge branch main` skipped the whole commit. Only merge, `Revert "..."` and `Reapply "..."`
+  headers are exempt, and CI rejects a single-parent commit with a merge header.
+- Three strict layers: a husky `commit-msg` hook (installed by `"prepare": "husky"`), a
+  `commit-lint` CI job over the PR's own commits, and a PR-title job. PR titles are
+  `type(scope): summary (phase N)`; `/finish-phase` uses it. The title job is strict because
+  GitHub's merge commit carries the title in its body, where commitlint never lints it.
+- Verified versions, installed with `--save-exact`: `@commitlint/cli`,
+  `@commitlint/config-conventional`, `@commitlint/load` and `@commitlint/lint` 21.2.3
+  (Node `>=22.12.0`), `husky` 9.1.7. Sources: the installed packages' `lib/`,
+  https://commitlint.js.org/reference/rules-configuration.html and
+  https://typicode.github.io/husky/how-to.html (checked 2026-10-07).
+
+**Alternatives:**
+
+- Keeping review-only enforcement: it let the drift above through.
+- A warn-only PR-title job: it rested on the belief that the title never reaches `git log`, but
+  it does, in the merge commit's body (GitHub's default merge message,
+  https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/configuring-commit-merging-for-pull-requests).
+- Squash merges, so the title becomes the commit header: we keep merge commits.
+- Optional scope (matches the 28 old commits): makes `git log --grep "(ipc)"` unreliable.
+- Splitting every cross-scope change into one commit per scope: it conflicts with one commit per
+  task, and an IPC channel alone spans four scopes.
+
+**Consequences:**
+
+- `fixup!`/`squash!` commits fail the hook; squash them before pushing.
+- A message whose first line starts with `#` fails the hook, which would otherwise strip it.
+- The `commit-lint` job gates merges only once it is a required status check on `main`, and the
+  CODEOWNERS entry for the rule files only once branch protection requires code-owner review.
+- Branches cut before this lands must reword non-conforming commits before CI passes.

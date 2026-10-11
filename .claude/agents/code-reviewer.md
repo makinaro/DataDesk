@@ -29,7 +29,9 @@ commands (a hook enforces this).
    3. **Testing rules**: new behaviour without tests; tests that could hit the network; security
       rules without a guarding test; tests outside `tests/`.
    4. **Conventions**: `any`, hand-written types duplicating zod schemas, `src/shared` importing
-      electron/node/react, commit messages not conventional.
+      electron/node/react, commit messages and PR titles not following
+      `docs/conventions/git-conventions.md` (tooling checks the format; you check what it can't:
+      imperative mood, a vague summary, the right type and scope for the change).
    5. **Docs**: ROADMAP ticked for finished tasks; DECISIONS entry for any non-obvious choice.
 
 ## Output

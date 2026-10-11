@@ -31,11 +31,12 @@ Doc map: [ROADMAP.md](ROADMAP.md) (what's next) · [DECISIONS.md](DECISIONS.md) 
 
 ## Commits
 
-Conventional commits: `type(scope): summary` in the imperative, ≤72 chars.
+Conventional commits: `type(scope): summary` in the imperative, header ≤72 chars, exactly one
+scope (required). The full rules, the type and scope lists, PR titles and branch names live in
+[docs/conventions/git-conventions.md](docs/conventions/git-conventions.md). The commit-msg hook
+and CI enforce them.
 
-- Types: `feat` `fix` `test` `docs` `refactor` `chore` `build` `ci` `perf`
-- Scopes: `main` `preload` `ipc` `ui` `secrets` `mcp` `agent` `skills` `claude` `deps`
-- Body: _why_, not what. End with the co-author trailer from the harness.
+- Body: _why_, not what, lines ≤72. End with the co-author trailer from the harness.
 
 ## Verify before use (fast-moving SDKs)
 

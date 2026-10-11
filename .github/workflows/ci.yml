@@ -57,3 +57,40 @@ jobs:
             playwright-report/
             test-results/
           retention-days: 7
+
+  # The real gate for commit messages: the commit-msg hook is skipped by --no-verify and never runs
+  # for commits made on github.com. Lints only the PR's own commits (base..head), not main's history.
+  commit-lint:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      # Skip install scripts: only commitlint is needed, not Electron's or DuckDB's binaries.
+      - name: Install
+        run: npm ci --ignore-scripts
+
+      # From the merge base, in case base.sha is stale after main is merged into the branch.
+      # commitlint passes an empty range without a word, so an empty one fails here.
+      # shell: bash adds pipefail, so a failing git log can't hide behind the last command.
+      - name: Lint the PR's commits
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          from=$(git merge-base "$BASE_SHA" "$HEAD_SHA")
+          n=$(git rev-list --count "$from..$HEAD_SHA")
+          echo "Linting $n commit(s) in $from..$HEAD_SHA"
+          [ "$n" -gt 0 ] || { echo "::error::No commits to lint in $from..$HEAD_SHA"; exit 1; }
+          npx --no -- commitlint --from "$from" --to "$HEAD_SHA" --verbose
+          git log --no-merges --format=%s "$from..$HEAD_SHA" | node scripts/gitConventionsCli.mjs merge-headers

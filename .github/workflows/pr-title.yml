@@ -1,0 +1,41 @@
+name: PR title
+
+# Fails on a title that breaks docs/conventions/git-conventions.md, and on any crash of the check.
+# GitHub's merge commit carries the title in its body, and commitlint skips merge commits, so this
+# is the only check the title gets. Fixing a title is one edit, which re-runs this job. It has its
+# own workflow so that editing a title does not re-run the whole CI suite; pushes don't change the
+# title, so there is no synchronize trigger.
+on:
+  pull_request:
+    types: [opened, edited, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-title-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pr-title:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      # Skip install scripts: only commitlint is needed, not Electron's or DuckDB's binaries.
+      - name: Install
+        run: npm ci --ignore-scripts
+
+      # The title goes through an env var, never into the script text, so it can't inject shell.
+      - name: Check the PR title
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: node scripts/gitConventionsCli.mjs pr-title
