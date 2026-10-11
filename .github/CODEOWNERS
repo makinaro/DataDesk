@@ -1,0 +1,9 @@
+# CI lints a PR with the PR's own copy of these files, so a PR could weaken the rules and pass its
+# own check. A maintainer reviews any change to them. This takes effect once branch protection on
+# main requires a review from code owners.
+/commitlint.config.js @makinaro
+/scripts/gitConventions*.mjs @makinaro
+/.husky/ @makinaro
+/.github/workflows/ci.yml @makinaro
+/.github/workflows/pr-title.yml @makinaro
+/.github/CODEOWNERS @makinaro

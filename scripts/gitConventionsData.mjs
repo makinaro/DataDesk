@@ -30,13 +30,15 @@ export const SCOPES = [
 
 // Headers that skip linting, matched against the first line only. commitlint's default ignores
 // are off because they match any line of the message ("Merge branch main" in a body would skip
-// the whole commit) and also skip fixup!/squash!, semver-only and other headers.
+// the whole commit) and also skip fixup!/squash!, semver-only and other headers. A header alone
+// doesn't prove a commit is a merge, so CI also rejects single-parent commits that match these.
 export const MERGE_HEADERS = [
   /^Merge pull request #\d+ from \S+$/,
   /^Merge branch '[^']+'( of \S+)?( into \S+)?$/,
   /^Merge remote-tracking branch '[^']+'( into \S+)?$/,
 ];
-export const REVERT_HEADER = /^Revert ".+"$/;
+// git writes `Reapply "..."` when you revert a revert.
+export const REVERT_HEADER = /^(Revert|Reapply) ".+"$/;
 
 /** @param {string} message */
 export const headerOf = (message) => (message.split(/\r?\n/)[0] ?? '').trimEnd();
@@ -46,3 +48,11 @@ export const isMergeCommit = (message) => MERGE_HEADERS.some((re) => re.test(hea
 
 /** @param {string} message */
 export const isRevertCommit = (message) => REVERT_HEADER.test(headerOf(message));
+
+/**
+ * True when nothing is left once "#" comment lines and blank lines are removed. The hook strips
+ * "#" lines, but `git commit -m "#42 fix"` keeps them, and commitlint passes an empty message.
+ * @param {string} message
+ */
+export const isBlankMessage = (message) =>
+  message.split(/\r?\n/).every((line) => line.trim() === '' || line.startsWith('#'));

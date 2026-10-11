@@ -1,10 +1,11 @@
-// Lints commit messages and PR titles with the repo's commitlint config. The test drives
-// lintMessage/lintPrTitle, and CI runs the pr-title command below. The lists live in
-// gitConventionsData.mjs; the rules and reasons in docs/conventions/git-conventions.md.
-import { fileURLToPath, pathToFileURL } from 'node:url';
+// Lints commit messages and PR titles with the repo's commitlint config. No side effects on
+// import: the test drives lintMessage/lintPrTitle, and gitConventionsCli.mjs is what CI and the
+// hook run. The lists live in gitConventionsData.mjs; the rules and reasons in
+// docs/conventions/git-conventions.md.
+import { fileURLToPath } from 'node:url';
 import load from '@commitlint/load';
 import lint from '@commitlint/lint';
-import { isRevertCommit } from './gitConventionsData.mjs';
+import { isBlankMessage, isRevertCommit } from './gitConventionsData.mjs';
 
 export { DOC_VERSION, SCOPES, TYPES } from './gitConventionsData.mjs';
 
@@ -15,6 +16,9 @@ const PHASE_SUFFIX = / \(phase (0|[1-9][0-9]*)\)$/;
 // "(phase 9.5)", "(phase 09)", "(phase)" or a second "(phase 9)". Not "(phased rollout)".
 const MALFORMED_PHASE_SUFFIX = /\(\s*phase\b[^)]*\)\s*$/i;
 
+/** @param {string} error */
+const invalid = (error) => ({ valid: false, errors: [error], warnings: [] });
+
 /**
  * @param {string} message
  * @param {{ prTitle?: boolean }} [options]
@@ -23,8 +27,12 @@ async function run(message, { prTitle = false } = {}) {
   const config = await load({}, { cwd: ROOT, file: 'commitlint.config.js' });
   const report = await lint(message, config.rules, {
     plugins: config.plugins,
-    // Same comment handling as `commitlint --edit` in the commit-msg hook.
-    parserOpts: { ...config.parserPreset?.parserOpts, commentChar: '#' },
+    // Commits get the same comment handling as `commitlint --edit` in the hook. A title has no
+    // comment lines, and with '#' set, "#12 fix it" would be stripped to an empty, valid message.
+    parserOpts: {
+      ...config.parserPreset?.parserOpts,
+      ...(prTitle ? {} : { commentChar: '#' }),
+    },
     // A PR title is never a merge commit, so only the revert exemption applies to it.
     ignores: prTitle ? [isRevertCommit] : config.ignores,
     defaultIgnores: config.defaultIgnores,
@@ -37,11 +45,15 @@ async function run(message, { prTitle = false } = {}) {
 }
 
 /**
- * Lints a commit message the way the commit-msg hook does.
+ * Lints a commit message the way the commit-msg hook does: the blank-message guard in
+ * gitConventionsCli.mjs, then `commitlint --edit`.
  * @param {string} message
  * @returns {Promise<{ valid: boolean, errors: string[], warnings: string[] }>}
  */
-export function lintMessage(message) {
+export async function lintMessage(message) {
+  if (isBlankMessage(message)) {
+    return invalid('message-empty: the message is empty once lines starting with "#" are removed');
+  }
   return run(message);
 }
 
@@ -52,42 +64,12 @@ export function lintMessage(message) {
  * @returns {Promise<{ valid: boolean, errors: string[], warnings: string[] }>}
  */
 export async function lintPrTitle(title) {
-  if (title.trim() === '') {
-    return { valid: false, errors: ['title-empty: the PR title is empty'], warnings: [] };
-  }
+  if (title.trim() === '') return invalid('title-empty: the PR title is empty');
   const base = title.replace(PHASE_SUFFIX, '');
   if (MALFORMED_PHASE_SUFFIX.test(base)) {
-    return {
-      valid: false,
-      errors: ['phase-suffix: end the title with exactly one " (phase N)" (lower-case, digits)'],
-      warnings: [],
-    };
+    return invalid(
+      'phase-suffix: end the title with exactly one " (phase N)" (lower-case, digits)',
+    );
   }
   return run(base, { prTitle: true });
-}
-
-// Exit codes: 0 valid, 1 invalid title, 2 misuse or crash. CI warns on 1 and fails on 2.
-async function main() {
-  const [command] = process.argv.slice(2);
-  const title = process.env['PR_TITLE'];
-  if (command !== 'pr-title' || title === undefined) {
-    console.error('usage: PR_TITLE=<title> node scripts/gitConventions.mjs pr-title');
-    process.exitCode = 2;
-    return;
-  }
-  const result = await lintPrTitle(title);
-  if (result.valid) {
-    console.log(`PR title OK: ${title}`);
-    return;
-  }
-  console.error(`PR title does not follow docs/conventions/git-conventions.md: ${title}`);
-  for (const error of result.errors) console.error(`  - ${error}`);
-  process.exitCode = 1;
-}
-
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  main().catch((error) => {
-    console.error(error);
-    process.exitCode = 2;
-  });
 }

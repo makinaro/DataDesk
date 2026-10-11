@@ -55,10 +55,12 @@ Append an entry in exactly this format (see CLAUDE.md):
 - `git push -u origin <branch>`.
 - PR title, per [docs/conventions/git-conventions.md](../../../docs/conventions/git-conventions.md)
   ("Phase PRs"): `type(scope): summary (phase N)`, e.g. `feat(ui): polish the UI and themes (phase 9)`.
-  Check it with `PR_TITLE="<title>" node scripts/gitConventions.mjs pr-title` (exit 0).
+  Check it (exit 0) with `PR_TITLE="<title>" node scripts/gitConventionsCli.mjs pr-title` in
+  bash, or `$env:PR_TITLE = "<title>"; node scripts/gitConventionsCli.mjs pr-title` in
+  PowerShell.
 - PR body: fill in `.github/pull_request_template.md` and save it as `.claude/tmp/pr-body.md`
-  (gitignored). Summary starts with a `Phase: N` line and links `docs/phases/phase-N.md` rather
-  than pasting it.
+  (gitignored; create `.claude/tmp/` if it is missing, as on a fresh clone). Summary starts with
+  a `Phase: N` line and links `docs/phases/phase-N.md` rather than pasting it.
 - Open the PR: if the `gh` CLI is installed and authenticated, run
   `gh pr create --base main --title "<title>" --body-file .claude/tmp/pr-body.md`.
   Otherwise print the compare URL and the title and body to paste:

@@ -12,7 +12,7 @@ export default {
         // scope-enum alone accepts "ui,ipc" or "ui/ipc" when each part is allowed.
         'single-scope': ({ scope }) => [
           !/[,/\\]/.test(scope ?? ''),
-          'use exactly one scope; split a change that spans scopes into separate commits',
+          'use exactly one scope: the primary area of the change',
         ],
       },
     },
@@ -27,6 +27,10 @@ export default {
     // The parser treats everything from the first "Token: value" line on as footer, so the body
     // limit alone would let later lines reach the preset's 100.
     'footer-max-line-length': [2, 'always', 72],
+    // The preset only warns on these, and warnings don't fail the hook or CI. A test checks that
+    // no rule is left at warning level.
+    'body-leading-blank': [2, 'always'],
+    'footer-leading-blank': [2, 'always'],
     // The preset already forbids a capitalised first letter (subject-case "never" sentence-case
     // and friends), which allows acronyms after the first word.
   },

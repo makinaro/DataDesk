@@ -1,4 +1,4 @@
-<!-- Title: type(scope): summary (phase N). See docs/conventions/git-conventions.md -->
+<!-- Title: type(scope): summary, plus " (phase N)" on phase PRs only. See docs/conventions/git-conventions.md -->
 
 ## Summary
 
