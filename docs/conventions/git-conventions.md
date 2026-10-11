@@ -1,6 +1,6 @@
 # Git conventions
 
-Version: 1.0.0
+Version: 1.0.1
 Status: active
 
 How we name commits, branches and pull requests. The rules are enforced by tooling (see
@@ -14,8 +14,6 @@ test checks that this page agrees with it.
 type(scope): summary
 
 Body: why, not what. Wrapped at 72 columns, optional for trivial changes.
-
-Co-Authored-By: ...
 ```
 
 - **Type and scope are required.** Exactly one scope: the primary area of the change. Don't list
@@ -28,8 +26,9 @@ Co-Authored-By: ...
   A summary that would start with an acronym is reworded (`add CSV import`, not
   `CSV import support`).
 - **Body** explains why, not what. Lines are 72 columns or fewer (lines with a URL are exempt).
-- **Footers** are the harness `Co-Authored-By` trailer and, for a breaking change, a
-  `BREAKING CHANGE:` footer. There is no phase footer on commits: the phase lives on the PR.
+- **Footers** are only needed for a breaking change: a `BREAKING CHANGE:` footer. Don't add AI
+  attribution trailers (`Co-Authored-By: Claude ...`) or "Generated with" lines to commits or PR
+  descriptions. There is no phase footer on commits: the phase lives on the PR.
   Footer lines are 72 columns or fewer too. commitlint treats the first `Token: value` line and
   everything after it as footer, so start body lines with something else.
 - **Breaking changes** use the `BREAKING CHANGE:` footer. A `!` before the colon
@@ -222,6 +221,7 @@ whether you chose the right bump level, so check that in review.
 
 ## Changelog
 
-| Version | Date       | Change                    | Reason                                             |
-| ------- | ---------- | ------------------------- | -------------------------------------------------- |
-| 1.0.0   | 2026-10-07 | First version of the page | Commit and PR names had drifted (see the examples) |
+| Version | Date       | Change                     | Reason                                                |
+| ------- | ---------- | -------------------------- | ----------------------------------------------------- |
+| 1.0.1   | 2026-10-11 | No AI attribution trailers | The maintainer doesn't want AI attribution in history |
+| 1.0.0   | 2026-10-07 | First version of the page  | Commit and PR names had drifted (see the examples)    |
