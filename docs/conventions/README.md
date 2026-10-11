@@ -5,6 +5,6 @@ row here in the same commit.
 
 | Page                                     | Version | Covers                                        |
 | ---------------------------------------- | ------- | --------------------------------------------- |
-| [git-conventions.md](git-conventions.md) | 1.0.0   | commits, branches, PR titles and descriptions |
+| [git-conventions.md](git-conventions.md) | 1.0.1   | commits, branches, PR titles and descriptions |
 
 Coding and test conventions get their own pages later.

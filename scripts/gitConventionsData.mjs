@@ -2,7 +2,7 @@
 // scripts/gitConventions.mjs can both import it without importing each other. Rules and reasons
 // live in docs/conventions/git-conventions.md; keep DOC_VERSION in step with it.
 
-export const DOC_VERSION = '1.0.0';
+export const DOC_VERSION = '1.0.1';
 
 export const TYPES = ['feat', 'fix', 'test', 'docs', 'refactor', 'chore', 'build', 'ci', 'perf'];
 
