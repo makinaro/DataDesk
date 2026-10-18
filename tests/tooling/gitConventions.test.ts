@@ -171,6 +171,32 @@ describe('the commitlint config', () => {
 });
 
 describe('commit messages', () => {
+  // D-047: AI attribution is banned; a human co-author is still fine.
+  it.each([
+    'Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>',
+    'co-authored-by: Claude <claude@example.com>',
+    'Co-Authored-By: Someone <noreply@anthropic.com>',
+    '🤖 Generated with [Claude Code](https://claude.com/claude-code)',
+    'Generated with Claude Code',
+  ])('rejects AI attribution %j', async (footer) => {
+    const result = await lintMessageP(`feat(ui): add a thing\n\nWhy.\n\n${footer}`);
+    expect(result.errors.join('\n')).toMatch(/no-ai-attribution/);
+  });
+
+  it('accepts a human co-author and prose that mentions the ban', async () => {
+    const message =
+      'feat(ui): add a thing\n\nNo "Generated with" line and no AI trailer.\n\n' +
+      'Co-Authored-By: Jane Doe <jane@example.com>';
+    expect((await lintMessageP(message)).errors).toEqual([]);
+  });
+
+  it("accepts the page's own commit template", async () => {
+    const template = /## Commit message\r?\n\r?\n```\r?\n([\s\S]*?)\r?\n```/.exec(DOC)?.[1] ?? '';
+    expect(template).not.toBe('');
+    const filled = template.replace('type(scope): summary', 'feat(ui): add a thing');
+    expect((await lintMessageP(filled)).errors).toEqual([]);
+  });
+
   it.each([
     'feat(ui): add a theme picker',
     'fix(mcp): load DuckDB from a short path',

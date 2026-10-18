@@ -13,7 +13,7 @@ test checks that this page agrees with it.
 ```
 type(scope): summary
 
-Body: why, not what. Wrapped at 72 columns, optional for trivial changes.
+The body says why, not what, wrapped at 72 columns.
 ```
 
 - **Type and scope are required.** Exactly one scope: the primary area of the change. Don't list
@@ -25,10 +25,13 @@ Body: why, not what. Wrapped at 72 columns, optional for trivial changes.
   Acronyms and proper nouns are fine after the first word (`fix(mcp): load DuckDB from a short path`).
   A summary that would start with an acronym is reworded (`add CSV import`, not
   `CSV import support`).
-- **Body** explains why, not what. Lines are 72 columns or fewer (lines with a URL are exempt).
+- **Body** explains why, not what, and is optional for trivial changes. Lines are 72 columns or
+  fewer (lines with a URL are exempt).
 - **Footers** are only needed for a breaking change: a `BREAKING CHANGE:` footer. Don't add AI
   attribution trailers (`Co-Authored-By: Claude ...`) or "Generated with" lines to commits or PR
-  descriptions. There is no phase footer on commits: the phase lives on the PR.
+  descriptions: the `no-ai-attribution` rule rejects them in commits, and `.claude/settings.json`
+  stops Claude Code from adding them. A human `Co-Authored-By` is fine. There is no phase footer
+  on commits: the phase lives on the PR.
   Footer lines are 72 columns or fewer too. commitlint treats the first `Token: value` line and
   everything after it as footer, so start body lines with something else.
 - **Breaking changes** use the `BREAKING CHANGE:` footer. A `!` before the colon
@@ -44,8 +47,7 @@ Body: why, not what. Wrapped at 72 columns, optional for trivial changes.
   rejects a message that is empty once those lines are removed.
 - **Not enforced by tools, so review for it:** the imperative mood (`added` passes), vague
   summaries such as "wip" or "misc", the right type and scope for the change, and AI attribution
-  trailers or "Generated with" lines (lint accepts them; `.claude/settings.json` stops Claude Code
-  from adding them).
+  in PR descriptions (lint checks commits only).
 
 **Why:** the history is the project's changelog and its learning record. A required scope makes
 `git log --grep "(ipc)"` useful, and the imperative summary reads as "this commit will ...".
@@ -218,12 +220,12 @@ valid.
 Any PR that changes this page bumps `Version`, adds a changelog row at the top of the table and
 updates the row in the [index](README.md), all in the same commit. Keep `DOC_VERSION` in
 `scripts/gitConventionsData.mjs` in step. The decision behind this page is D-046 in
-`DECISIONS.md`. The test fails if they disagree, but it cannot judge
+`DECISIONS.md`, amended by D-047. The test fails if they disagree, but it cannot judge
 whether you chose the right bump level, so check that in review.
 
 ## Changelog
 
-| Version | Date       | Change                     | Reason                                                                                                         |
-| ------- | ---------- | -------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| 2.0.0   | 2026-10-11 | No AI attribution trailers | The maintainer doesn't want AI attribution in history (D-047). MAJOR: the trailer went from required to banned |
-| 1.0.0   | 2026-10-07 | First version of the page  | Commit and PR names had drifted (see the examples)                                                             |
+| Version | Date       | Change                     | Reason                                                                                                                       |
+| ------- | ---------- | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| 2.0.0   | 2026-10-18 | No AI attribution trailers | The maintainer doesn't want AI attribution in history (D-047). MAJOR: `no-ai-attribution` rejects messages that used to pass |
+| 1.0.0   | 2026-10-07 | First version of the page  | Commit and PR names had drifted (see the examples)                                                                           |

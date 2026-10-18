@@ -2,6 +2,12 @@
 // scripts/gitConventionsData.mjs so the test can check them against the doc.
 import { SCOPES, TYPES, isMergeCommit, isRevertCommit } from './scripts/gitConventionsData.mjs';
 
+const AI_ATTRIBUTION = [
+  /^co-authored-by:.*(claude|anthropic)/im,
+  /noreply@anthropic\.com/i,
+  /generated with \[?claude code/i,
+];
+
 export default {
   extends: ['@commitlint/config-conventional'],
   defaultIgnores: false,
@@ -14,6 +20,11 @@ export default {
           !/[,/\\]/.test(scope ?? ''),
           'use exactly one scope: the primary area of the change',
         ],
+        // D-047. CI lints only a PR's own commits, so old trailers on main never reach this.
+        'no-ai-attribution': ({ raw }) => [
+          !AI_ATTRIBUTION.some((re) => re.test(raw ?? '')),
+          'remove the AI attribution (Co-Authored-By: Claude or "Generated with Claude Code")',
+        ],
       },
     },
   ],
@@ -22,6 +33,7 @@ export default {
     'scope-enum': [2, 'always', SCOPES],
     'scope-empty': [2, 'never'],
     'single-scope': [2, 'always'],
+    'no-ai-attribution': [2, 'always'],
     'header-max-length': [2, 'always', 72],
     'body-max-line-length': [2, 'always', 72],
     // The parser treats everything from the first "Token: value" line on as footer, so the body

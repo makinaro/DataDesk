@@ -1129,23 +1129,34 @@ code-reviewer agent checked the format. D-030 to D-045 are reserved by
   CODEOWNERS entry for the rule files only once branch protection requires code-owner review.
 - Branches cut before this lands must reword non-conforming commits before CI passes.
 
-## D-047: No AI attribution in commits or PRs (2026-10-11)
+## D-047: No AI attribution in commits or PRs (2026-10-18)
 
-**Context** D-046 made the harness `Co-Authored-By` trailer a required commit footer. The
-maintainer doesn't want AI attribution in the project's history, which is also its changelog and
-learning record.
+**Context** `CLAUDE.md` ("End with the co-author trailer from the harness") and the conventions
+page from D-046 told every commit to carry the harness `Co-Authored-By` trailer; D-046 itself
+records only the conventions page and its tooling. The maintainer doesn't want AI attribution in
+the project's history, which is also its changelog and learning record.
 
-**Decision** Reverses D-046's footer rule. Commits carry no `Co-Authored-By` trailer and PR
-descriptions no "Generated with" line. CLAUDE.md states the rule, and the shared
-`.claude/settings.json` sets `attribution.commit` and `attribution.pr` to empty strings, so Claude
-Code stops adding them for every contributor (settings reference:
-https://code.claude.com/docs/en/settings-reference, verified 2026-10-18). The conventions page goes
-to 2.0.0: under its own rules a required footer becoming banned is MAJOR, even though lint still
-accepts the trailer.
+**Decision** Commits carry no AI `Co-Authored-By` trailer and PR descriptions no "Generated with"
+line; a human co-author is still fine. Three layers:
 
-**Alternatives** A lint rule rejecting the trailer: it would fail the 115 commits on `main` that
-carry one whenever a range is re-linted, and review catches new ones. Keep the trailer: rejected by
-the maintainer.
+1. A commitlint plugin rule, `no-ai-attribution`, rejects `Co-Authored-By:` lines naming Claude or
+   Anthropic, `noreply@anthropic.com`, and "Generated with Claude Code". The hook and CI lint only
+   new messages (CI from the PR's merge base), so the 115 commits on `main` that carry a trailer
+   are never re-linted.
+2. The shared `.claude/settings.json` sets `attribution.commit` and `attribution.pr` to empty
+   strings, and the deprecated `includeCoAuthoredBy` to `false` for Claude Code versions that
+   predate `attribution`. Verified against the settings reference
+   (https://code.claude.com/docs/en/settings-reference) on Claude Code 2.1.302, 2026-10-18. The
+   reference doesn't state when `attribution` arrived, so no minimum version is claimed.
+3. CLAUDE.md states the rule; review checks PR descriptions, which lint doesn't see.
 
-**Consequences** Old commits keep their trailers; history isn't rewritten. Review checks for the
-trailer, as the conventions page lists.
+The conventions page goes to 2.0.0 and its governing decision is now D-046 amended by this entry:
+under the page's own rules, a rule that rejects previously valid messages is MAJOR.
+
+**Alternatives** Review only, no lint rule: rejected in PR #14's review, since other AI tools or
+an older Claude Code would bring the trailer back unnoticed. Keep the trailer: rejected by the
+maintainer.
+
+**Consequences** Old commits keep their trailers; history isn't rewritten. A rebase or cherry-pick
+of an old commit that still carries one fails lint until the trailer is removed. PR descriptions
+stay review-only.
