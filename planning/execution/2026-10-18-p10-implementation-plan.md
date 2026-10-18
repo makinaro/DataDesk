@@ -35,7 +35,7 @@ start (CLAUDE.md: one phase at a time; P12's tasks depend on P11's schemas).
   Alternatives, Consequences.
 - Claude Code permission-rule syntax is verified by `docs-researcher` before Task 7 (P10-07).
 - No automated test makes a network call; GitHub API calls go through an injected client.
-- Never push to `main`. **Every push is a STOP:** ask the owner, push only on an explicit yes.
+- Never push to `main`. **Every push is a STOP:** ask maintainer 1, push only on an explicit yes.
   Approving this plan doesn't approve its pushes (DS-10).
 - Until Task 14, P10 commits go straight onto `phase-10-ds-requirements`. Branch protection on
   `phase-*` is switched on only after the phase PR merges, so from P11 on every work item uses a
@@ -46,8 +46,10 @@ start (CLAUDE.md: one phase at a time; P12's tasks depend on P11's schemas).
 
 1. **A path to answer keys written differently** (`bench\answer-keys`, `./bench//answer-keys`,
    `bench/./answer-keys`, upper case, a glob like `bench/answer*/**`, or split across Grep's
-   `path` and `glob`) must still be blocked by the private-paths hook. Test in Task 7. The hook
-   stays best-effort (D-008); holdout custody is the real control.
+   `path` and `glob`) must still be blocked by the private-paths hook. Test in Task 7. Only these
+   listed forms are claimed. Recursive reads that never name the folder (`Grep {path: 'bench'}`
+   with no glob, `grep -r x bench`, `cat bench/*/t01.json`) are known gaps: the hook stays
+   best-effort (D-008), and holdout custody is the real control.
 2. **A criterion that returns malformed JSON, times out, or is missing** must count as a fired
    blocker when it applies, and as a 0 score when it is a non-blocker, never as a pass or as
    dropped. Tests in Tasks 9 and 11.
@@ -68,8 +70,9 @@ start (CLAUDE.md: one phase at a time; P12's tasks depend on P11's schemas).
 
 - [x] **Step 1:** PR #14 (`docs/no-attribution-trailer`) and PR #15 (`plan/p10-p13-p12-execution`)
       are open on GitHub. `gh` must run as a collaborator account (`makinaro`).
-- [ ] **Step 2:** STOP. The owner reviews and merges both. Then `git switch main && git pull`.
-      Expected: `git log -1` shows both merges, and `DECISIONS.md` ends at D-047.
+- [ ] **Step 2:** STOP. Maintainer 1 reviews and merges both. Then `git switch main && git pull`.
+      Expected: `git log --merges -2 --oneline` shows both merges, and `DECISIONS.md` ends at
+      D-047.
 
 ---
 
@@ -80,7 +83,8 @@ start (CLAUDE.md: one phase at a time; P12's tasks depend on P11's schemas).
 **Files:**
 
 - Modify: `DECISIONS.md` (append), `planning/roadmap.md` (§1, §3, §5, §9, Version 0.3 → 0.4 with a revision row),
-  `planning/plans/P10-requirements-and-scope.md` (D-NNN column), `ROADMAP.md` (add Phase 10 section)
+  `planning/plans/P10-requirements-and-scope.md` (D-NNN column), `ROADMAP.md` (add Phase 10 section),
+  `planning/plans/P12-benchmark-and-scorer.md` (P12-16, EC12-8)
 
 - [ ] **Step 1:** `git switch -c phase-10-ds-requirements`.
 - [ ] **Step 2:** Add a `## Phase 10: Analyst requirements & scope` section to `ROADMAP.md` with one
@@ -90,6 +94,9 @@ start (CLAUDE.md: one phase at a time; P12's tasks depend on P11's schemas).
 - [ ] **Step 4:** Append **D-048 "Run P13 before P12"** and **D-049 "Two maintainers; maintainer 2
       holds and runs the holdout"**, text taken from the execution spec §2.1 and §2.2. D-049
       references the P12 Q-K2 maintainer answer it amends.
+- [ ] **Step 4b:** Amend `planning/plans/P12-benchmark-and-scorer.md`: P12-16 and EC12-8 say the
+      holdout oracle pass is run by maintainer 2 with the solver maintainer 1 wrote from the dev
+      tasks, commits the aggregate only, and cite D-049; the session plan's row 7 matches.
 - [ ] **Step 5:** Update roadmap §9's phase table so P12's dependency reads `P11, P13` and P13 is listed
       before P12; bump Version to 0.4 and add its revision row.
 - [ ] **Step 6:** Verify: `grep -c '^## D-0' DECISIONS.md` is 49 (D-001..D-049); every DS-01..DS-23 row
@@ -157,7 +164,8 @@ start (CLAUDE.md: one phase at a time; P12's tasks depend on P11's schemas).
 - Modify: `.claude/hooks/policies.mjs` (`PRIVATE_PATTERNS`), `CLAUDE.md` (rule 6, doc map, session
   start, push wording), `.claude/settings.json`, `scripts/gitConventionsData.mjs` (scopes),
   `package.json` (`packageManager`, `engines.npm`), `.github/workflows/ci.yml` (npm version),
-  `README.md` (status line), `.claude/skills/finish-phase/` (push step)
+  `README.md` (status line), `.claude/skills/finish-phase/` (push step),
+  `docs/conventions/git-conventions.md` and `docs/conventions/README.md` (scope rows, version)
 - Test: `tests/tooling/policies.test.ts`, create `tests/tooling/settingsRules.test.ts`,
   `tests/tooling/gitConventions.test.ts`
 
@@ -244,8 +252,10 @@ it('allows other bench paths', () => {
   builds them from `gh api`.
 
 - [ ] **Step 1:** Write `codeowners.test.ts` asserting every glob in the P10-08 protected set (P10 plan
-      §3, P10-08) has an owners line containing `@makinaro`, and `/bench/spend/**` is owned by
-      `@makinaro @Jisooyanim` only. Run: FAIL. Update `.github/CODEOWNERS`. Run: PASS.
+      §3, P10-08) has an owners line listing **both** `@makinaro` and `@Jisooyanim` (P10-08: every
+      contributor owns the protected set; with one code owner, that code owner's own PRs could never get a
+      code-owner approval), and `/bench/spend/**` is owned by exactly `@makinaro @Jisooyanim`.
+      Run: FAIL. Update `.github/CODEOWNERS`. Run: PASS.
 - [ ] **Step 2:** Write `syncIssues.test.ts`: `parseRoadmapTasks` on a fixture with `- [ ] P10-02 …` and
       `- [x] P10-01 …` returns both ids with the right `done`; `syncIssues` with a fake client
       creates a missing issue, updates a changed title, closes a done task, and never calls the
@@ -255,8 +265,9 @@ it('allows other bench paths', () => {
       1 approval, dismiss stale approvals, last-push approval, code-owner review, no admin bypass,
       auto-merge off; and a CODEOWNERS file (read through the client) whose `/bench/spend/**` line
       lists anyone besides the maintainers, or is missing, returns
-      `bench/spend/** must be owned by the maintainers only`. Rules are checked for each name in
-      `branches`. Run: FAIL. Implement. Run: PASS.
+      `bench/spend/** must be owned by the maintainers only`; and a listed code owner without
+      write access (GitHub silently ignores such owners) returns `<login> has no write access`.
+      Rules are checked for each name in `branches`. Run: FAIL. Implement. Run: PASS.
 - [ ] **Step 4:** Write `CONTRIBUTING.md` (roles: `@makinaro` and `@Jisooyanim` maintainers; setup `npm ci`,
       `npm run duckdb:extensions`; claiming a work item; branches `phase-N/<item-id>-<slug>`; review
       rule; signed questionnaire answers; benchmark on your own keys), the three issue templates,
@@ -264,7 +275,7 @@ it('allows other bench paths', () => {
 - [ ] **Step 5:** CLAUDE.md: "owner" wording becomes maintainer/contributor roles; add `CONTRIBUTING.md`
       to the doc map. `/finish-phase` lists the phase PRs' contributors.
 - [ ] **Step 6:** `npm run check`; commit `docs(docs): add contributing guide and collaboration tooling`.
-- [ ] **Step 7:** STOP for the owner: apply branch protection on **`main` only** in GitHub, then run
+- [ ] **Step 7:** STOP for maintainer 1: apply branch protection on **`main` only** in GitHub, then run
       `node scripts/check-repo-settings.mjs --branches main`. Expected output: `compliant`.
       `phase-*` protection waits until Task 14 Step 6, because Tasks 9–14 still commit to the phase
       branch directly.
@@ -280,8 +291,10 @@ it('allows other bench paths', () => {
 
 - Produces: zod `CriterionResult = { criterion: string, status: 'pass'|'fail'|'n/a', subScore: 0..5
 int, findings: string[] }`; `Verdict = { pr: number, sha: string, diffHash: string,
-criterionHashes: Record<string,string>, score: number, blockersFired: string[], missing: string[],
-decision: 'APPROVE'|'REQUEST_CHANGES', bootstrap: boolean, results: CriterionResult[] }`;
+workItem: string, criterionHashes: Record<string,string>, score: number | null,
+blockersFired: string[], missing: string[], decision: 'APPROVE'|'REQUEST_CHANGES',
+bootstrap: boolean, results: CriterionResult[] }`. `workItem` is an id like `P10-07` or `none`;
+  `score` is `null` only on a bootstrap verdict;
   `aggregate(criteria: CriterionMeta[], results: unknown[], applicable: Set<string>): Verdict-without-ids`
   where `CriterionMeta = { id, weight, blocker, tier }`.
 
@@ -331,20 +344,26 @@ map): Set<string>`.
 **Interfaces:**
 
 - Consumes: `aggregate`, `loadCriteria`, `applicableBlockers`.
-- Produces: `writeVerdict({ pr, baseRef, headSha, results }, git: GitClient): Promise<string>` writing
+- Produces: `writeVerdict({ pr, baseRef, headSha, branch, results }, git: GitClient): Promise<string>`
+  writing
   `docs/reviews/<pr>/verdict.json` and `verdict.md`; criteria and `tiers.json` loaded with
   `git show <baseRef>:<path>`. `computeDiffHash(git, baseRef, headSha): Promise<string>`, shared
   with Task 12. `changedPathsFromDiff(diff: string): string[]` for fixture runs (Task 13).
+  `workItemFromBranch(branch: string): string` returns `P10-07` for `phase-10/P10-07-hygiene`
+  and `none` for any other name. `baseRef` is always `origin/<base>` after `git fetch`, never a
+  local branch that may be stale.
 
 - [ ] **Step 1:** Tests with a fake `GitClient`: criteria come from the base ref even when the working
       tree differs; `computeDiffHash` is SHA-256 of the output of exactly
-      `git diff-tree -r --no-renames --no-commit-id <merge-base> <head>` (raw blob ids, modes and
-      paths, so no user diff setting such as `diff.algorithm` or `diff.renames` changes it; the
-      test asserts the argv); `criterionHashes` cover all ten files; a criterion that times out
+      `git diff-tree -r -z --no-renames --no-commit-id <merge-base> <head>` (raw blob ids, modes and
+      paths, NUL-separated so `core.quotePath` can't change how paths are written, and no user
+      diff setting such as `diff.algorithm` or `diff.renames` changes it; the test asserts the
+      argv); `workItem` comes from `workItemFromBranch(branch)`; `criterionHashes` cover all ten files; a criterion that times out
       (fake runner never resolves within the limit) → fired blocker. **Bootstrap:** when
       `git show <baseRef>:.claude/agents/reviewers/` doesn't exist, `writeVerdict` writes
-      `bootstrap: true`, takes its findings from the `code-reviewer` report passed in, and throws
-      if none is given. `changedPathsFromDiff` returns the `b/` paths of a two-file diff.
+      `bootstrap: true`, `criterionHashes: {}`, `score: null`, `results: []`, takes its findings
+      from the `code-reviewer` report passed in, sets `decision` to `REQUEST_CHANGES` if that
+      report lists any blocker and `APPROVE` otherwise, and throws if no report is given. `changedPathsFromDiff` returns the `b/` paths of a two-file diff.
 - [ ] **Step 2:** Run: FAIL. Implement. Run: PASS.
 - [ ] **Step 3:** SKILL.md order: **STOP and ask to push** → open a draft PR (now there is a number) →
       one subagent per applicable criterion at its tier's model → collect JSON →
@@ -376,12 +395,19 @@ map): Set<string>`.
       pins; **every commit in the range passes `lintMessage`**; **traceability**: the verdict's
       `workItem` is `none` or an id like `P10-07` that is ticked in `ROADMAP.md` at the head;
       **spend ledger**: any changed `bench/spend/*.jsonl` line must parse as JSON with `phase`,
-      `contributor` and `amountUsd`, and an unparseable line is an error. **Bootstrap:** a verdict
-      with `bootstrap: true` passes only when the base branch has no `scripts/review/verify.mjs`;
-      on a base that has one, `bootstrap: true` is an error.
+      `contributor` and `amountUsd`, and an unparseable line is an error. **Bootstrap:**
+      `verify.mjs` only ever runs on a base that has the suite, so a verdict with
+      `bootstrap: true` is always an error there (the bootstrap PR is handled by the workflow,
+      Step 3). **Isolation:** a test parses every import in `scripts/review/*.mjs` and asserts
+      each resolves to a file in the Step 3 checkout list or to a package in `package.json`.
 - [ ] **Step 2:** Run: FAIL. Implement. Run: PASS.
-- [ ] **Step 3:** The workflow checks out the **base** branch's `scripts/review/` into a separate
-      folder and runs `verify.mjs` from there against the PR head. If the base has no
+- [ ] **Step 3:** The workflow checks out the **base** branch's `scripts/review/`,
+      `scripts/gitConventions*.mjs`, `commitlint.config.js`, `package.json` and
+      `package-lock.json` together into a separate folder, runs `npm ci --ignore-scripts` there,
+      and runs `verify.mjs` from there against the PR head, so imports never resolve into the head
+      checkout. On a `pull_request` event GitHub runs the PR's own copy of `review-verdict.yml`;
+      "judged by the base branch's copies" therefore rests on `.github/**` needing code-owner
+      review (Task 8), which the workflow file states in a comment. If the base has no
       `scripts/review/verify.mjs` (only the PR that adds the suite), the job passes with the notice
       `bootstrap: no review suite on base; code-owner review is the control`. It never runs the
       head's own scripts.
@@ -404,14 +430,14 @@ map): Set<string>`.
 - [ ] **Step 1:** Dispatch `plan-auditor` on `docs/ds/01`–`05`; fix findings until READY (EC10-5).
 - [ ] **Step 2:** STOP for maintainer 2: the CONTRIBUTING walkthrough from a clean clone to a merged
       PR, filing an issue per snag (EC10-6). Fix the snags.
-- [ ] **Step 3:** STOP for the owner: confirm the evaluation layers, rubric criteria and judge rules
+- [ ] **Step 3:** STOP for maintainer 1: confirm the evaluation layers, rubric criteria and judge rules
       (EC10-7) with a Maintainer decision line in `P10-questionnaire.md`.
 - [ ] **Step 4:** Run `/finish-phase`. It asks to push, then opens a draft PR titled
       `docs(docs): define analyst requirements and scope (phase 10)`. This is the suite's own PR,
       so its base (`main`) has no criteria: it runs `code-reviewer` and `/review-suite` writes a
       `bootstrap: true` verdict (Task 11), which CI accepts (Task 12).
 - [ ] **Step 5:** Commit the verdict, ask to push, mark the PR ready, give the link. **STOP** until
-      the owner merges.
-- [ ] **Step 6:** After the merge: STOP for the owner to add `phase-*` branch protection and the
+      maintainer 1 merges.
+- [ ] **Step 6:** After the merge: STOP for maintainer 1 to add `phase-*` branch protection and the
       `review-verdict` required check, then run
       `node scripts/check-repo-settings.mjs --branches main,phase-*`. Expected output: `compliant`.
