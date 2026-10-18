@@ -40,7 +40,7 @@ start (CLAUDE.md: one phase at a time; P12's tasks depend on P11's schemas).
 - Until Task 14, P10 commits go straight onto `phase-10-ds-requirements`. Branch protection on
   `phase-*` is switched on only after the phase PR merges, so from P11 on every work item uses a
   `phase-N/<item-id>-<slug>` branch and a PR into the phase branch (roadmap §18, Q42).
-- Maintainer 2's GitHub handle and signing public key are required before Task 8.
+- Maintainer 2 is `@Jisooyanim`. Their signing public key isn't needed in P10 (P12 needs it).
 
 ## Review Focus
 
@@ -223,7 +223,7 @@ it('allows other bench paths', () => {
 
 ### Task 8: Collaboration setup (P10-08)
 
-**Requires:** maintainer 2's handle (call it `@M2` below; substitute the real one).
+**Maintainer 2:** `@Jisooyanim`.
 
 **Files:**
 
@@ -245,7 +245,7 @@ it('allows other bench paths', () => {
 
 - [ ] **Step 1:** Write `codeowners.test.ts` asserting every glob in the P10-08 protected set (P10 plan
       §3, P10-08) has an owners line containing `@makinaro`, and `/bench/spend/**` is owned by
-      `@makinaro @M2` only. Run: FAIL. Update `.github/CODEOWNERS`. Run: PASS.
+      `@makinaro @Jisooyanim` only. Run: FAIL. Update `.github/CODEOWNERS`. Run: PASS.
 - [ ] **Step 2:** Write `syncIssues.test.ts`: `parseRoadmapTasks` on a fixture with `- [ ] P10-02 …` and
       `- [x] P10-01 …` returns both ids with the right `done`; `syncIssues` with a fake client
       creates a missing issue, updates a changed title, closes a done task, and never calls the
@@ -257,7 +257,7 @@ it('allows other bench paths', () => {
       lists anyone besides the maintainers, or is missing, returns
       `bench/spend/** must be owned by the maintainers only`. Rules are checked for each name in
       `branches`. Run: FAIL. Implement. Run: PASS.
-- [ ] **Step 4:** Write `CONTRIBUTING.md` (roles: `@makinaro` and `@M2` maintainers; setup `npm ci`,
+- [ ] **Step 4:** Write `CONTRIBUTING.md` (roles: `@makinaro` and `@Jisooyanim` maintainers; setup `npm ci`,
       `npm run duckdb:extensions`; claiming a work item; branches `phase-N/<item-id>-<slug>`; review
       rule; signed questionnaire answers; benchmark on your own keys), the three issue templates,
       and the PR template additions (work-item id, security checklist rules 1–6).
