@@ -1128,3 +1128,24 @@ code-reviewer agent checked the format. D-030 to D-045 are reserved by
 - The `commit-lint` job gates merges only once it is a required status check on `main`, and the
   CODEOWNERS entry for the rule files only once branch protection requires code-owner review.
 - Branches cut before this lands must reword non-conforming commits before CI passes.
+
+## D-047: No AI attribution in commits or PRs (2026-10-11)
+
+**Context** D-046 made the harness `Co-Authored-By` trailer a required commit footer. The
+maintainer doesn't want AI attribution in the project's history, which is also its changelog and
+learning record.
+
+**Decision** Reverses D-046's footer rule. Commits carry no `Co-Authored-By` trailer and PR
+descriptions no "Generated with" line. CLAUDE.md states the rule, and the shared
+`.claude/settings.json` sets `attribution.commit` and `attribution.pr` to empty strings, so Claude
+Code stops adding them for every contributor (settings reference:
+https://code.claude.com/docs/en/settings-reference, verified 2026-10-18). The conventions page goes
+to 2.0.0: under its own rules a required footer becoming banned is MAJOR, even though lint still
+accepts the trailer.
+
+**Alternatives** A lint rule rejecting the trailer: it would fail the 115 commits on `main` that
+carry one whenever a range is re-linted, and review catches new ones. Keep the trailer: rejected by
+the maintainer.
+
+**Consequences** Old commits keep their trailers; history isn't rewritten. Review checks for the
+trailer, as the conventions page lists.

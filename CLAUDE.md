@@ -36,8 +36,9 @@ scope (required). The full rules, the type and scope lists, PR titles and branch
 [docs/conventions/git-conventions.md](docs/conventions/git-conventions.md). The commit-msg hook
 and CI enforce them.
 
-- Body: _why_, not what, lines ≤72. No AI attribution: no `Co-Authored-By` trailer in commits
-  and no "Generated with" line in PR descriptions.
+- Body: _why_, not what, lines ≤72.
+- No AI attribution: no `Co-Authored-By` trailer in commits and no "Generated with" line in PR
+  descriptions.
 
 ## Verify before use (fast-moving SDKs)
 

@@ -1,6 +1,6 @@
 # Git conventions
 
-Version: 1.0.1
+Version: 2.0.0
 Status: active
 
 How we name commits, branches and pull requests. The rules are enforced by tooling (see
@@ -43,7 +43,9 @@ Body: why, not what. Wrapped at 72 columns, optional for trivial changes.
   `git commit -m "#42 ..."` keeps them and CI lints them. Don't start a line with `#`. The hook
   rejects a message that is empty once those lines are removed.
 - **Not enforced by tools, so review for it:** the imperative mood (`added` passes), vague
-  summaries such as "wip" or "misc", and the right type and scope for the change.
+  summaries such as "wip" or "misc", the right type and scope for the change, and AI attribution
+  trailers or "Generated with" lines (lint accepts them; `.claude/settings.json` stops Claude Code
+  from adding them).
 
 **Why:** the history is the project's changelog and its learning record. A required scope makes
 `git log --grep "(ipc)"` useful, and the imperative summary reads as "this commit will ...".
@@ -221,7 +223,7 @@ whether you chose the right bump level, so check that in review.
 
 ## Changelog
 
-| Version | Date       | Change                     | Reason                                                |
-| ------- | ---------- | -------------------------- | ----------------------------------------------------- |
-| 1.0.1   | 2026-10-11 | No AI attribution trailers | The maintainer doesn't want AI attribution in history |
-| 1.0.0   | 2026-10-07 | First version of the page  | Commit and PR names had drifted (see the examples)    |
+| Version | Date       | Change                     | Reason                                                                                                         |
+| ------- | ---------- | -------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| 2.0.0   | 2026-10-11 | No AI attribution trailers | The maintainer doesn't want AI attribution in history (D-047). MAJOR: the trailer went from required to banned |
+| 1.0.0   | 2026-10-07 | First version of the page  | Commit and PR names had drifted (see the examples)                                                             |

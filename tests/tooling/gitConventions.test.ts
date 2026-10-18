@@ -19,7 +19,7 @@ const read = (path: string): string => readFileSync(resolve(path), 'utf8');
 const DOC = read('docs/conventions/git-conventions.md');
 const INDEX = read('docs/conventions/README.md');
 
-const TRAILER = 'Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>';
+const FOOTER = 'Refs: #12';
 // "feat(ui): " is 10 characters, so these headers are exactly 72 and 73.
 const HEADER_72 = `feat(ui): ${'a'.repeat(62)}`;
 const HEADER_73 = `feat(ui): ${'a'.repeat(63)}`;
@@ -176,7 +176,7 @@ describe('commit messages', () => {
     'fix(mcp): load DuckDB from a short path',
     'docs(docs): add the phase 9 learning log and summary',
     'test(test): cover the theme picker',
-    `feat(ui): add a theme picker\n\nWhy this matters.\n\n${TRAILER}`,
+    `feat(ui): add a theme picker\n\nWhy this matters.\n\n${FOOTER}`,
     'feat(ui): add a theme picker\n\nBREAKING CHANGE: the old picker is gone',
     'feat(ui)!: drop the old layout',
     `feat(ui): add a theme picker\n\nSee https://example.com/${'p'.repeat(80)}`,
@@ -213,7 +213,7 @@ describe('commit messages', () => {
     [`feat(ui): add a thing\n\nContext: ${'y'.repeat(64)}`, 'footer-max-line-length'],
     // The preset only warns on these two.
     ['feat(ui): add a thing\nWhy this matters.', 'body-leading-blank'],
-    [`feat(ui): add a thing\n\nWhy this matters.\n${TRAILER}`, 'footer-leading-blank'],
+    [`feat(ui): add a thing\n\nWhy this matters.\n${FOOTER}`, 'footer-leading-blank'],
     // `git commit -m "#42 ..."` keeps the line, but commitlint would strip it and pass.
     ['#42 fix everything', 'message-empty'],
     ['#', 'message-empty'],
