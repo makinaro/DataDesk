@@ -2,6 +2,14 @@
 // scripts/gitConventionsData.mjs so the test can check them against the doc.
 import { SCOPES, TYPES, isMergeCommit, isRevertCommit } from './scripts/gitConventionsData.mjs';
 
+// A Co-Authored-By trailer naming an AI tool, or a line starting "Generated with/by <tool>".
+// A human whose name contains one of these words is rejected too; the conventions page says so.
+const AI_TOOLS = 'claude|anthropic|copilot|aider|codex|openai|chatgpt|gemini';
+const AI_ATTRIBUTION = [
+  new RegExp(`^co-authored-by:.*\\b(${AI_TOOLS})\\b`, 'im'),
+  new RegExp(`^\\W*generated (with|by) \\[?(${AI_TOOLS})\\b`, 'im'),
+];
+
 export default {
   extends: ['@commitlint/config-conventional'],
   defaultIgnores: false,
@@ -14,6 +22,13 @@ export default {
           !/[,/\\]/.test(scope ?? ''),
           'use exactly one scope: the primary area of the change',
         ],
+        // D-047. CI lints only a PR's own commits, so old trailers on main never reach this.
+        // The parsed fields, not raw: under `git commit -v`, raw also holds the staged diff below
+        // the scissors line, which the parser drops.
+        'no-ai-attribution': ({ header, body, footer }) => [
+          !AI_ATTRIBUTION.some((re) => re.test([header, body, footer].filter(Boolean).join('\n'))),
+          'remove the AI attribution (an AI Co-Authored-By trailer or a "Generated with" line)',
+        ],
       },
     },
   ],
@@ -22,6 +37,7 @@ export default {
     'scope-enum': [2, 'always', SCOPES],
     'scope-empty': [2, 'never'],
     'single-scope': [2, 'always'],
+    'no-ai-attribution': [2, 'always'],
     'header-max-length': [2, 'always', 72],
     'body-max-line-length': [2, 'always', 72],
     // The parser treats everything from the first "Token: value" line on as footer, so the body
