@@ -2,10 +2,12 @@
 // scripts/gitConventionsData.mjs so the test can check them against the doc.
 import { SCOPES, TYPES, isMergeCommit, isRevertCommit } from './scripts/gitConventionsData.mjs';
 
+// A Co-Authored-By trailer naming an AI tool, or a line starting "Generated with/by <tool>".
+// A human whose name contains one of these words is rejected too; the conventions page says so.
+const AI_TOOLS = 'claude|anthropic|copilot|aider|codex|openai|chatgpt|gemini';
 const AI_ATTRIBUTION = [
-  /^co-authored-by:.*(claude|anthropic)/im,
-  /noreply@anthropic\.com/i,
-  /generated with \[?claude code/i,
+  new RegExp(`^co-authored-by:.*\\b(${AI_TOOLS})\\b`, 'im'),
+  new RegExp(`^\\W*generated (with|by) \\[?(${AI_TOOLS})\\b`, 'im'),
 ];
 
 export default {
@@ -21,9 +23,11 @@ export default {
           'use exactly one scope: the primary area of the change',
         ],
         // D-047. CI lints only a PR's own commits, so old trailers on main never reach this.
-        'no-ai-attribution': ({ raw }) => [
-          !AI_ATTRIBUTION.some((re) => re.test(raw ?? '')),
-          'remove the AI attribution (Co-Authored-By: Claude or "Generated with Claude Code")',
+        // The parsed fields, not raw: under `git commit -v`, raw also holds the staged diff below
+        // the scissors line, which the parser drops.
+        'no-ai-attribution': ({ header, body, footer }) => [
+          !AI_ATTRIBUTION.some((re) => re.test([header, body, footer].filter(Boolean).join('\n'))),
+          'remove the AI attribution (an AI Co-Authored-By trailer or a "Generated with" line)',
         ],
       },
     },
